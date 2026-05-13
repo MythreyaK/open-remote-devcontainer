@@ -195,6 +195,7 @@ function ensureSshConfigHostAlias(hostAlias: string, port: number, user: string)
   fs.mkdirSync(sshDir, { recursive: true });
   let configText = fs.existsSync(sshConfigPath) ? fs.readFileSync(sshConfigPath, "utf-8") : "";
   const block = [
+    "",
     `Host ${hostAlias}`,
     `  HostName 127.0.0.1`,
     `  Port ${port}`,
