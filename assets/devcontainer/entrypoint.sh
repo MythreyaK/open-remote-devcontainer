@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Added by codiumDevcontainer: entrypoint
+# Added by openremotedevcontainer: entrypoint
 set -euo pipefail
 
 # Start sshd in foreground (backgrounded here for supervision)
@@ -7,7 +7,7 @@ set -euo pipefail
 SSHD_PID=$!
 
 # Stop file written by remote extension deactivate()
-STOP_FILE="${CODIUM_WS:-/workspace}/.codium-devcontainer-stop"
+STOP_FILE="${CODIUM_WS:-/workspace}/.open-remote-devcontainer-stop"
 
 cleanup() {
   if kill -0 "$SSHD_PID" 2>/dev/null; then

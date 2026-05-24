@@ -59,8 +59,8 @@ EXPOSE 22
 WORKDIR /workspace
 
 # Copy entrypoint from workspace to image and configure as default command
-COPY .devcontainer/entrypoint.sh /usr/local/bin/codium-devcontainer-entrypoint
-RUN chmod +x /usr/local/bin/codium-devcontainer-entrypoint
+COPY .devcontainer/entrypoint.sh /usr/local/bin/open-remote-devcontainer-entrypoint
+RUN chmod +x /usr/local/bin/open-remote-devcontainer-entrypoint
 
 # Start entrypoint which manages sshd and shutdown
-CMD ["/usr/local/bin/codium-devcontainer-entrypoint"]
+CMD ["/usr/local/bin/open-remote-devcontainer-entrypoint"]

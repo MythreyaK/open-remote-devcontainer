@@ -1,17 +1,17 @@
 {
-  "name": "codium-devcontainer",
-  "displayName": "Codium Devcontainer",
-  "description": "Build & run a devcontainer using Docker CLI",
-  "version": "0.3.1",
-  "publisher": "DDorch",
+  "name": "open-remote-devcontainer",
+  "displayName": "Open Remote - Devcontainer",
+  "description": "Build & run a devcontainer using Docker or Podman CLI",
+  "version": "0.3.2",
+  "publisher": "mythreyak",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/DDorch/codium-devcontainer.git"
+    "url": "https://github.com/mythreyak/open-remote-devcontainer.git"
   },
-  "homepage": "https://github.com/DDorch/codium-devcontainer#readme",
+  "homepage": "https://github.com/mythreyak/open-remote-devcontainer#readme",
   "bugs": {
-    "url": "https://github.com/DDorch/codium-devcontainer/issues"
+    "url": "https://github.com/mythreyak/open-remote-devcontainer/issues"
   },
   "categories": [
     "Other"
@@ -33,82 +33,82 @@
   "activationEvents": [
     "onStartupFinished",
     "workspaceContains:.devcontainer/devcontainer.json",
-    "onCommand:codiumDevcontainer.buildAndRun",
-    "onCommand:codiumDevcontainer.addDockerfileTemplate",
-    "onCommand:codiumDevcontainer.openFolderInDevcontainer",
-    "onCommand:codiumDevcontainer.showMenu",
-    "onCommand:codiumDevcontainer.openDevcontainerConfig",
-    "onCommand:codiumDevcontainer.rebuildAndOpen"
+    "onCommand:openremotedevcontainer.buildAndRun",
+    "onCommand:openremotedevcontainer.addDockerfileTemplate",
+    "onCommand:openremotedevcontainer.openFolderInDevcontainer",
+    "onCommand:openremotedevcontainer.showMenu",
+    "onCommand:openremotedevcontainer.openDevcontainerConfig",
+    "onCommand:openremotedevcontainer.rebuildAndOpen"
   ],
   "contributes": {
     "commands": [
       {
-        "command": "codiumDevcontainer.buildAndRun",
+        "command": "openremotedevcontainer.buildAndRun",
         "title": "Devcontainer: Build & Run"
       },
       {
-        "command": "codiumDevcontainer.addDockerfileTemplate",
+        "command": "openremotedevcontainer.addDockerfileTemplate",
         "title": "Devcontainer: Add Dockerfile Template"
       },
       {
-        "command": "codiumDevcontainer.openFolderInDevcontainer",
+        "command": "openremotedevcontainer.openFolderInDevcontainer",
         "title": "Devcontainer: Open Folder in Devcontainer (SSH)"
       },
       {
-        "command": "codiumDevcontainer.showMenu",
+        "command": "openremotedevcontainer.showMenu",
         "title": "Devcontainer: Show Actions"
       },
       {
-        "command": "codiumDevcontainer.openDevcontainerConfig",
+        "command": "openremotedevcontainer.openDevcontainerConfig",
         "title": "Devcontainer: Open Devcontainer Configuration"
       },
       {
-        "command": "codiumDevcontainer.rebuildAndOpen",
+        "command": "openremotedevcontainer.rebuildAndOpen",
         "title": "Devcontainer: Rebuild & Open"
       }
     ],
     "menus": {
       "commandPalette": [
         {
-          "command": "codiumDevcontainer.showMenu"
+          "command": "openremotedevcontainer.showMenu"
         },
         {
-          "command": "codiumDevcontainer.openDevcontainerConfig"
+          "command": "openremotedevcontainer.openDevcontainerConfig"
         },
         {
-          "command": "codiumDevcontainer.openFolderInDevcontainer"
+          "command": "openremotedevcontainer.openFolderInDevcontainer"
         },
         {
-          "command": "codiumDevcontainer.rebuildAndOpen"
+          "command": "openremotedevcontainer.rebuildAndOpen"
         }
       ],
       "explorer/context": [
         {
-          "command": "codiumDevcontainer.openDevcontainerConfig",
+          "command": "openremotedevcontainer.openDevcontainerConfig",
           "group": "2_workspace",
-          "when": "codiumDevcontainer.hasConfig"
+          "when": "openremotedevcontainer.hasConfig"
         },
         {
-          "command": "codiumDevcontainer.openFolderInDevcontainer",
+          "command": "openremotedevcontainer.openFolderInDevcontainer",
           "group": "2_workspace",
-          "when": "codiumDevcontainer.hasConfig"
+          "when": "openremotedevcontainer.hasConfig"
         }
       ],
       "statusBar/remoteIndicator": [
         {
-          "command": "codiumDevcontainer.openDevcontainerConfig",
+          "command": "openremotedevcontainer.openDevcontainerConfig",
           "group": "remote_30_devcontainer_3local@1",
-          "when": "!remoteName && codiumDevcontainer.hasConfig"
+          "when": "!remoteName && openremotedevcontainer.hasConfig"
         },
         {
-          "command": "codiumDevcontainer.openFolderInDevcontainer",
+          "command": "openremotedevcontainer.openFolderInDevcontainer",
           "group": "remote_30_devcontainer_3local@2",
-          "when": "!remoteName && codiumDevcontainer.hasConfig"
+          "when": "!remoteName && openremotedevcontainer.hasConfig"
         },
         {
-          "command": "codiumDevcontainer.rebuildAndOpen",
+          "command": "openremotedevcontainer.rebuildAndOpen",
           "group": "remote_30_devcontainer_3local@3",
-          "when": "!remoteName && codiumDevcontainer.hasConfig"
+          "when": "!remoteName && openremotedevcontainer.hasConfig"
         }
       ]
     },

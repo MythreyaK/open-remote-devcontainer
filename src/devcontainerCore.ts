@@ -54,7 +54,7 @@ function getTemplateEntrypointPath(ctx: vscode.ExtensionContext): string {
 let outputChannel: vscode.OutputChannel | undefined;
 export function getOutput(): vscode.OutputChannel {
   if (!outputChannel) {
-    outputChannel = vscode.window.createOutputChannel("Codium Devcontainer");
+    outputChannel = vscode.window.createOutputChannel("Open Remote - Devcontainer");
   }
   return outputChannel;
 }
@@ -89,17 +89,17 @@ function makeWorkspaceSlug(wsFsPath: string): string {
 
 export function getImageName(wsFsPath: string): string {
   const slug = makeWorkspaceSlug(wsFsPath);
-  return `codium-devcontainer-${slug}`;
+  return `open-remote-devcontainer-${slug}`;
 }
 
 export function getContainerName(wsFsPath: string): string {
   const slug = makeWorkspaceSlug(wsFsPath);
-  return `codium-devcontainer-${slug}`;
+  return `open-remote-devcontainer-${slug}`;
 }
 
 export function getHostAlias(wsFsPath: string): string {
   const slug = makeWorkspaceSlug(wsFsPath);
-  return `codium-devcontainer-${slug}`;
+  return `open-remote-devcontainer-${slug}`;
 }
 
 export function resolveDevcontainerContext(wsFsPath: string): ResolvedDevcontainerContext {
@@ -142,12 +142,12 @@ export function runCommand(
 }
 
 export function getContainerBinary(): string {
-  const config = vscode.workspace.getConfiguration("codiumDevcontainer");
+  const config = vscode.workspace.getConfiguration("remote.devcontainer");
   return config.get<string>("containerBinary") || "docker";
 }
 
 export function getContainerExtraArgs(): string[] {
-  const config = vscode.workspace.getConfiguration("codiumDevcontainer");
+  const config = vscode.workspace.getConfiguration("remote.devcontainer");
   return config.get<string[]>("containerExtraArgs") ?? [];
 }
 
@@ -322,7 +322,7 @@ async function stageEntrypointTemporarily(ctx: vscode.ExtensionContext, wsPath: 
     const devcontainerDir = path.join(wsPath, ".devcontainer");
     const destEntrypoint = path.join(devcontainerDir, "entrypoint.sh");
     fs.mkdirSync(devcontainerDir, { recursive: true });
-    const marker = "# Added by codiumDevcontainer: entrypoint";
+    const marker = "# Added by openremotedevcontainer: entrypoint";
     const hasMarker = fs.existsSync(destEntrypoint) &&
       fs.readFileSync(destEntrypoint, "utf-8").includes(marker);
     if (!hasMarker) {
@@ -342,7 +342,7 @@ async function cleanupEntrypointIfManaged(wsPath: string) {
     const destEntrypoint = path.join(devcontainerDir, "entrypoint.sh");
     if (!fs.existsSync(destEntrypoint)) return;
     const text = fs.readFileSync(destEntrypoint, "utf-8");
-    const marker = "# Added by codiumDevcontainer: entrypoint";
+    const marker = "# Added by openremotedevcontainer: entrypoint";
     if (text.includes(marker)) {
       fs.rmSync(destEntrypoint, { force: true });
       getOutput().appendLine("Cleaned up staged entrypoint.sh from workspace.");
@@ -360,13 +360,13 @@ async function createTemporaryDockerfile(
   const templatePath = getTemplateDockerfilePath(ctx);
   const templateText = fs.readFileSync(templatePath, "utf-8");
   const post = devcontainer?.postCreateCommand;
-  const marker = "# Added by codiumDevcontainer (temp): postCreateCommand";
+  const marker = "# Added by openremotedevcontainer (temp): postCreateCommand";
   const cmds: string[] = !post ? [] : (Array.isArray(post) ? post : [post]);
   const lines: string[] = cmds.length ? [marker, ...cmds.map((c) => `RUN ${c}`)] : [];
   const newContent = templateText + (templateText.endsWith("\n") ? "" : "\n") + (lines.length ? lines.join("\n") + "\n" : "");
   const devcontainerDir = path.join(wsFsPath, ".devcontainer");
   fs.mkdirSync(devcontainerDir, { recursive: true });
-  const tempPath = path.join(devcontainerDir, "Dockerfile.codium-temp");
+  const tempPath = path.join(devcontainerDir, "Dockerfile.open-remote-devcontainer-temp");
   fs.writeFileSync(tempPath, newContent, "utf-8");
   getOutput().appendLine("Prepared temporary Dockerfile with postCreateCommand.");
   return tempPath;

@@ -24,7 +24,7 @@ export function activate(context: vscode.ExtensionContext) {
   async function updateDevcontainerContext() {
     const ws = getWorkspaceFolder();
     const has = ws ? fs.existsSync(getDevcontainerPath(ws.uri.fsPath)) : false;
-    await vscode.commands.executeCommand("setContext", "codiumDevcontainer.hasConfig", has);
+    await vscode.commands.executeCommand("setContext", "openremotedevcontainer.hasConfig", has);
   }
   // Initialize context and watch for changes to devcontainer.json
   updateDevcontainerContext();
@@ -87,7 +87,7 @@ export function activate(context: vscode.ExtensionContext) {
   }
 
   const buildAndRun = vscode.commands.registerCommand(
-    "codiumDevcontainer.buildAndRun",
+    "openremotedevcontainer.buildAndRun",
     withUiErrorHandling(async () => {
       getOutput().show(true);
       const wsFsPath = getWorkspaceFsPathOrThrow();
@@ -109,7 +109,7 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   const addDockerfileTemplate = vscode.commands.registerCommand(
-    "codiumDevcontainer.addDockerfileTemplate",
+    "openremotedevcontainer.addDockerfileTemplate",
     withUiErrorHandling(async () => {
       const ws = getWorkspaceOrThrow();
 
@@ -155,21 +155,21 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   const openFolderInDevcontainer = vscode.commands.registerCommand(
-    "codiumDevcontainer.openFolderInDevcontainer",
+    "openremotedevcontainer.openFolderInDevcontainer",
     withUiErrorHandling(async () => {
       await openFolderOverSsh(false);
     })
   );
 
   const rebuildAndOpen = vscode.commands.registerCommand(
-    "codiumDevcontainer.rebuildAndOpen",
+    "openremotedevcontainer.rebuildAndOpen",
     withUiErrorHandling(async () => {
       await openFolderOverSsh(true);
     })
   );
 
   const openDevcontainerConfig = vscode.commands.registerCommand(
-    "codiumDevcontainer.openDevcontainerConfig",
+    "openremotedevcontainer.openDevcontainerConfig",
     withUiErrorHandling(async () => {
       const ws = getWorkspaceOrThrow();
       const cfgPath = getDevcontainerPath(ws.uri.fsPath);
@@ -182,7 +182,7 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   const showMenu = vscode.commands.registerCommand(
-    "codiumDevcontainer.showMenu",
+    "openremotedevcontainer.showMenu",
     async () => {
       const ws = getWorkspaceFolder();
       const has = ws ? fs.existsSync(getDevcontainerPath(ws.uri.fsPath)) : false;
@@ -206,23 +206,23 @@ export function activate(context: vscode.ExtensionContext) {
           : { label: "$(circle-slash) Rebuild & Open Folder in Devcontainer (SSH)", description: "(requires .devcontainer/devcontainer.json)" }
       ];
       const chosen = await vscode.window.showQuickPick(picks, {
-        title: "Codium Devcontainer",
+        title: "Open Remote - Devcontainer",
         placeHolder: "Select an action"
       });
       if (!chosen) return;
       if (chosen.label.includes("Open Devcontainer Configuration")) {
         await runIfHasConfig(
-          "codiumDevcontainer.openDevcontainerConfig",
+          "openremotedevcontainer.openDevcontainerConfig",
           "No devcontainer.json found in this folder. Use 'Devcontainer: Add Dockerfile Template' to scaffold and create .devcontainer/devcontainer.json."
         );
       } else if (chosen.label.includes("Open Folder in Devcontainer")) {
         await runIfHasConfig(
-          "codiumDevcontainer.openFolderInDevcontainer",
+          "openremotedevcontainer.openFolderInDevcontainer",
           "Cannot reopen in devcontainer: .devcontainer/devcontainer.json is missing."
         );
       } else if (chosen.label.includes("Rebuild & Open")) {
         await runIfHasConfig(
-          "codiumDevcontainer.rebuildAndOpen",
+          "openremotedevcontainer.rebuildAndOpen",
           "Cannot rebuild: .devcontainer/devcontainer.json is missing."
         );
       }
@@ -308,7 +308,7 @@ export async function deactivate() {
     if (!vscode.env.remoteName) return;
     const ws = getWorkspaceFolder();
     if (!ws) return;
-    const stopPath = path.join(ws.uri.fsPath, ".codium-devcontainer-stop");
+    const stopPath = path.join(ws.uri.fsPath, ".open-remote-devcontainer-stop");
     fs.writeFileSync(stopPath, "stop\n");
   } catch {
     // ignore
