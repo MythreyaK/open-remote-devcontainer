@@ -18,6 +18,8 @@ jobs:
     outputs:
       vsix_file:   ${{ steps.vsix.outputs.vsix_file }}
       vsix_sha256: ${{ steps.vsix.outputs.vsix_sha256 }}
+      pre_release: ${{ steps.release_type.outputs.pre_release }}
+      vsce_flag:   ${{ steps.release_type.outputs.vsce_flag }}
 
     steps:
       - name: Checkout
@@ -38,6 +40,18 @@ jobs:
       - name: Validate tag matches package.json version
         run: node .github/workflows/scripts/validate-version.js
 
+      - name: Detect release / pre-release from minor version
+        id: release_type
+        run: |
+          MINOR=$(echo "${{ github.ref_name }}" | sed 's/^v//' | cut -d. -f2)
+          if (( MINOR % 2 == 1 )); then
+            echo "pre_release=true" >> "$GITHUB_OUTPUT"
+            echo "vsce_flag=--pre-release" >> "$GITHUB_OUTPUT"
+          else
+            echo "pre_release=false" >> "$GITHUB_OUTPUT"
+            echo "vsce_flag=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Get commit timestamp for tag
         id: get_epoch
         env:
@@ -47,7 +61,7 @@ jobs:
       - name: Package VSIX
         run: |
           echo "SOURCE_DATE_EPOCH: ${SOURCE_DATE_EPOCH:-<not set>}"
-          npm run vsce:package
+          npm run vsce:package -- ${{ steps.release_type.outputs.vsce_flag }}
 
       - name: Find VSIX and generate SHA256
         id: vsix
@@ -80,6 +94,18 @@ jobs:
       contents: write
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
@@ -91,23 +117,21 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ github.ref_name }}
+          prerelease: ${{ needs.build-release.outputs.pre_release == 'true' }}
           files: |
             ${{ needs.build-release.outputs.vsix_file }}
             ${{ needs.build-release.outputs.vsix_sha256 }}
           generate_release_notes: false
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
       - name: Publish to Open VSX
         env:
-          OVSX_TOKEN: ${{ secrets.OVSX_TOKEN }}
+          OVSX_PAT: ${{ secrets.OVSX_TOKEN }}
+          VSIX_FILE: ${{ needs.build-release.outputs.vsix_file }}
+          VSCE_FLAG: ${{ needs.build-release.outputs.vsce_flag }}
         run: |
           set -e
-          if [ -z "$OVSX_TOKEN" ]; then
-            echo "::warning::Skipping Open VSX publish: OVSX_TOKEN secret is not set"
+          if [ -z "$OVSX_PAT" ]; then
+            echo "::warning::Skipping Open VSX publish: OVSX_PAT secret is not set"
             exit 0
           fi
-          npx ovsx publish -p "$OVSX_TOKEN" --packagePath "${{ needs.build-release.outputs.vsix_file }}"
+          npx ovsx publish $VSCE_FLAG --packagePath "$VSIX_FILE"

@@ -2,7 +2,7 @@
   "name": "open-remote-devcontainer",
   "displayName": "Open Remote - Devcontainer",
   "description": "Build & run a devcontainer using Docker or Podman CLI",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "publisher": "mythreyak",
   "license": "MIT",
   "repository": {
