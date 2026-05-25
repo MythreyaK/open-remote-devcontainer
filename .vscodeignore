@@ -1,0 +1,7 @@
+*
+*/**
+!assets/**
+!dist/extension.js
+!package.json
+!README.md
+!LICENSE.md

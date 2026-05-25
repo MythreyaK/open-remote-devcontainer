@@ -142,14 +142,6 @@
     "package": "npm run build:prod",
     "vsce:package": "vsce package"
   },
-  "files": [
-    "dist/**",
-    "assets/**",
-    "package.json",
-    "README.md",
-    "LICENSE",
-    "NEWS.md"
-  ],
   "dependencies": {
     "json5": "^2.2.3"
   },
