@@ -43,6 +43,10 @@ temp/
 !.vscode/tasks.json
 !.vscode/*.code-snippets
 
+# Generated VS Code type definitions (regenerate with: npm run dts)
+vscode.d.ts
+vscode.proposed.*.d.ts
+
 # VS Code extension packages
 *.vsix
 
