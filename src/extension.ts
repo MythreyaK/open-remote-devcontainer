@@ -277,11 +277,11 @@ export function activate(context: vscode.ExtensionContext) {
           ? { label: "$(gear) Open Devcontainer Configuration", detail: ".devcontainer/devcontainer.json" }
           : { label: "$(gear) Open Devcontainer Configuration", description: "(no devcontainer.json)" },
         has
-          ? { label: "$(refresh) Open Folder in Devcontainer", detail: "Build and open folder in devcontainer" }
-          : { label: "$(circle-slash) Open Folder in Devcontainer", description: "(requires .devcontainer/devcontainer.json)" },
+          ? { label: "$(refresh) Open Folder in container", detail: "Build and Open Folder in container" }
+          : { label: "$(circle-slash) Open Folder in container", description: "(requires .devcontainer/devcontainer.json)" },
         has
-          ? { label: "$(sync) Rebuild & Open", detail: "Force rebuild and recreate container" }
-          : { label: "$(circle-slash) Rebuild & Open", description: "(requires .devcontainer/devcontainer.json)" },
+          ? { label: "$(sync) Rebuild & repen in container", detail: "Force rebuild and recreate container" }
+          : { label: "$(circle-slash) Rebuild & repen in container", description: "(requires .devcontainer/devcontainer.json)" },
         { label: "$(output) Show Log", detail: "Open the devcontainer log file" },
         ...(vscode.env.remoteName
           ? [{ label: "$(close) Reopen Folder Locally", detail: "Close remote and reopen workspace locally" }]
@@ -297,12 +297,12 @@ export function activate(context: vscode.ExtensionContext) {
           "openremotedevcontainer.openDevcontainerConfig",
           "No devcontainer.json found in this folder. Use 'Devcontainer: Add Dockerfile Template' to scaffold and create .devcontainer/devcontainer.json."
         );
-      } else if (chosen.label.includes("Open Folder in Devcontainer")) {
+      } else if (chosen.label.includes("Open Folder in container")) {
         await runIfHasConfig(
           "openremotedevcontainer.openFolderInDevcontainer",
           "Cannot reopen in devcontainer: .devcontainer/devcontainer.json is missing."
         );
-      } else if (chosen.label.includes("Rebuild & Open")) {
+      } else if (chosen.label.includes("Rebuild & repen in container")) {
         await runIfHasConfig(
           "openremotedevcontainer.rebuildAndOpen",
           "Cannot rebuild: .devcontainer/devcontainer.json is missing."
