@@ -13,7 +13,7 @@ Describe what this PR changes and why.
 - [ ] `npm run check-types` passes
 - [ ] `npm run package` builds successfully
 - [ ] README/NEWS updated if user-visible changes
-- [ ] Manual test: "Devcontainer: Open Folder in Devcontainer (SSH)"
+- [ ] Manual test: "Devcontainer: Open Folder in container"
 
 ## Testing notes
 Steps to validate the change manually, including platform/editor details if relevant.

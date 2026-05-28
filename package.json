@@ -55,7 +55,7 @@
       },
       {
         "command": "openremotedevcontainer.rebuildAndOpen",
-        "title": "Devcontainer: Rebuild & repen in container"
+        "title": "Devcontainer: Rebuild & reopen in container"
       },
       {
         "command": "openremotedevcontainer.rebuildNoCacheAndOpen",

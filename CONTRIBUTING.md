@@ -43,7 +43,7 @@ positron --extensionDevelopmentPath="$PWD"
 code --extensionDevelopmentPath="$PWD"
 ```
 
-Open a folder that contains a `.devcontainer/devcontainer.json`, then run "Devcontainer: Open Folder in Devcontainer (SSH)" from the Command Palette.
+Open a folder that contains a `.devcontainer/devcontainer.json`, then run "Devcontainer: Open Folder in container" from the Command Palette.
 
 ## Pull Requests
 - Keep PRs focused and small when possible.
@@ -60,7 +60,7 @@ Open a folder that contains a `.devcontainer/devcontainer.json`, then run "Devco
 - Builds locally: `npm run package`
 - Commands/labels match manifest and README
 - Added/updated entries in `NEWS.md` if user-facing
-- Tested "Open Folder in Devcontainer (SSH)" on your OS
+- Tested "Open Folder in container (SSH)" on your OS
 
 ## Reporting Issues
 Please include:

@@ -343,8 +343,8 @@ export function activate(context: vscode.ExtensionContext) {
           ? { label: "$(refresh) Open Folder in container", detail: "Build and Open Folder in container" }
           : { label: "$(circle-slash) Open Folder in container", description: "(requires .devcontainer/devcontainer.json)" },
         has
-          ? { label: "$(sync) Rebuild & repen in container", detail: "Force rebuild and recreate container" }
-          : { label: "$(circle-slash) Rebuild & repen in container", description: "(requires .devcontainer/devcontainer.json)" },
+          ? { label: "$(sync) Rebuild & reopen in container", detail: "Force rebuild and recreate container" }
+          : { label: "$(circle-slash) Rebuild & reopen in container", description: "(requires .devcontainer/devcontainer.json)" },
         has
           ? { label: "$(trash) Rebuild without cache & reopen", detail: "Rebuild image from scratch (--no-cache) and recreate container" }
           : { label: "$(circle-slash) Rebuild without cache & reopen", description: "(requires .devcontainer/devcontainer.json)" },
@@ -368,7 +368,7 @@ export function activate(context: vscode.ExtensionContext) {
           "openremotedevcontainer.openFolderInDevcontainer",
           "Cannot reopen in devcontainer: .devcontainer/devcontainer.json is missing."
         );
-      } else if (chosen.label.includes("Rebuild & repen in container")) {
+      } else if (chosen.label.includes("Rebuild & reopen in container")) {
         await runIfHasConfig(
           "openremotedevcontainer.rebuildAndOpen",
           "Cannot rebuild: .devcontainer/devcontainer.json is missing."
