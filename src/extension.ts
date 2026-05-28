@@ -1,9 +1,8 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
-import JSON5 from "json5";
+import { DevcontainerConfig, parseDevcontainerConfig } from "./devcontainerConfig";
 import {
-  DevcontainerConfig,
   containerExists,
   ensureContainerStarted,
   findFreePort,
@@ -390,7 +389,7 @@ async function readDevcontainerConfigFromWorkspace(wsUri: vscode.Uri): Promise<D
   try {
     const data = await vscode.workspace.fs.readFile(uri);
     const raw = Buffer.from(data).toString("utf-8");
-    return JSON5.parse(raw) as DevcontainerConfig;
+    return parseDevcontainerConfig(raw);
   } catch {
     return undefined;
   }

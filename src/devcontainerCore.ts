@@ -3,16 +3,16 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { spawn } from "child_process";
-import JSON5 from "json5";
 import * as net from "net";
+import {
+  DevcontainerConfig,
+  VariableContext,
+  parseDevcontainerConfig,
+  expandConfigVariables,
+  mountsToDockerArgs,
+} from "./devcontainerConfig";
 
-export type DevcontainerConfig = {
-  image?: string;
-  remoteUser?: string;
-  dockerFile?: string;
-  postCreateCommand?: string | string[];
-  postStartCommand?: string | string[];
-};
+export type { DevcontainerConfig };
 
 export type ResolvedDevcontainerContext = {
   wsFsPath: string;
@@ -41,7 +41,7 @@ export function readDevcontainerConfig(wsFsPath: string): DevcontainerConfig {
     throw new Error("No devcontainer.json found");
   }
   const raw = fs.readFileSync(devcontainerPath, "utf-8");
-  return JSON5.parse(raw) as DevcontainerConfig;
+  return parseDevcontainerConfig(raw);
 }
 
 function getTemplateDockerfilePath(ctx: vscode.ExtensionContext): string {
@@ -170,14 +170,22 @@ export function getHostAlias(wsFsPath: string): string {
 }
 
 export function resolveDevcontainerContext(wsFsPath: string): ResolvedDevcontainerContext {
-  const devcontainer = readDevcontainerConfig(wsFsPath);
+  const rawConfig = readDevcontainerConfig(wsFsPath);
+  const projectName = path.basename(wsFsPath);
+  const varCtx: VariableContext = {
+    localEnv: process.env as Record<string, string | undefined>,
+    localWorkspaceFolder: wsFsPath,
+    localWorkspaceFolderBasename: projectName,
+    containerWorkspaceFolder: `/workspace/${projectName}`,
+  };
+  const devcontainer = expandConfigVariables(rawConfig, varCtx);
   return {
     wsFsPath,
     devcontainer,
     imageName: getImageName(wsFsPath),
     containerName: getContainerName(wsFsPath),
     baseImage: devcontainer.image || "node:22-bookworm",
-    remoteUser: devcontainer.remoteUser
+    remoteUser: devcontainer.remoteUser,
   };
 }
 
@@ -521,6 +529,8 @@ export async function rebuildContainerDirect(
   const projectName = path.basename(resolved.wsFsPath);
   getOutput().appendLine(`Starting container ${containerName} (port ${hostPort}:${containerPort})...`);
   getOutput().show(true);
+  const extraMountArgs = mountsToDockerArgs(resolved.devcontainer.mounts ?? []);
+  const extraRunArgs = resolved.devcontainer.runArgs ?? [];
   await runContainerCommand([
     "run",
     "-d",
@@ -532,6 +542,8 @@ export async function rebuildContainerDirect(
     `127.0.0.1:${hostPort}:${containerPort}`,
     "-v",
     `${resolved.wsFsPath}:/workspace/${projectName}`,
+    ...extraMountArgs,
+    ...extraRunArgs,
     "-w",
     `/workspace/${projectName}`,
     "--entrypoint", "sleep",
