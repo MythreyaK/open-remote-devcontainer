@@ -165,7 +165,7 @@
     "build:prod": "node esbuild.js --production",
     "package": "npm run build:prod",
     "vsce:package": "vsce package",
-    "dts": "npx @vscode/dts main && npx @vscode/dts dev"
+    "dts": "cd src/typings && npx @vscode/dts main && npx @vscode/dts dev",
   },
   "dependencies": {
     "json5": "^2.2.3"
