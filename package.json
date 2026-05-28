@@ -19,7 +19,7 @@
   "keywords": [
     "devcontainer",
     "docker",
-    "ssh",
+    "podman",
     "remote",
     "containers"
   ],
@@ -33,26 +33,24 @@
   "activationEvents": [
     "onStartupFinished",
     "workspaceContains:.devcontainer/devcontainer.json",
-    "onCommand:openremotedevcontainer.buildAndRun",
+    "onResolveRemoteAuthority:devcontainer",
     "onCommand:openremotedevcontainer.addDockerfileTemplate",
     "onCommand:openremotedevcontainer.openFolderInDevcontainer",
     "onCommand:openremotedevcontainer.showMenu",
     "onCommand:openremotedevcontainer.openDevcontainerConfig",
-    "onCommand:openremotedevcontainer.rebuildAndOpen"
+    "onCommand:openremotedevcontainer.rebuildAndOpen",
+    "onCommand:openremotedevcontainer.showLog",
+    "onCommand:openremotedevcontainer.reopenLocally"
   ],
   "contributes": {
     "commands": [
-      {
-        "command": "openremotedevcontainer.buildAndRun",
-        "title": "Devcontainer: Build & Run"
-      },
       {
         "command": "openremotedevcontainer.addDockerfileTemplate",
         "title": "Devcontainer: Add Dockerfile Template"
       },
       {
         "command": "openremotedevcontainer.openFolderInDevcontainer",
-        "title": "Devcontainer: Open Folder in Devcontainer (SSH)"
+        "title": "Devcontainer: Open Folder in Devcontainer"
       },
       {
         "command": "openremotedevcontainer.showMenu",
@@ -65,6 +63,14 @@
       {
         "command": "openremotedevcontainer.rebuildAndOpen",
         "title": "Devcontainer: Rebuild & Open"
+      },
+      {
+        "command": "openremotedevcontainer.showLog",
+        "title": "Devcontainer: Show Log"
+      },
+      {
+        "command": "openremotedevcontainer.reopenLocally",
+        "title": "Devcontainer: Reopen Folder Locally"
       }
     ],
     "menus": {
@@ -80,6 +86,13 @@
         },
         {
           "command": "openremotedevcontainer.rebuildAndOpen"
+        },
+        {
+          "command": "openremotedevcontainer.showLog"
+        },
+        {
+          "command": "openremotedevcontainer.reopenLocally",
+          "when": "remoteName == devcontainer"
         }
       ],
       "explorer/context": [
@@ -109,6 +122,15 @@
           "command": "openremotedevcontainer.rebuildAndOpen",
           "group": "remote_30_devcontainer_3local@3",
           "when": "!remoteName && openremotedevcontainer.hasConfig"
+        },
+        {
+          "command": "openremotedevcontainer.showLog",
+          "group": "remote_30_devcontainer_3local@4"
+        },
+        {
+          "command": "openremotedevcontainer.reopenLocally",
+          "group": "remote_30_devcontainer_3remote@1",
+          "when": "remoteName == devcontainer"
         }
       ]
     },
@@ -142,18 +164,22 @@
     "build": "node esbuild.js",
     "build:prod": "node esbuild.js --production",
     "package": "npm run build:prod",
-    "vsce:package": "vsce package"
+    "vsce:package": "vsce package",
+    "dts": "npx @vscode/dts main && npx @vscode/dts dev"
   },
   "dependencies": {
     "json5": "^2.2.3"
   },
   "devDependencies": {
     "@types/node": "^20.19.41",
-    "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^3.9.1",
     "esbuild": "^0.27.2",
     "npm-run-all": "^4.1.5",
     "ovsx": "^0.10.12",
     "typescript": "^5.3.0"
-  }
+  },
+  "enabledApiProposals": [
+    "resolvers",
+    "contribViewsRemote"
+  ]
 }

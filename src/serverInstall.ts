@@ -3,6 +3,8 @@ import { getVSCodeServerConfig } from "./serverConfig";
 import { runContainerCommandCapture } from "./devcontainerCore";
 
 
+export const SERVER_PORT = 65120;
+
 export interface ServerInstallConfig {
   scriptId: string;
   version: string;
@@ -13,6 +15,7 @@ export interface ServerInstallConfig {
   serverDataFolderName: string;
   downloadUrlTemplate: string;
   connectionToken: string;
+  serverPort: number;
   extensionIds: string[];
   envVariables: string[];
 }
@@ -161,6 +164,7 @@ export async function installServer(
     downloadUrlTemplate:
       serverConfig.serverDownloadUrlTemplate || DEFAULT_DOWNLOAD_URL_TEMPLATE,
     connectionToken: crypto.randomUUID(),
+    serverPort: SERVER_PORT,
     extensionIds: [],
     envVariables: [],
   };
@@ -182,6 +186,7 @@ export function generateBashInstallScript(config: ServerInstallConfig): string {
     serverDataFolderName,
     downloadUrlTemplate,
     connectionToken,
+    serverPort,
     extensionIds,
     envVariables,
   } = config;
@@ -201,7 +206,7 @@ DISTRO_VSCODIUM_RELEASE="${release}"
 
 SERVER_APP_NAME="${serverApplicationName}"
 SERVER_INITIAL_EXTENSIONS="${extensions}"
-SERVER_LISTEN_FLAG="--port=0"
+SERVER_LISTEN_FLAG="--port=${serverPort}"
 SERVER_DATA_DIR="$HOME/${serverDataFolderName}"
 SERVER_DATA_DIR_FLAG="--server-data-dir=$SERVER_DATA_DIR"
 SERVER_DIR="$SERVER_DATA_DIR/bin/$DISTRO_COMMIT"

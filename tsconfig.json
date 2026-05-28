@@ -13,6 +13,6 @@
     "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "*.d.ts"],
   "exclude": ["node_modules", "dist", ".vscode-test"]
 }
