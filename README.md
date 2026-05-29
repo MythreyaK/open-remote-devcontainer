@@ -79,15 +79,20 @@ npm run lint         # lint check
 
 ### Reproducible builds
 
-To validate a release, use `node:22.22.3-bookworm-slim`, checkout the commit, and run
+To validate a release, use `node:22.22.3-bookworm-slim` and run `build.py` in the container. It runs `git checkout`, runs the build, and dumps the hash. 
 
-```shell
-$ SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) TZ=UTC   \
-    npm run vsce:package                                \
-    && sha256sum *.vsix
+```
+$ podman run --rm -it   \
+    --entrypoint bash   \
+    -v $PWD:/workdir:z --workdir /workdir \
+    node:22.22.3-bookworm-slim
+# apt update -y && apt install -y git python3
+# ./build.py --release <tag>
+# ./build.py --pre-release <tag>
+# ./build.py --nightly [commit]
 ```
 
-and compare against the `*.sha` on the releases page. For pre-releases, use `npm run vsce:package -- --pre-release` instead. 
+and compare the output against the SHA on the releases page. This is experimental.
 
 ## Acknowledgements
 
