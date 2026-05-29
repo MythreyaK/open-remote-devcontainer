@@ -5,12 +5,9 @@ on:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
 
-env:
-  TZ: UTC
-
 jobs:
   build-release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     permissions:
       contents: read
@@ -30,6 +27,11 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+
+      - name: Log versions
+        run: |
+          node --version
+          node -e "console.log(process.versions.zlib)"
 
       - name: Install dependencies
         run: npm ci
@@ -59,6 +61,8 @@ jobs:
         run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct "$GH_TAG")" >> "$GITHUB_ENV"
 
       - name: Package VSIX
+        env:
+          TZ: UTC
         run: |
           echo "SOURCE_DATE_EPOCH: ${SOURCE_DATE_EPOCH:-<not set>}"
           npm run vsce:package -- ${{ steps.release_type.outputs.vsce_flag }}
