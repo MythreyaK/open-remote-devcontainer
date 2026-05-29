@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "PR number (leave empty to build the selected branch)"
+        required: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    container:
+      image: node:22.22.3-bookworm-slim
+
+    steps:
+      - name: Install git
+        run: |
+          apt-get update && apt-get install -y git
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Checkout
+        if: ${{ !inputs.pr }}
+        uses: actions/checkout@v4
+
+      - name: Checkout PR
+        if: ${{ inputs.pr }}
+        uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ inputs.pr }}/head
+
+      - name: Install dependencies
+        run: npm ci && npm run dts
+
+      # - name: Lint & format check
+      #   run: npx biome check .
+
+      - name: Type check
+        run: npm run check-types
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Get commit timestamp
+        id: get_epoch
+        run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
+
+      - name: Set pre-release version
+        if: github.event_name == 'workflow_dispatch' || github.ref != 'refs/heads/main'
+        run: |
+          VERSION=$(node -p "const v=require('./package.json').version.split('.');v[2]=+v[2]+1;v.join('.')")
+          SHORT_SHA=$(git rev-parse --short=7 HEAD)
+          npm version "${VERSION}-${SHORT_SHA}" --no-git-tag-version
+
+      - name: Package extension
+        env:
+          TZ: UTC
+        run: |
+          echo "SOURCE_DATE_EPOCH: ${SOURCE_DATE_EPOCH:-<not set>}"
+          npm run vsce:package -- --pre-release
+          sha256sum *.vsix > "$(ls *.vsix).sha256"
+          cat *.sha256
+
+      - name: Upload .vsix artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: open-remote-devcontainer
+          path: |
+            *.vsix
+            *.sha256

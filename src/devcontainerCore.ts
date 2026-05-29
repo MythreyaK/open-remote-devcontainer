@@ -1,17 +1,18 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import { spawn } from "child_process";
-import JSON5 from "json5";
 import * as net from "net";
+import {
+  DevcontainerConfig,
+  VariableContext,
+  parseDevcontainerConfig,
+  expandConfigVariables,
+  mountsToDockerArgs,
+} from "./devcontainerConfig";
 
-export type DevcontainerConfig = {
-  image?: string;
-  remoteUser?: string;
-  dockerFile?: string;
-  postCreateCommand?: string | string[];
-  postStartCommand?: string | string[];
-};
+export type { DevcontainerConfig };
 
 export type ResolvedDevcontainerContext = {
   wsFsPath: string;
@@ -40,7 +41,7 @@ export function readDevcontainerConfig(wsFsPath: string): DevcontainerConfig {
     throw new Error("No devcontainer.json found");
   }
   const raw = fs.readFileSync(devcontainerPath, "utf-8");
-  return JSON5.parse(raw) as DevcontainerConfig;
+  return parseDevcontainerConfig(raw);
 }
 
 function getTemplateDockerfilePath(ctx: vscode.ExtensionContext): string {
@@ -52,16 +53,82 @@ function getTemplateEntrypointPath(ctx: vscode.ExtensionContext): string {
 }
 
 let outputChannel: vscode.OutputChannel | undefined;
+let logFileStream: fs.WriteStream | undefined;
+let logFilePath: string | undefined;
+
+function getLogDir(): string {
+  const dir = path.join(os.tmpdir(), "open-remote-devcontainer");
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+export function initLog(slug: string, role: "client" | "server"): void {
+  if (logFileStream) {
+    logFileStream.end();
+    logFileStream = undefined;
+  }
+  const ts = new Date().toISOString().replace(/[:.]/g, "-");
+  logFilePath = path.join(getLogDir(), `${role}-${slug}-${ts}.txt`);
+}
+
+function getLogStream(): fs.WriteStream {
+  if (!logFileStream) {
+    if (!logFilePath) {
+      const ts = new Date().toISOString().replace(/[:.]/g, "-");
+      logFilePath = path.join(getLogDir(), `session-${ts}.txt`);
+    }
+    logFileStream = fs.createWriteStream(logFilePath, { flags: "a" });
+  }
+  return logFileStream;
+}
+
 export function getOutput(): vscode.OutputChannel {
   if (!outputChannel) {
-    outputChannel = vscode.window.createOutputChannel("Open Remote - Devcontainer");
+    const real = vscode.window.createOutputChannel("Open Remote - Devcontainer");
+    outputChannel = {
+      name: real.name,
+      append(value: string) {
+        real.append(value);
+        getLogStream().write(value);
+      },
+      appendLine(value: string) {
+        real.appendLine(value);
+        getLogStream().write(value + "\n");
+      },
+      clear() { real.clear(); },
+      show(preserveFocus?: any) { real.show(preserveFocus); },
+      hide() { real.hide(); },
+      replace(value: string) { real.replace(value); },
+      dispose() {
+        real.dispose();
+        logFileStream?.end();
+        logFileStream = undefined;
+      },
+    } as vscode.OutputChannel;
   }
   return outputChannel;
 }
 
+export async function openLogFile(): Promise<void> {
+  const dir = getLogDir();
+  let files: string[];
+  try {
+    files = fs.readdirSync(dir).filter(f => f.endsWith(".txt")).sort().reverse();
+  } catch {
+    return;
+  }
+  if (files.length === 0) { return; }
+
+  for (const f of files.slice(0, 2)) {
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(dir, f)));
+    await vscode.window.showTextDocument(doc, { preview: false, preserveFocus: true });
+  }
+}
+
 function logCommand(command: string, args: string[]) {
   const out = getOutput();
-  const printable = [command, ...args].join(" ");
+  const truncated = args.map(a => a.length > 200 ? a.slice(0, 200) + "…(truncated)" : a);
+  const printable = [command, ...truncated].join(" ");
   out.appendLine("");
   out.appendLine(`$ ${printable}`);
 }
@@ -80,7 +147,7 @@ export async function findFreePort(): Promise<number> {
   });
 }
 
-function makeWorkspaceSlug(wsFsPath: string): string {
+export function makeWorkspaceSlug(wsFsPath: string): string {
   const name = path.basename(wsFsPath).toLowerCase();
   let slug = name.replace(/[^a-z0-9._-]+/g, "-");
   slug = slug.replace(/^[._-]+|[._-]+$/g, "");
@@ -103,14 +170,22 @@ export function getHostAlias(wsFsPath: string): string {
 }
 
 export function resolveDevcontainerContext(wsFsPath: string): ResolvedDevcontainerContext {
-  const devcontainer = readDevcontainerConfig(wsFsPath);
+  const rawConfig = readDevcontainerConfig(wsFsPath);
+  const projectName = path.basename(wsFsPath);
+  const varCtx: VariableContext = {
+    localEnv: process.env as Record<string, string | undefined>,
+    localWorkspaceFolder: wsFsPath,
+    localWorkspaceFolderBasename: projectName,
+    containerWorkspaceFolder: `/workspace/${projectName}`,
+  };
+  const devcontainer = expandConfigVariables(rawConfig, varCtx);
   return {
     wsFsPath,
     devcontainer,
     imageName: getImageName(wsFsPath),
     containerName: getContainerName(wsFsPath),
     baseImage: devcontainer.image || "node:22-bookworm",
-    remoteUser: devcontainer.remoteUser
+    remoteUser: devcontainer.remoteUser,
   };
 }
 
@@ -201,7 +276,8 @@ async function dockerBuildImage(
   imageName: string,
   baseImage: string,
   remoteUser?: string,
-  dockerfilePath?: string
+  dockerfilePath?: string,
+  noCache?: boolean
 ) {
   const dockerfileToUse = dockerfilePath || getTemplateDockerfilePath(ctx);
   const args = [
@@ -213,11 +289,14 @@ async function dockerBuildImage(
     "--build-arg",
     `BASE_IMAGE=${baseImage}`
   ];
+  if (noCache) {
+    args.push("--no-cache");
+  }
   if (remoteUser) {
     args.push("--build-arg", `USERNAME=${remoteUser}`);
   }
   args.push(wsFsPath);
-  vscode.window.showInformationMessage("Building SSH-enabled devcontainer image...");
+  vscode.window.showInformationMessage("Building devcontainer image...");
   getOutput().show(true);
   await runContainerCommand(args);
 }
@@ -255,7 +334,7 @@ async function dockerRestartContainer(
   ]);
 }
 
-async function containerExists(name: string): Promise<boolean> {
+export async function containerExists(name: string): Promise<boolean> {
   const res = await runContainerCommandCapture(["container", "inspect", name]);
   return res.code === 0;
 }
@@ -273,7 +352,22 @@ async function getMappedSshPort(name: string): Promise<number | undefined> {
   return Number.isFinite(port) ? port : undefined;
 }
 
-async function ensureContainerStarted(name: string): Promise<void> {
+export async function getMappedPort(name: string, containerPort: number): Promise<number> {
+  const res = await runContainerCommandCapture([
+    "port", name, `${containerPort}/tcp`
+  ]);
+  if (res.code !== 0) {
+    throw new Error(`Could not get port mapping for ${name}: ${res.stderr.trim()}`);
+  }
+  // Output is like "0.0.0.0:12345" or "127.0.0.1:12345"
+  const match = res.stdout.trim().match(/:(\d+)$/m);
+  if (!match) {
+    throw new Error(`No port mapping found for ${containerPort}/tcp on ${name}`);
+  }
+  return Number(match[1]);
+}
+
+export async function ensureContainerStarted(name: string): Promise<void> {
   await runContainerCommand(["start", name]).catch(async () => {
     await runContainerCommand(["restart", name]).catch(() => {});
   });
@@ -311,7 +405,7 @@ async function getContainerCreatedMs(name: string): Promise<number | undefined> 
   return Number.isFinite(ms) ? ms : undefined;
 }
 
-async function shouldRebuildForDevcontainer(wsFsPath: string, name: string): Promise<boolean> {
+export async function shouldRebuildForDevcontainer(wsFsPath: string, name: string): Promise<boolean> {
   const dcMtime = getDevcontainerMtimeMs(wsFsPath);
   const createdMs = await getContainerCreatedMs(name);
   return dcMtime !== undefined && createdMs !== undefined && dcMtime > createdMs;
@@ -378,12 +472,13 @@ async function buildImageWithEntrypoint(
   imageName: string,
   baseImage: string,
   remoteUser?: string,
-  devcontainer?: DevcontainerConfig
+  devcontainer?: DevcontainerConfig,
+  noCache?: boolean
 ) {
   await stageEntrypointTemporarily(ctx, wsFsPath);
   const tempDockerfile = await createTemporaryDockerfile(ctx, wsFsPath, devcontainer);
   try {
-    await dockerBuildImage(ctx, wsFsPath, imageName, baseImage, remoteUser, tempDockerfile);
+    await dockerBuildImage(ctx, wsFsPath, imageName, baseImage, remoteUser, tempDockerfile, noCache);
   } finally {
     await cleanupEntrypointIfManaged(wsFsPath);
     if (tempDockerfile && fs.existsSync(tempDockerfile)) {
@@ -411,6 +506,59 @@ export async function rebuildContainer(
     hostPort,
     resolved.containerName
   );
+}
+
+export async function rebuildContainerDirect(
+  ctx: vscode.ExtensionContext,
+  resolved: ResolvedDevcontainerContext,
+  hostPort: number,
+  containerPort: number,
+  noCache?: boolean
+) {
+  await buildImageWithEntrypoint(
+    ctx,
+    resolved.wsFsPath,
+    resolved.imageName,
+    resolved.baseImage,
+    resolved.remoteUser,
+    resolved.devcontainer,
+    noCache
+  );
+
+  const containerName = resolved.containerName;
+  try {
+    await runContainerCommand(["stop", containerName]);
+  } catch {}
+  try {
+    await runContainerCommand(["rm", "-f", containerName]);
+  } catch {}
+
+  const projectName = path.basename(resolved.wsFsPath);
+  getOutput().appendLine(`Starting container ${containerName} (port ${hostPort}:${containerPort})...`);
+  getOutput().show(true);
+  const extraMountArgs = mountsToDockerArgs(resolved.devcontainer.mounts ?? []);
+  const extraRunArgs = resolved.devcontainer.runArgs ?? [];
+  await runContainerCommand([
+    "run",
+    "-d",
+    "--name",
+    containerName,
+    "--label", `devcontainer.local_folder=${resolved.wsFsPath}`,
+    "--label", `devcontainer.creator=${os.userInfo().username}`,
+    "-e",
+    `CODIUM_WS=/workspace/${projectName}`,
+    "-p",
+    `127.0.0.1:${hostPort}:${containerPort}`,
+    "-v",
+    `${resolved.wsFsPath}:/workspace/${projectName}`,
+    ...extraMountArgs,
+    ...extraRunArgs,
+    "-w",
+    `/workspace/${projectName}`,
+    "--entrypoint", "sleep",
+    resolved.imageName,
+    "infinity",
+  ]);
 }
 
 export async function ensureContainerReadyAndGetPort(

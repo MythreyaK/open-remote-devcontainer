@@ -37,14 +37,10 @@ temp/
 
 # VS Code workspace
 .vscode/*
-!.vscode/extensions.json
-!.vscode/settings.json
-!.vscode/launch.json
-!.vscode/tasks.json
-!.vscode/*.code-snippets
 
 # VS Code extension packages
 *.vsix
+open-remote-devcontainer*
 
 # Environment files
 .env
