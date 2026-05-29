@@ -77,6 +77,18 @@ npm run format       # auto-format with biome
 npm run lint         # lint check
 ```
 
+### Reproducible builds
+
+To validate a release, checkout the commit and run
+
+```shell
+$ SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) TZ=UTC   \
+    npm run vsce:package                                \
+    && sha256sum *.vsix
+```
+
+and compare against the `*.sha` on the releases page. For pre-releases, use `npm run vsce:package -- --pre-release` instead. 
+
 ## Acknowledgements
 
 This project would not have been possible without the work of:
