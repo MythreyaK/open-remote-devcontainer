@@ -1,6 +1,7 @@
 import * as crypto from "crypto";
+import * as vscode from "vscode";
 import { getVSCodeServerConfig } from "./serverConfig";
-import { runContainerCommandCapture } from "./devcontainerCore";
+import { getContainerBinary, getContainerExtraArgs, runContainerCommandCapture } from "./devcontainerCore";
 
 
 export const SERVER_PORT = 65120;
@@ -28,6 +29,7 @@ export interface ServerInstallResult {
   arch: string;
   platform: string;
   dataFolder: string;
+  scriptOutput?: string;
 }
 
 export interface ContainerRun {
@@ -82,8 +84,12 @@ export function extractServerResult(
 ): ServerInstallResult {
   const exitCode = parseInt(raw.exitCode ?? "", 10);
   if (exitCode !== 0) {
+    const details = Object.entries(raw)
+      .filter(([k]) => k !== "exitCode")
+      .map(([k, v]) => `  ${k}=${v}`)
+      .join("\n");
     throw new ServerInstallError(
-      `Server install script failed with exit code ${raw.exitCode}`
+      `Server install script failed with exit code ${raw.exitCode}\n${details}`
     );
   }
 
@@ -125,18 +131,35 @@ export async function installServerInContainer(
 
   if (code !== 0 && !stdout.includes(`${config.scriptId}: start`)) {
     throw new ServerInstallError(
-      `docker exec failed (exit ${code}): ${stderr.slice(0, 500)}`
+      `Container exec failed (exit ${code}): ${stderr.slice(0, 500)}`
     );
   }
 
   const parsed = parseInstallOutput(stdout, config.scriptId);
   if (!parsed) {
     throw new ServerInstallError(
-      "Could not parse server install output — missing markers in stdout"
+      `Could not parse server install output — missing markers in stdout.\n${stdout.slice(-1000)}`
     );
   }
 
-  return extractServerResult(parsed);
+  // Capture script output before the markers for debugging
+  const markerIdx = stdout.indexOf(`${config.scriptId}: start`);
+  const prelude = markerIdx > 0 ? stdout.substring(0, markerIdx).trim() : "";
+
+  let result: ServerInstallResult;
+  try {
+    result = extractServerResult(parsed);
+  } catch (e) {
+    if (prelude) {
+      (e as Error).message += `\nScript output:\n${prelude}`;
+    }
+    throw e;
+  }
+
+  if (prelude) {
+    result.scriptOutput = prelude;
+  }
+  return result;
 }
 
 export function makeContainerExec(): ContainerRun {
@@ -147,8 +170,57 @@ export function makeContainerExec(): ContainerRun {
   };
 }
 
+async function execServerCapture(
+  execServer: vscode.ExecServer,
+  command: string,
+  args: string[]
+): Promise<{ stdout: string; stderr: string; code: number }> {
+  const spawned = await execServer.spawn(command, args);
+  let stdout = "";
+  let stderr = "";
+  spawned.stdout.onDidReceiveMessage((data) => { stdout += Buffer.from(data).toString(); });
+  spawned.stderr.onDidReceiveMessage((data) => { stderr += Buffer.from(data).toString(); });
+  const exit = await spawned.onExit;
+  return { stdout, stderr, code: exit.status };
+}
+
+export function makeRemoteContainerExec(execServer: vscode.ExecServer): ContainerRun {
+  const bin = getContainerBinary();
+  const extra = getContainerExtraArgs();
+  return {
+    run(containerName, command) {
+      return execServerCapture(execServer, bin, [...extra, "exec", containerName, ...command]);
+    },
+  };
+}
+
+export async function getRemoteMappedPort(
+  execServer: vscode.ExecServer,
+  containerName: string,
+  containerPort: number
+): Promise<number> {
+  const bin = getContainerBinary();
+  const extra = getContainerExtraArgs();
+  const result = await execServerCapture(execServer, bin, [
+    ...extra, "port", containerName, `${containerPort}/tcp`
+  ]);
+  if (result.code !== 0) {
+    throw new ServerInstallError(
+      `Could not get port mapping for ${containerName}: ${result.stderr.trim()}`
+    );
+  }
+  const match = result.stdout.trim().match(/:(\d+)$/m);
+  if (!match) {
+    throw new ServerInstallError(
+      `No port mapping found for ${containerPort}/tcp on ${containerName}`
+    );
+  }
+  return Number(match[1]);
+}
+
 export async function installServer(
-  containerName: string
+  containerName: string,
+  executor?: ContainerRun
 ): Promise<ServerInstallResult> {
   const serverConfig = await getVSCodeServerConfig();
 
@@ -171,7 +243,7 @@ export async function installServer(
     envVariables: [],
   };
 
-  const result = await installServerInContainer(containerName, config, makeContainerExec());
+  const result = await installServerInContainer(containerName, config, executor ?? makeContainerExec());
   result.dataFolder = devcontainerFolder;
   return result;
 }
