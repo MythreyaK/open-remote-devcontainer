@@ -1,5 +1,12 @@
 out
 dist
+build
 node_modules
-.vscode-test/
-*.vsix
+
+.vscode*
+__pycache__
+*.log
+
+.env*
+
+*.vsix*
