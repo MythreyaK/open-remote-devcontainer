@@ -2,22 +2,85 @@
   "name": "open-remote-devcontainer",
   "displayName": "Open Remote - Devcontainer",
   "description": "Build & run a devcontainer using Docker or Podman",
-  "version": "0.0.1",
+  "publisher": "mythreyak",
+  "version": "0.7.0",
+
+  "license": "UNDECIDED",
+  "homepage": "https://github.com/mythreyak/open-remote-devcontainer#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mythreyak/open-remote-devcontainer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mythreyak/open-remote-devcontainer/issues"
+  },
   "engines": {
     "vscode": "^1.110.0"
   },
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+    "keywords": [
+    "container",
+    "devcontainer",
+    "remote",
+    "docker",
+    "podman"
+  ],
+
   "main": "./dist/extension.js",
+
+  "activationEvents": [],
   "contributes": {
     "commands": [
       {
         "command": "open-remote-devcontainer.helloWorld",
         "title": "Hello World"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Remote - Devcontainer",
+      "properties": {
+        "remote.devcontainer.engine": {
+          "type": "string",
+          "default": "docker",
+          "description": "Path to the container executable engine. E.g., 'docker', 'podman'. Default: docker"
+        },
+        "remote.devcontainer.extraArgs": {
+          "type": "array",
+          "default": [],
+          "description": "Extra runtime parameters to pass to the executable. E.g., ['--root', '/custom/storage']"
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Devcontainer requires executing docker/podman commands on the host"
+    }
+  },
+  "enabledApiProposals": [
+    "resolvers",
+    "contribViewsRemote"
+  ],
+  "extensionKind": [
+		"ui"
+	],
+
+  "dependencies": {
+    "jsonc-parser": "^3.3.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "22.x",
+    "@types/vscode": "^1.110.0",
+    "esbuild": "^0.27.3",
+    "eslint": "^9.39.3",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.56.1",
+    "vitest": "^4.1.8"
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
@@ -31,21 +94,6 @@
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
-    "test": "vscode-test"
-  },
-  "devDependencies": {
-    "@types/mocha": "^10.0.10",
-    "@types/node": "22.x",
-    "@types/vscode": "^1.110.0",
-    "esbuild": "^0.27.3",
-    "eslint": "^9.39.3",
-    "npm-run-all": "^4.1.5",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.56.1",
-    "vitest": "^4.1.8"
-  },
-  "dependencies": {
-    "jsonc-parser": "^3.3.1",
-    "zod": "^4.4.3"
+    "test": "vitest run"
   }
 }

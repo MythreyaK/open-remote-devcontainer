@@ -16,5 +16,7 @@
 		"noImplicitOverride": true,
 		"forceConsistentCasingInFileNames": true,
 		"exactOptionalPropertyTypes": true
-	}
+	},
+	"include": ["src/**/*"],
+	"exclude": ["**/*.test.ts"]
 }
