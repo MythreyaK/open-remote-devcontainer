@@ -4,7 +4,6 @@
   "description": "Build & run a devcontainer using Docker or Podman",
   "publisher": "mythreyak",
   "version": "0.7.0",
-
   "license": "UNDECIDED",
   "homepage": "https://github.com/mythreyak/open-remote-devcontainer#readme",
   "repository": {
@@ -20,22 +19,27 @@
   "categories": [
     "Other"
   ],
-    "keywords": [
+  "keywords": [
     "container",
     "devcontainer",
     "remote",
     "docker",
     "podman"
   ],
-
   "main": "./dist/extension.js",
-
-  "activationEvents": [],
+  "activationEvents": [
+    "workspaceContains:.devcontainer/devcontainer.json",
+    "workspaceContains:.devcontainer.json"
+  ],
   "contributes": {
     "commands": [
       {
         "command": "open-remote-devcontainer.helloWorld",
         "title": "Hello World"
+      },
+      {
+        "command": "open-remote-devcontainer.getVersion",
+        "title": "getVersion"
       }
     ],
     "configuration": {
@@ -65,9 +69,22 @@
     "contribViewsRemote"
   ],
   "extensionKind": [
-		"ui"
-	],
-
+    "ui"
+  ],
+    "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "npm run check-types && npm run lint && node esbuild.js",
+    "package": "npm run check-types && npm run lint && node esbuild.js --production",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "compile-tests": "tsc -p . --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run"
+  },
   "dependencies": {
     "jsonc-parser": "^3.3.1",
     "zod": "^4.4.3"
@@ -81,19 +98,5 @@
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.56.1",
     "vitest": "^4.1.8"
-  },
-  "scripts": {
-    "vscode:prepublish": "npm run package",
-    "compile": "npm run check-types && npm run lint && node esbuild.js",
-    "package": "npm run check-types && npm run lint && node esbuild.js --production",
-    "watch": "npm-run-all -p watch:*",
-    "watch:esbuild": "node esbuild.js --watch",
-    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
-    "watch-tests": "tsc -p . -w --outDir out",
-    "compile-tests": "tsc -p . --outDir out",
-    "pretest": "npm run compile-tests && npm run compile && npm run lint",
-    "check-types": "tsc --noEmit",
-    "lint": "eslint src",
-    "test": "vitest run"
   }
 }

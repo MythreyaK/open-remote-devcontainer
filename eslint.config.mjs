@@ -1,5 +1,7 @@
 import tseslint from "typescript-eslint";
 
+const isDev = process.env.NODE_ENV !== "production";
+
 export default tseslint.config(
     {
         ignores: ["dist/", "out/", "*.mjs", "*.js", "**/*.d.ts"],
@@ -14,9 +16,13 @@ export default tseslint.config(
     },
     {
         rules: {
+            "@typescript-eslint/no-unused-vars": isDev ? "warn" : "error",
             "@typescript-eslint/naming-convention": ["warn", {
                 selector: "import",
                 format: ["camelCase", "PascalCase"],
+            }],
+            "@typescript-eslint/restrict-template-expressions": ["error", {
+                allowNumber: true,
             }],
 
             curly: "warn",

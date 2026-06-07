@@ -133,8 +133,8 @@ export const DevcontainerConfig = allOf(DevcontainerCommon, NonComposeBase);
 
 const ConfigSchemaBase = allOf(oneOf([ImageContainer, DockerfileContainer]), DevcontainerConfig);
 export const ConfigSchema = ConfigSchemaBase.check((c) => {
-    const hasMount = c.value.workspaceMount != null;
-    const hasFolder = c.value.workspaceFolder != null;
+    const hasMount = (c.value.workspaceMount !== undefined) && (c.value.workspaceMount !== null);
+    const hasFolder = (c.value.workspaceFolder !== undefined) && (c.value.workspaceFolder !== null);
 
     if (hasMount !== hasFolder) {
         c.issues.push({
