@@ -5,7 +5,7 @@ const allOf = z.intersection;
 
 export const BindMount = z.object({
     type: z.literal("bind"),
-    source: z.optional(z.string()),
+    source: z.string(),
     target: z.string(),
     options: z.optional(z.string()),
 });
@@ -130,7 +130,19 @@ export const DevcontainerCommon = z.object({
 });
 
 export const DevcontainerConfig = allOf(DevcontainerCommon, NonComposeBase);
-export const Config = allOf(oneOf([ImageContainer, DockerfileContainer]), DevcontainerConfig);
 
-export type Config = z.infer<typeof Config>;
+const ConfigSchemaBase = allOf(oneOf([ImageContainer, DockerfileContainer]), DevcontainerConfig);
+export const ConfigSchema = ConfigSchemaBase.check((c) => {
+    const hasMount = c.value.workspaceMount != null;
+    const hasFolder = c.value.workspaceFolder != null;
 
+    if (hasMount !== hasFolder) {
+        c.issues.push({
+            code: "custom",
+            input: c.value,
+            message: "Both workspaceFolder and workspaceMount must be set, or both must be unset",
+        });
+    }
+});
+
+export type Config = z.infer<typeof ConfigSchema>;
