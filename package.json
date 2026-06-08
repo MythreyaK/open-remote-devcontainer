@@ -71,7 +71,7 @@
   "extensionKind": [
     "ui"
   ],
-    "scripts": {
+  "scripts": {
     "vscode:prepublish": "npm run package",
     "compile": "npm run check-types && npm run lint && node esbuild.js",
     "package": "npm run check-types && npm run lint && node esbuild.js --production",
@@ -82,6 +82,7 @@
     "compile-tests": "tsc -p . --outDir out",
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
     "check-types": "tsc --noEmit",
+    "dts": "cd src/remote/typings && npx @vscode/dts dev",
     "lint": "eslint src",
     "test": "vitest run"
   },
@@ -92,6 +93,7 @@
   "devDependencies": {
     "@types/node": "22.x",
     "@types/vscode": "^1.110.0",
+    "@vscode/dts": "^0.4.1",
     "esbuild": "^0.27.3",
     "eslint": "^9.39.3",
     "jest-mock-vscode": "^4.12.0",

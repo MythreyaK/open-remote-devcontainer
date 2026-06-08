@@ -133,8 +133,14 @@ export const DevcontainerConfig = allOf(DevcontainerCommon, NonComposeBase);
 
 const ConfigSchemaBase = allOf(oneOf([ImageContainer, DockerfileContainer]), DevcontainerConfig);
 export const ConfigSchema = ConfigSchemaBase.check((c) => {
-    const hasMount = (c.value.workspaceMount !== undefined) && (c.value.workspaceMount !== null);
-    const hasFolder = (c.value.workspaceFolder !== undefined) && (c.value.workspaceFolder !== null);
+    /* eslint-disable @typescript-eslint/no-unnecessary-condition */
+    const hasMount = (c.value.workspaceMount !== undefined)
+        && (c.value.workspaceMount !== null)
+        && (c.value.workspaceMount !== "");
+    const hasFolder = (c.value.workspaceFolder !== undefined)
+        && (c.value.workspaceFolder !== null)
+        && (c.value.workspaceFolder !== "");
+    /* eslint-enable @typescript-eslint/no-unnecessary-condition */
 
     if (hasMount !== hasFolder) {
         c.issues.push({
