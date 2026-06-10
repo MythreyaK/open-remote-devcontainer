@@ -2,24 +2,25 @@ import { z } from "zod/mini";
 
 const oneOf = z.union;
 const allOf = z.intersection;
+const minString = z.string().check(z.minLength(1));
 
 export const BindMount = z.object({
     type: z.literal("bind"),
-    source: z.string(),
-    target: z.string(),
-    options: z.optional(z.string()),
+    source: minString,
+    target: minString,
+    options: z.optional(minString),
 });
 
 export const VolumeMount = z.object({
     type: z.literal("volume"),
-    source: z.optional(z.string()),
-    target: z.string(),
-    options: z.optional(z.string()),
+    source: z.optional(minString),
+    target: minString,
+    options: z.optional(minString),
 });
 
 export const Mount = z.discriminatedUnion("type", [
-  BindMount,
-  VolumeMount,
+    BindMount,
+    VolumeMount,
 ]);
 
 export const EnvProbe = z.enum([
@@ -52,45 +53,48 @@ const _cmd = oneOf([
 ]);
 
 export const BuildOptions = z.object({
-    target: z.optional(z.string()),
-    args: z.optional(z.record(z.string(), z.string())),
+    target: z.optional(minString),
+    args: z.optional(z.record(minString, z.string())),
     cacheFrom: z.optional(oneOf([
-        z.string(),
-        z.array(z.string()),
+        minString,
+        z.array(minString),
     ])),
     options: z.optional(z.array(z.string())),
 });
 
 export const NonComposeBase = z.object({
     appPort: z.optional(oneOf([
-        z.string(),
+        minString,
         z.number(),
         z.array(_stringOrNumber),
     ])),
     runArgs: z.optional(z.array(z.string())),
     shutdownAction: z.optional(ShutdownAction),
     overrideCommand: z.optional(z.boolean()),
-    workspaceFolder: z.optional(z.string()),
-    workspaceMount: z.optional(z.string()),
+    workspaceFolder: z.optional(minString),
+    workspaceMount: z.optional(minString),
 });
 
 export const ImageContainer = z.object({
-    image: z.string()
+    image: minString,
+    pull: z.optional(z.boolean()),
 });
 
-export const DockerfileContainer = oneOf([
-    z.object({
-        build: allOf(
-            z.object({
-                dockerfile: z.string(),
-                context: z.optional(z.string()),
-            }),
-            BuildOptions,
-        ),
-    }),
+const DockerfileBuild_ZodBase = z.object({
+    build: allOf(
+        z.object({
+            dockerfile: minString,
+            context: z.optional(z.string()),
+        }),
+        BuildOptions,
+    ),
+});
+
+const _DockerfileContainer_ZodBase = oneOf([
+    DockerfileBuild_ZodBase,
     allOf(
         z.object({
-            dockerFile: z.string(),
+            dockerFile: minString,
             context: z.optional(z.string()),
         }),
         z.object({
@@ -99,27 +103,43 @@ export const DockerfileContainer = oneOf([
     )
 ]);
 
+// always use buid: {...} syntax, by moving dockerFile and context inside
+type _DockerfileContainer = z.infer<typeof _DockerfileContainer_ZodBase>;
+export const _DockerfileContainer = z.transform<_DockerfileContainer>(e => {
+    if ("dockerFile" in e) {
+        const ret: _DockerfileContainer = {
+            build: {
+                dockerfile: e.dockerFile,
+                context: e.context,
+                ...e.build,
+            }
+        };
+        return ret;
+    }
+    return e;
+});
+
 // key=value values can be null
 const _envPairsNullable = z.record(z.string(), z.nullable(z.string()));
 const _envPairs = z.record(z.string(), z.string());
 
 export const DevcontainerCommon = z.object({
-    name: z.optional(z.string()),
+    name: z.optional(minString),
     // features : Features,
     forwardPorts: z.optional(z.array(_stringOrNumber)),
     mounts: z.optional(z.array(oneOf([
         Mount,
-        z.string(),
+        minString,
     ]))),
     updateRemoteUserUID: z.optional(z.boolean()),
     init: z.optional(z.boolean()),
     privileged: z.optional(z.boolean()),
-    capAdd: z.optional(z.array(z.string())),
-    securityOpt: z.optional(z.array(z.string())),
+    capAdd: z.optional(z.array(minString)),
+    securityOpt: z.optional(z.array(minString)),
     remoteEnv: z.optional(_envPairsNullable),
     containerEnv: z.optional(_envPairs),
-    remoteUser: z.optional(z.string()),
-    containerUser: z.optional(z.string()),
+    remoteUser: z.optional(minString),
+    containerUser: z.optional(minString),
     initializeCommand: z.optional(_cmd),
     onCreateCommand: z.optional(_cmd),
     updateContentCommand: z.optional(_cmd),
@@ -131,15 +151,13 @@ export const DevcontainerCommon = z.object({
 
 export const DevcontainerConfig = allOf(DevcontainerCommon, NonComposeBase);
 
-const ConfigSchemaBase = allOf(oneOf([ImageContainer, DockerfileContainer]), DevcontainerConfig);
+const ConfigSchemaBase = allOf(oneOf([ImageContainer, _DockerfileContainer]), DevcontainerConfig);
 export const ConfigSchema = ConfigSchemaBase.check((c) => {
     /* eslint-disable @typescript-eslint/no-unnecessary-condition */
     const hasMount = (c.value.workspaceMount !== undefined)
-        && (c.value.workspaceMount !== null)
-        && (c.value.workspaceMount !== "");
+        && (c.value.workspaceMount !== null);
     const hasFolder = (c.value.workspaceFolder !== undefined)
-        && (c.value.workspaceFolder !== null)
-        && (c.value.workspaceFolder !== "");
+        && (c.value.workspaceFolder !== null);
     /* eslint-enable @typescript-eslint/no-unnecessary-condition */
 
     if (hasMount !== hasFolder) {
@@ -152,3 +170,16 @@ export const ConfigSchema = ConfigSchemaBase.check((c) => {
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
+
+export type ImageDevcontainer = z.infer<typeof ImageContainer> & z.infer<typeof DevcontainerConfig>;
+
+// this transforms so build always exists
+export type DockerfileDevcontainer = z.infer<typeof DockerfileBuild_ZodBase> & z.infer<typeof DevcontainerConfig>;
+
+export function isImageBased(config: Config): config is ImageDevcontainer {
+    return "image" in config;
+}
+
+export function isDockerfileBased(config: Config): config is DockerfileDevcontainer {
+    return "build" in config && config.build !== undefined && "dockerfile" in config.build;
+}

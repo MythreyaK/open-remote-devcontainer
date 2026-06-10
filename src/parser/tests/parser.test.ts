@@ -60,6 +60,7 @@ describe("Parser tests", () => {
                 "name": "devc",
                 "build": {
                     "dockerfile": "ubuntu",
+                    "context": "dir",
                     "args": {
                         "ARG1": "VAL1"
                     },
@@ -70,12 +71,14 @@ describe("Parser tests", () => {
 
             expect(o).toHaveProperty("name", "devc");
             expect(o).toHaveProperty("build.dockerfile", "ubuntu");
+            expect(o).toHaveProperty("build.context", "dir");
             expect(o).toHaveProperty("build.args.ARG1", "VAL1");
         }
         {
             const jsondata = {
                 "name": "devc",
                 "dockerFile": "ubuntu",
+                "context": "dir",
                 "build": {
                     "args": {
                         "ARG1": "VAL1"
@@ -85,8 +88,10 @@ describe("Parser tests", () => {
 
             const o = parser.ConfigSchema.parse(jsondata);
 
+            // we transform in the parser to this "new" format
             expect(o).toHaveProperty("name", "devc");
-            expect(o).toHaveProperty("dockerFile", "ubuntu");
+            expect(o).toHaveProperty("build.dockerfile", "ubuntu");
+            expect(o).toHaveProperty("build.context", "dir");
             expect(o).toHaveProperty("build.args.ARG1", "VAL1");
         }
     });
