@@ -46,7 +46,7 @@ describe("cmd spawn tests", () => {
 
         try {
             const exec = await spawn(getEngine(), ["exec", create.stdout.trim(), "cat", "/etc/os-release" ], getcwd(), {}, log);
-            expect(exec.stdout.trim().search("Ubuntu 24.04")).greaterThan(0);
+            expect(exec.stdout.trim().includes("Ubuntu 24.04")).toBe(true);
             expect(exec.exit).eq(0);
 
             const inspect = await spawn(getEngine(), ["inspect", containerId, ...jsonFormat ], getcwd(), {}, log);
