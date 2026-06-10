@@ -75,7 +75,7 @@ export const NonComposeBase = z.object({
     workspaceMount: z.optional(minString),
 });
 
-export const ImageContainer = z.object({
+export const ImageContainer_z = z.object({
     image: minString,
     pull: z.optional(z.boolean()),
 });
@@ -104,10 +104,10 @@ const _DockerfileContainer_ZodBase = oneOf([
 ]);
 
 // always use buid: {...} syntax, by moving dockerFile and context inside
-type _DockerfileContainer = z.infer<typeof _DockerfileContainer_ZodBase>;
-export const _DockerfileContainer = z.transform<_DockerfileContainer>(e => {
+type DockerfileContainer = z.infer<typeof _DockerfileContainer_ZodBase>;
+export const DockerfileContainer_z = z.pipe(_DockerfileContainer_ZodBase, z.transform<DockerfileContainer>(e => {
     if ("dockerFile" in e) {
-        const ret: _DockerfileContainer = {
+        const ret: DockerfileContainer = {
             build: {
                 dockerfile: e.dockerFile,
                 context: e.context,
@@ -117,7 +117,7 @@ export const _DockerfileContainer = z.transform<_DockerfileContainer>(e => {
         return ret;
     }
     return e;
-});
+}));
 
 // key=value values can be null
 const _envPairsNullable = z.record(z.string(), z.nullable(z.string()));
@@ -151,7 +151,7 @@ export const DevcontainerCommon = z.object({
 
 export const DevcontainerConfig = allOf(DevcontainerCommon, NonComposeBase);
 
-const ConfigSchemaBase = allOf(oneOf([ImageContainer, _DockerfileContainer]), DevcontainerConfig);
+const ConfigSchemaBase = allOf(oneOf([ImageContainer_z, DockerfileContainer_z]), DevcontainerConfig);
 export const ConfigSchema = ConfigSchemaBase.check((c) => {
     /* eslint-disable @typescript-eslint/no-unnecessary-condition */
     const hasMount = (c.value.workspaceMount !== undefined)
@@ -171,7 +171,7 @@ export const ConfigSchema = ConfigSchemaBase.check((c) => {
 
 export type Config = z.infer<typeof ConfigSchema>;
 
-export type ImageDevcontainer = z.infer<typeof ImageContainer> & z.infer<typeof DevcontainerConfig>;
+export type ImageDevcontainer = z.infer<typeof ImageContainer_z> & z.infer<typeof DevcontainerConfig>;
 
 // this transforms so build always exists
 export type DockerfileDevcontainer = z.infer<typeof DockerfileBuild_ZodBase> & z.infer<typeof DevcontainerConfig>;

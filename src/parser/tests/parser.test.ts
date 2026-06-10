@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import * as assert from 'assert';
 
 import * as parser from '../schema';
-// import { z } from 'zod/mini';
+import { z } from 'zod/mini';
 
 describe("Parser tests", () => {
 
@@ -128,6 +128,17 @@ describe("Parser tests", () => {
             expect(o2.success).toBe(false);
             expect(o1.error?.message.search("must be [un]+set")).greaterThan(0);
             expect(o2.error?.message.search("must be [un]+set")).greaterThan(0);
+        }
+    });
+
+    test("Image or dockerfile must be present", () => {
+        {
+            const jsondata = {
+                "name": "devc",
+            };
+
+            const o = parser.ConfigSchema.safeParse(jsondata);
+            expect(o.success).toBe(false);
         }
     });
 
