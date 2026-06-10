@@ -10,6 +10,16 @@ export class ParseError extends Error {
     }
 };
 
+// better name?
+export class ConfigError extends Error {
+    constructor(
+        public readonly reason: string
+    ) {
+        getLogSink().error(reason);
+        super(reason);
+    }
+}
+
 export class SpawnError extends Error {
     constructor(
         public readonly reason: string
@@ -20,7 +30,7 @@ export class SpawnError extends Error {
 }
 
 // better name?
-export class ExtensionError extends Error {
+export class EngineError extends Error {
     constructor(
         public readonly reason: string
     ) {
@@ -28,3 +38,14 @@ export class ExtensionError extends Error {
         super(reason);
     }
 }
+
+// better name?
+export class InternalError extends Error {
+    constructor(
+        public readonly reason: string
+    ) {
+        getLogSink().error(reason);
+        super(reason);
+    }
+}
+

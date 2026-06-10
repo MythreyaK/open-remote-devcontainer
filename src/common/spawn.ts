@@ -19,6 +19,8 @@ export class CmdError extends Error {
     }
 }
 
+let cmdCount: number = 1;
+
 /* eslint-disable @typescript-eslint/no-confusing-void-expression */
 export function spawn(
     cmd: string,
@@ -28,6 +30,11 @@ export function spawn(
     log: LogOutputChannel
 ): Promise<CmdResult> {
     return new Promise((resolve, reject) => {
+        cmdCount += 1;
+        const cmdId = cmdCount;
+
+        const cmdStr = () => `[CMD${String(cmdId).padStart(4, '0')}]:`;
+
         let stdout: string = "";
         let stderr: string = "";
 
@@ -48,7 +55,7 @@ export function spawn(
         proc.on('spawn', () => {
             const strz_args = args.map((e) => `'${e}'`).join(", ");
             // TODO: log env values as well
-            log.info(`Running (spawn) ['${cmd}', ${strz_args}]`);
+            log.info(`${cmdStr()} Running (spawn) ['${cmd}', ${strz_args}]`);
         });
 
         proc.on('error', (err: Error) => {
@@ -57,17 +64,18 @@ export function spawn(
                 cause = JSON.stringify(err.cause);
             }
 
+            log.error(cmdStr(), cause);
             return reject(new CmdError(256, "<no output>", `${err.name}: ${err.message} : ${cause}`));
         });
 
         proc.stdout.on('data', (data: string) => {
             stdout += data;
-            log.info(data);
+            log.info(cmdStr(), data);
         });
 
         proc.stderr.on('data', (data: string) => {
             stderr += data;
-            log.error(data);
+            log.error(cmdStr(), data);
         });
 
         proc.on('exit', (code, signal) => {
@@ -76,6 +84,8 @@ export function spawn(
                 stdout: stdout,
                 stderr: stderr,
             };
+
+            log.error(`${cmdStr()} Command failed with {code / signal ${res.exit}}`);
 
             if ((code !== null && code !== 0) || (signal)) {
                 return reject(new CmdError(code ?? (signal ?? 256), stdout, stderr));
