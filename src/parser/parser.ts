@@ -2,17 +2,10 @@ import { readFile } from 'node:fs/promises';
 import * as jc from 'jsonc-parser';
 
 import * as schema from './schema';
-
-class ParseError extends Error {
-    constructor(
-        public readonly reason: string
-    ) {
-        super(reason);
-    }
-};
+import { ParseError } from '../extension/error';
 
 export async function parseDevcontainerFile(fspath: string): Promise<schema.Config> {
-    const jsonContent = await readFile(fspath, {encoding: "utf-8", flag: "r"}).catch((e: unknown) => {
+    const jsonContent = await readFile(fspath, { encoding: "utf-8", flag: "r" }).catch((e: unknown) => {
         throw new ParseError(`Could not read devcontainer.json file at ${fspath}: ${JSON.stringify(e)}`);
     });
 
