@@ -58,14 +58,17 @@ export function spawn(
             log.info(`${cmdStr()} Running (spawn) ['${cmd}', ${strz_args}]`);
         });
 
-        proc.on('error', (err: Error) => {
-            let cause = "<unknown cause>";
-            if (err.cause) {
-                cause = JSON.stringify(err.cause);
-            }
+        proc.on('error', (err: NodeJS.ErrnoException) => {
+            const msg = `${err.code} :: ${err.message} :: :: ${err.syscall}`;
+            const res: CmdResult = {
+                exit: err.errno ?? 255,
+                stdout: "",
+                stderr: err.message,
+            };
 
-            log.error(cmdStr(), cause);
-            return reject(new CmdError(256, "<no output>", `${err.name}: ${err.message} : ${cause}`));
+            log.error(cmdStr(), msg);
+            // TODO: reject?
+            return resolve(res);
         });
 
         proc.stdout.on('data', (data: string) => {
@@ -88,7 +91,8 @@ export function spawn(
             log.error(`${cmdStr()} Command failed with {code / signal ${res.exit}}`);
 
             if ((code !== null && code !== 0) || (signal)) {
-                return reject(new CmdError(code ?? (signal ?? 256), stdout, stderr));
+                // TODO: reject?
+                return resolve(new CmdError(code ?? (signal ?? 256), stdout, stderr));
             }
 
             return resolve(res);

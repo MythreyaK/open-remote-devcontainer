@@ -1,5 +1,4 @@
 import * as schema from '../parser/schema';
-import * as fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
@@ -7,18 +6,10 @@ import * as crypto from 'node:crypto';
 import { getLogSink } from '../extension/log';
 import { ConfigError } from '../extension/error';
 
-function interpolateEnv(value: string, env: Record<string, string>) {
-
-}
 
 function ensure(func: (() => boolean), msg: string) {
-    if (!func()) { throw new ConfigError(`Invalid config: ${msg}`) };
+    if (!func()) { throw new ConfigError(`Invalid config: ${msg}`); };
 }
-
-interface WorkspaceMount {
-    source: string,
-    target: string,
-};
 
 export class ContainerConfig<T extends schema.Config = schema.Config> {
     public readonly cfg: T;
@@ -32,13 +23,15 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     }
 
     static create<T extends schema.Config>(cfg: T, workspacePath: string, skipValidation: boolean = false): ContainerConfig<T> {
-        if (!skipValidation && !this.validate(cfg, workspacePath)) throw new ConfigError("Invalid config");
+        if (!skipValidation && !this.validate(cfg, workspacePath)) {
+            throw new ConfigError("Invalid config");
+        }
         return new ContainerConfig(cfg, workspacePath);
     }
 
     static validate(cfg: schema.Config, workspacePath: string) {
         // TODO: validation?
-        ensure(() => { return existsSync(workspacePath) },
+        ensure(() => { return existsSync(workspacePath); },
             `Invalid workspace folder '${workspacePath}'`);
 
         // const mounts = this.getWorkspaceMount();
@@ -49,11 +42,11 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     }
 
     public isImageBased(): this is ContainerConfig<schema.ImageDevcontainer> {
-        return schema.isImageBased(this.cfg)
+        return schema.isImageBased(this.cfg);
     }
 
     public isDockerfileBased(): this is ContainerConfig<schema.DockerfileDevcontainer> {
-        return schema.isDockerfileBased(this.cfg)
+        return schema.isDockerfileBased(this.cfg);
     }
 
     // TODO: handle cacheFrom
@@ -90,10 +83,9 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         // TODO: resolve symlinks?
         // const safeImgName = this.workspacePath.replaceAll('/[^a-z0-9.-]', '-');
         const idHash = crypto
-            .createHash('sha256', { encoding: 'utf-8' })
+            .createHash('sha256')
             .update(this.workspacePath)
-            .digest()
-            .toString()
+            .digest('hex')
             .slice(16);
 
         getLogSink().info(`Image name from workspace '${this.workspacePath}' : '${idHash}'`);
@@ -168,27 +160,23 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         else { return []; }
     }
 
-    private getWorkspaceMount(): WorkspaceMount {
-        const wsMount = this.cfg.workspaceMount;
-        const wsFolder = this.cfg.workspaceFolder;
-
-        if (wsFolder && wsMount) {
-            return {
-                source: wsFolder,
-                target: wsMount
-            };
+    private getRemoteMountDir(): string {
+        if (this.cfg.workspaceMount) {
+            return schema.extractWorkspaceMount(this.cfg.workspaceMount)[0];
         }
         else {
-            return {
-                source: this.workspacePath,
-                target: `/workspace/${wsFolder}`,
-            };
+            const basename = path.parse(this.workspacePath).base;
+            return `/workspace/${basename}`;
         }
     }
 
     private addWorkspaceMount(): string[] {
-        const mountInfo = this.getWorkspaceMount();
-        return ["-v", `${mountInfo.source}:${mountInfo.target}`];
+        if (this.cfg.workspaceMount) {
+            return ["--mount", this.cfg.workspaceMount];
+        }
+        else {
+            return ["-v", `${this.workspacePath}:${this.getRemoteMountDir()}`];
+        }
     }
 
     private addMounts(): string[] {
@@ -249,4 +237,66 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     private getRunInBash(args: string[]): string[] {
         return [this.getShell(), ...args];
     }
+
+    // reference: https://containers.dev/implementors/json_reference/
+    public getConfigId(): string {
+        const items = JSON.stringify([
+            this.cfg.name ?? "",
+            this.cfg.runArgs ?? "",
+            this.cfg.initializeCommand ?? "",
+            this.cfg.onCreateCommand ?? "",
+            this.cfg.updateContentCommand ?? "",
+            this.cfg.postCreateCommand ?? "",
+            this.cfg.postStartCommand ?? "",
+            this.cfg.postAttachCommand ?? "",
+            this.cfg.workspaceFolder ?? "",
+            this.cfg.workspaceMount ?? "",
+            this.cfg.mounts ?? "",
+            this.cfg.containerEnv ?? "",
+            this.cfg.remoteEnv ?? "",
+            this.cfg.containerUser ?? "",
+            this.cfg.remoteUser ?? "",
+            // this.cfg.customizatios
+        ]);
+
+        return crypto
+            .createHash('sha256')
+            .update(items)
+            .digest('hex');
+    }
+}
+
+export function interpolateVars(val: string, localWorkspace: string, remoteWorkspace: string) {
+    const localWorkspaceBasename = path.parse(localWorkspace).base;
+    const remoteWorkspaceBasename = path.parse(remoteWorkspace).base;
+
+    return val
+        .replaceAll('${localWorkspaceFolder}', localWorkspace)
+        .replaceAll('${containerWorkspaceFolder}', remoteWorkspace)
+        .replaceAll('${localWorkspaceFolderBasename}', localWorkspaceBasename)
+        .replaceAll('${containerWorkspaceFolderBasename}', remoteWorkspaceBasename)
+        ;
+
+}
+
+export function interpolateLocalEnv(envStr: string, procEnv: NodeJS.ProcessEnv) {
+    const matches = Array.from(envStr.matchAll(/\${localEnv:([^}]+)}/g));
+
+    let ret = envStr;
+    for (const match of matches) {
+        const [varName, defaultValue, ...rest] = match[1].split(":");
+
+        if (procEnv[varName]) {
+            ret = ret.replaceAll(match[0], procEnv[varName]);
+        }
+        else {
+            const varValue = [defaultValue, ...rest].join(":");
+            ret = ret.replaceAll(match[0], varValue);
+        }
+    }
+    return ret;
+}
+
+export function interpolateRemoteEnv(value: string, env: Record<string, string>) {
+
 }
