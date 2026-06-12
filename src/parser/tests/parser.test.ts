@@ -115,19 +115,57 @@ describe("Parser tests", () => {
             const o = parser.ConfigSchema.safeParse({
                 ...jsondata,
                 "workspaceFolder": "a",
-                "workspaceMount": "b",
+                "workspaceMount": "source=b,target=c",
             });
             expect(o.success).toBe(true);
         }
         {
             const jsondata1 = { ...jsondata, "workspaceFolder": "a" };
-            const jsondata2 = { ...jsondata, "workspaceMount": "b" };
+            const jsondata2 = { ...jsondata, "workspaceMount": "source=/b,target=/b" };
             const o1 = parser.ConfigSchema.safeParse(jsondata1);
             const o2 = parser.ConfigSchema.safeParse(jsondata2);
             expect(o1.success).toBe(false);
             expect(o2.success).toBe(false);
             expect(o1.error?.message.search("must be [un]+set")).greaterThan(0);
             expect(o2.error?.message.search("must be [un]+set")).greaterThan(0);
+        }
+    });
+
+    test("Extract remote workspace mount dest from workspaceMount", () => {
+        {
+            // restricting it to just one is handled in the parser
+            const mounts = [
+                { test: 'source=/foo,target=/bar', result: "/bar" },
+                { test: 'source=/dir1/foo,target=/dir2/bar,type=bind', result: "/dir2/bar" },
+                { test: 'source=/dir1/foo,target=/dir3/bar/baz,consistency=cached,foo=bar', result: "/dir3/bar/baz" },
+                { test: 'source=/home/用户/项目,target=/workspace/проект,type=bind', result: "/workspace/проект" },
+                { test: 'source=/home/用户/项目,target=/workspace/проект/target,type=bind', result: "/workspace/проект/target" },
+
+            ];
+
+            for (const mount of mounts) {
+                expect(parser.extractWorkspaceMount(mount.test)).contains(mount.result);
+
+            }
+        }
+    });
+
+    test("Reject multiple target matches in workspaceMount", () => {
+        {
+            const jsonbase = { "name": "foo", "image": "ubuntu", "workspaceFolder": "/foo" };
+            const jsondatas = [
+                { ...jsonbase, "workspaceMount": 'source=/foo,target=/bar,target' },
+                { ...jsonbase, "workspaceMount": 'source="/dir1/foo,target",target=/dir2/bar,type=bind' },
+                // { ...jsonbase, "workspaceMount": 'source=/dir1/foo,target=/dir3/bar/target,consistency=cached,foo=bar' },
+                { ...jsonbase, "workspaceMount": 'source=/home/用户/target=项目,target=/workspace,target=проект,type=bind' },
+            ];
+
+            for (const data of jsondatas) {
+                const res = parser.ConfigSchema.safeParse(data);
+                expect(res.success).toBe(false);
+                expect(res.error?.message.search("multiple mount targets")).greaterThan(0);
+            }
+
         }
     });
 

@@ -153,19 +153,42 @@ export const DevcontainerConfig = allOf(DevcontainerCommon, NonComposeBase);
 
 const ConfigSchemaBase = allOf(oneOf([ImageContainer_z, DockerfileContainer_z]), DevcontainerConfig);
 export const ConfigSchema = ConfigSchemaBase.check((c) => {
+    const val = c.value;
     /* eslint-disable @typescript-eslint/no-unnecessary-condition */
-    const hasMount = (c.value.workspaceMount !== undefined)
-        && (c.value.workspaceMount !== null);
-    const hasFolder = (c.value.workspaceFolder !== undefined)
-        && (c.value.workspaceFolder !== null);
+    const hasMount = (val.workspaceMount !== undefined)
+        && (val.workspaceMount !== null);
+    const hasFolder = (val.workspaceFolder !== undefined)
+        && (val.workspaceFolder !== null);
     /* eslint-enable @typescript-eslint/no-unnecessary-condition */
 
+    // TODO: relax this requirement, and set mount to /workspace if unset?
     if (hasMount !== hasFolder) {
         c.issues.push({
             code: "custom",
-            input: c.value,
+            input: val,
             message: "Both workspaceFolder and workspaceMount must be set, or both must be unset",
         });
+    }
+
+    if (val.workspaceMount) {
+
+        const targets = extractWorkspaceMount(val.workspaceMount);
+
+        if (targets.length === 0) {
+            c.issues.push({
+                code: "custom",
+                input: val.workspaceMount,
+                message: "Could not detect a 'target=...' mount in workspaceMount",
+            });
+        }
+
+        if (targets.length > 1) {
+            c.issues.push({
+                code: "custom",
+                input: val.workspaceMount,
+                message: "Detected multiple mount targets in key workspaceMount. Use 'mounts' for the rest",
+            });
+        }
     }
 });
 
@@ -182,4 +205,20 @@ export function isImageBased(config: Config): config is ImageDevcontainer {
 
 export function isDockerfileBased(config: Config): config is DockerfileDevcontainer {
     return "build" in config && config.build !== undefined && "dockerfile" in config.build;
+}
+
+export function extractWorkspaceMount(mnt: string) {
+    const matches = mnt.split(',');
+
+    const targets: string[] = (() => {
+        const tgt: string[] = [];
+        for (const match of matches) {
+            if (match.startsWith("target")) {
+                tgt.push(match.replace("target=", ""));
+            }
+        }
+        return tgt;
+    })();
+
+    return targets;
 }
