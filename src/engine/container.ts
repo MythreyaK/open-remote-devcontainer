@@ -209,7 +209,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
                     if (mount.source) { mnt += `${mount.source}:`; }
                     mnt += mount.target;
                     if (mount.options) { mnt += `:${mount.options}`; }
-                    ret.push(mnt);
+                    ret.push("-v", mnt);
                 }
             }
         }
@@ -221,8 +221,13 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         const ret: string[] = [];
 
         for (const [k, v] of Object.entries(this.cfg.remoteEnv ?? {})) {
-            if (v === null) { ret.push("--env", k); }
-            else { ret.push("--env", `${k}=${v}`); }
+            if (v === null) {
+                // TODO: can't unset env from here ... part of lifecycle script?
+                /* ret.push("--env", k); */
+            }
+            else {
+                ret.push("--env", `${k}=${v}`);
+            }
         }
         return ret;
     }

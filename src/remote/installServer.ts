@@ -54,7 +54,7 @@ export function updateScript(script: string, info: ScriptInstallInfo, debug: boo
 
     scriptCopy = scriptCopy
         .replace("CODIUM_INJECT_INSTALL_EXTENSIONS", extensArgs)
-        .replace("CODIUM_INJECT_SERVER_LISTEN_PORT", "65432")
+        .replace("CODIUM_INJECT_SERVER_LISTEN_PORT", info.port.toString())
         .replace("CODIUM_INJECT_DOWNLOAD_URL", info.downloadTemplteUrl)
         .replace("CODIUM_INJECT_CODIUM_INSTALL_VERSION", info.codiumVersion)
         .replace("CODIUM_INJECT_TOKEN_VALUE", info.connectionToken)

@@ -30,10 +30,10 @@ describe("Install script", () => {
         expect(updatedScript.includes("--install-extension")).toBe(false);
         expect(updatedScript.includes('CODIUM_FORCE_REINSTALL_SERVER="false"')).toBe(true);
         expect(updatedScript.includes('CODIUM_NEW_INSTALL_VERSION="1.2.345"')).toBe(true);
-        expect(updatedScript.includes('CODIUM_SERVER_LISTEN_PORT="65432"')).toBe(true);
+        expect(updatedScript.includes('CODIUM_SERVER_LISTEN_PORT="6543"')).toBe(true);
         expect(updatedScript.includes('localhost/${CODIUM_OS_PLATFORM}-${CODIUM_ARCH}')).toBe(true);
 
-        await fs.writeFile("out.sh", updatedScript, { encoding: 'utf-8', mode: 0o700 });
+        // await fs.writeFile("out.sh", updatedScript, { encoding: 'utf-8', mode: 0o700 });
     });
 
     test("string replacement tests / env + ext", async () => {
@@ -55,10 +55,10 @@ describe("Install script", () => {
         expect(updatedScript.includes("--install-extension pub1.ext1 --install-extension pub2.ext1")).toBe(true);
         expect(updatedScript.includes('CODIUM_FORCE_REINSTALL_SERVER="false"')).toBe(true);
         expect(updatedScript.includes('CODIUM_NEW_INSTALL_VERSION="1.2.345"')).toBe(true);
-        expect(updatedScript.includes('CODIUM_SERVER_LISTEN_PORT="65432"')).toBe(true);
+        expect(updatedScript.includes('CODIUM_SERVER_LISTEN_PORT="6543"')).toBe(true);
         expect(updatedScript.includes('localhost/${CODIUM_OS_PLATFORM}-${CODIUM_ARCH}')).toBe(true);
 
-        await fs.writeFile("out.sh", updatedScript, { encoding: 'utf-8', mode: 0o700 });
+        // await fs.writeFile("out.sh", updatedScript, { encoding: 'utf-8', mode: 0o700 });
     });
 
 });
