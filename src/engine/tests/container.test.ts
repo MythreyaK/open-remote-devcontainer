@@ -1,10 +1,18 @@
 import { describe, expect, test, vi } from 'vitest';
 import { Uri, window, workspace } from 'vscode';
+import path from 'node:path';
 import { z } from 'zod/mini';
 
-import { ContainerConfig, interpolateLocalEnv, interpolateVars } from '../container';
+import { ContainerConfig, interpolateVars, interpolateLocal, interpolateContainer } from '../container';
 import * as schema from '../../parser/schema';
 import { initLog } from '../../extension/log';
+
+function getWorkspaceFolder() {
+    if (!workspace.workspaceFolders) { throw new Error("Workspace not set up"); }
+    else {
+        return workspace.workspaceFolders[0].uri.fsPath;
+    }
+}
 
 describe("ContainerConfig tests", () => {
     (workspace as any).setWorkspaceFolders([
@@ -13,8 +21,8 @@ describe("ContainerConfig tests", () => {
 
     const spy = vi.spyOn(window, 'createOutputChannel');
     spy.mockReturnValue({
-        info:  vi.fn(), // console.log,
-        warn:  vi.fn(), // console.log,
+        info: vi.fn(), // console.log,
+        warn: vi.fn(), // console.log,
         error: vi.fn(), // console.log,
     } as any);
 
@@ -27,18 +35,18 @@ describe("ContainerConfig tests", () => {
                 image: "ubuntu:24.04",
             };
 
-            if (workspace.workspaceFolders !== undefined) {
-                const cc = ContainerConfig.create(cfg, workspace.workspaceFolders[0].uri.fsPath, true);
-                if (cc.isImageBased()) {
-                    const createArgs = cc.getCreateArgs(cfg.image);
-                    // console.log(createArgs);
-                    expect(createArgs)
-                        .contains("create")
-                        .contains("-v", "/tmp/dir:/workspace/dir")
-                        ;
-                }
+            const cc = ContainerConfig.create(cfg, getWorkspaceFolder(), {}, true);
+            expect(cc.isImageBased()).toBe(true);
+
+            if (cc.isImageBased()) {
+                const createArgs = cc.getCreateCmd(cfg.image);
+
+                expect(cc.getRemoteMountDir()).eq("/workspace/dir");
+                expect(createArgs)
+                    .contains("create")
+                    .contains("/tmp/dir:/workspace/dir")
+                    ;
             }
-            else {throw new Error("Bad workspace");}
 
             // console.log(cfg);
         }
@@ -50,47 +58,23 @@ describe("ContainerConfig tests", () => {
                 name: "test",
                 image: "ubuntu:24.04",
                 // workspaceFolder: "/custom/subdir/repodir",
-                workspaceMount: 'source=${localWorkspaceFolder}/sub-folder,target=/workspace,type=bind,consistency=cached"'
+                workspaceMount: 'source=${localWorkspaceFolder}/sub-folder,target=/workspace/dir,type=bind,consistency=cached'
             };
 
-            if (workspace.workspaceFolders !== undefined) {
-                const cc = ContainerConfig.create(cfg, workspace.workspaceFolders[0].uri.fsPath, true);
-                if (cc.isImageBased()) {
-                    const createArgs = cc.getCreateArgs(cfg.image);
-                    // console.log(createArgs);
-                    expect(createArgs)
-                        .contains("create")
-                        .contains("--mount", cfg.workspaceMount)
-                        ;
-                }
+            const cc = ContainerConfig.create(cfg, getWorkspaceFolder(), {}, true);
+            expect(cc.isImageBased()).toBe(true);
+
+            if (cc.isImageBased()) {
+                const createArgs = cc.getCreateCmd(cfg.image);
+                // console.log(createArgs);
+
+                expect(cc.getRemoteMountDir()).eq("/workspace/dir");
+                expect(createArgs)
+                    .contains("create")
+                    .contains(`${cfg.workspaceMount?.replace("${localWorkspaceFolder}", getWorkspaceFolder())}`)
+                    .not.contains("${localWorkspaceFolder}")
+                    ;
             }
-            else {throw new Error("Bad workspace");}
-
-            // console.log(cfg);
-        }
-    });
-
-    test("test workspace mounts (explicit)", () => {
-        {
-            const cfg: schema.ImageDevcontainer = {
-                name: "test",
-                image: "ubuntu:24.04",
-                // workspaceFolder: "/custom/subdir/repodir",
-                workspaceMount: 'source=${localWorkspaceFolder}/sub-folder,target=/workspace,type=bind,consistency=cached"'
-            };
-
-            if (workspace.workspaceFolders !== undefined) {
-                const cc = ContainerConfig.create(cfg, workspace.workspaceFolders[0].uri.fsPath, true);
-                if (cc.isImageBased()) {
-                    const createArgs = cc.getCreateArgs(cfg.image);
-                    // console.log(createArgs);
-                    expect(createArgs)
-                        .contains("create")
-                        .contains("--mount", cfg.workspaceMount)
-                        ;
-                }
-            }
-            else {throw new Error("Bad workspace");}
 
             // console.log(cfg);
         }
@@ -114,36 +98,168 @@ describe("ContainerConfig tests", () => {
         }
     });
 
-    test("local env interpolation", () => {
+    test("localEnv and var interpolation", () => {
         const procEnv = {
             "PATH": "/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/var/lib/snapd/snap/bin",
             "TERM": "xterm-256color",
             "SHELL": "/bin/bash",
         };
 
+        const localWsp = getWorkspaceFolder();
+        const localWspBase = path.parse(getWorkspaceFolder()).base;
+        const remoteWsp = "/workspace/dir";
+        const remoteWspBase = path.parse("/workspace/dir").base;
+
         {
             const tests = [
-                { test: "/workspace/bin:${localEnv:PATH}", result: `/workspace/bin:${procEnv.PATH}` },
-                { test: "${localEnv:PATH}:/workspace/bin:${localEnv:PATH}", result: `${procEnv.PATH}:/workspace/bin:${procEnv.PATH}` },
-                { test: "/workspace/bin:${localEnv:MYPATH:/usr/bin:/opt/app}", result: `/workspace/bin:/usr/bin:/opt/app` },
-                { test: "/workspace/bin:${localEnv:MYPATH:/usr/bin:/opt/app}:${localEnv:PATH}", result: `/workspace/bin:/usr/bin:/opt/app:${procEnv.PATH}` },
-                { test: "${localEnv:SHELL:/bin/sh}", result: "/bin/bash" },
-                { test: "${localEnv:MYSHELL:/bin/sh}", result: "/bin/sh" },
+                { test: `\${containerWorkspaceFolder}:\${localEnv:PATH}`, result: `${remoteWsp}:${procEnv.PATH}` },
+                { test: `\${localWorkspaceFolder}:\${localEnv:PATH}:\${containerWorkspaceFolder}:\${localEnv:PATH}`, result: `${localWsp}:${procEnv.PATH}\:${remoteWsp}:${procEnv.PATH}` },
+                { test: `\${localWorkspaceFolder}:\${containerWorkspaceFolder}:\${localEnv:MYPATH:/usr/bin:/opt/app}`, result: `${localWsp}:${remoteWsp}:/usr/bin:/opt/app` },
+                { test: `\${localWorkspaceFolder}:\${containerWorkspaceFolder}:\${localEnv:MYPATH:/usr/bin:/opt/app}:\${localEnv:PATH}`, result: `${localWsp}:${remoteWsp}:/usr/bin:/opt/app:${procEnv.PATH}` },
+                { test: `\${localEnv:SHELL:/bin/sh}`, result: "/bin/bash" },
+                { test: `\${localEnv:MYSHELL:/bin/sh}`, result: "/bin/sh" },
+                {
+                    test: `\${localEnv:SHELL:/bin/sh}:\${localEnv:MYSHELL:/bin/fish}:\${localWorkspaceFolder}:\${localWorkspaceFolderBasename}:\${containerWorkspaceFolder}:\${containerWorkspaceFolderBasename}`,
+                    result: `/bin/bash:/bin/fish:${localWsp}:${localWspBase}:${remoteWsp}:${remoteWspBase}`
+                },
             ];
 
             for (const test of tests) {
-                expect(interpolateLocalEnv(test.test, procEnv)).eq(test.result);
+                expect(interpolateLocal(test.test, localWsp, remoteWsp, procEnv)).eq(test.result);
             }
         }
     });
 
-    test("remote env interpolation", () => {
-        // TODO
+    test("localEnv, containerEnv, and var interpolation", () => {
+
+        const localEnv = {
+            "PATH": "/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/var/lib/snapd/snap/bin",
+            "TERM": "xterm-256color",
+            "SHELL": "/bin/bash",
+            "HOME": "/home/username",
+            "LOC": "LOCAL",
+        };
+        const containerEnv = {
+            "PATH": "/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin",
+            "TERM": "xterm-256color",
+            "SHELL": "/bin/zsh",
+            "HOME": "/home/root",
+            "LOC": "REMOTE",
+        };
+
+        const remoteWsp = "/workdir/dir";
+        const remoteWspBase = "dir";
+        const localWsp = getWorkspaceFolder();
+        const localWspBase = path.parse(getWorkspaceFolder()).base;
+
+        {
+            const tests = [
+                {
+                    test: "${localEnv:LOC}:${containerEnv:LOC}:${containerWorkspaceFolder}:${localEnv:PATH}",
+                    result: `LOCAL:REMOTE:/workdir/dir:${localEnv.PATH}`
+                },
+                {
+                    test: "${localEnv:LOC}:${containerEnv:LOC}:${localEnv:PATH}:${containerEnv:PATH}",
+                    result: `${localEnv.LOC}:${containerEnv.LOC}:${localEnv.PATH}:${containerEnv.PATH}`
+                },
+                {
+                    test: "${localEnv:LOC}:${containerEnv:LOC}${localWorkspaceFolder}:${containerWorkspaceFolder}:${localWorkspaceFolderBasename}:${containerWorkspaceFolderBasename}",
+                    result: `${localEnv.LOC}:${containerEnv.LOC}${localWsp}:${remoteWsp}:${localWspBase}:${remoteWspBase}`,
+                },
+                {
+                    test: `\${containerEnv:SHELL:/bin/sh}:\${containerEnv:MYSHELL:/bin/fish}:\${localEnv:SHELL:/bin/sh}:\${localEnv:MYSHELL:/bin/myfish}:\${localWorkspaceFolder}:\${localWorkspaceFolderBasename}:\${containerWorkspaceFolder}:\${containerWorkspaceFolderBasename}`,
+                    result: `/bin/zsh:/bin/fish:/bin/bash:/bin/myfish:${localWsp}:${localWspBase}:${remoteWsp}:${remoteWspBase}`
+                },
+            ];
+
+            for (const test of tests) {
+                expect(interpolateContainer(test.test, localWsp, remoteWsp, localEnv, containerEnv)).eq(test.result);
+            }
+        }
     });
 
-    test("mixed local env and variable interpolation", () => {
-        // TODO
+    const localEnv = {
+        "APP_PORT": "5040",
+        "HOME": "/foo/bar"
+    } as NodeJS.ProcessEnv;
+
+    const containerEnv = {
+
+    } as NodeJS.ProcessEnv;
+
+    const common = {
+        name: "foobar",
+        containerUser: "foo",
+        appPort: [100, "123:456", "${localEnv:APP_PORT:4040}:${localEnv:FOO_PORT:5012}"],
+        mounts: [
+            { source: "${localWorkspaceFolder}", target: "${localEnv:HOME:/home/root}/projects/${localWorkspaceFolderBasename}" }
+        ],
+        workspaceMount: 'source=${localWorkspaceFolder}/sub-folder,target=/workspace/dir,type=bind,consistency=cached',
+        containerEnv: { "MY_ENV1": "MY_VAL1=${localEnv:HOME}", "HOME": "${localEnv:HOME}" },
+        runArgs: ["--device", "/dev/kfd", "--pid", "host"],
+        capAdd: ["CAP_BPF", "CAP_CHOWN"],
+        securityOpt: ["seccomp=unconfined", "no-new-privileges=true"],
+    };
+
+    const imgCfg: schema.ImageDevcontainer = {
+        ...common,
+        image: "ubuntu:24.04",
+    };
+
+    const dockerfileCfg: schema.DockerfileDevcontainer = {
+        ...common,
+        build: {
+            dockerfile: "dockerfile",
+            context: "${localWorkspaceFolder}",
+            args: { "ARG1": "VAL1", "ARG2": "${localWorkspaceFolderBasename}", "HOMEDIR": "${localWorkspaceFolder}" },
+        }
+    }
+
+    const localWsp = getWorkspaceFolder();
+    const localWspBase = path.parse(getWorkspaceFolder()).base;
+    const remoteWsp = "/workspace/dir";
+    const remoteWspBase = path.parse("/workspace/dir").base;
+
+    test("create container cmd", () => {
+        const cc = ContainerConfig.create(imgCfg, localWsp, localEnv, true);
+        expect(cc.isImageBased()).toBe(true);
+        expect(cc.isDockerfileBased()).toBe(false);
+
+        if (cc.isImageBased()) {
+            const createArgs = cc.getCreateCmd(imgCfg.image).join(" ");
+            // console.log(createArgs);
+            expect(createArgs)
+                .includes("create ")
+                .includes("-u foo:foo ")
+                .includes("-p 100 -p 123:456 -p 5040:5012 ")
+                .includes(`-v ${localWsp}:${localEnv.HOME}/projects/${localWspBase} `)
+                .includes("--mount source=/tmp/dir/sub-folder,target=/workspace/dir,type=bind,consistency=cached ")
+                .includes("--env MY_ENV1=MY_VAL1=/foo/bar --env HOME=/foo/bar ")
+                .includes("--device /dev/kfd --pid host ")
+                .includes("--cap-add CAP_BPF --cap-add CAP_CHOWN ")
+                .includes("--security-opt seccomp=unconfined --security-opt no-new-privileges=true ")
+                ;
+        }
     });
 
+    test("build image cmd", () => {
+        const cc = ContainerConfig.create(dockerfileCfg, localWsp, localEnv, true);
+        expect(cc.isImageBased()).toBe(false);
+        expect(cc.isDockerfileBased()).toBe(true);
 
+        if (cc.isDockerfileBased()) {
+            const buildArgs = cc.getBuildCmd().join(" ");
+            console.log(buildArgs);
+            expect(buildArgs)
+                .includes("build ")
+                .includes(`--build-arg ARG1=VAL1 --build-arg ARG2=${localWspBase} --build-arg HOMEDIR=${localWsp}`)
+                .includes("-f dockerfile")
+                .includes(localWsp)
+                ;
+        }
+    });
+
+    test("exec in container args", () => {
+
+    });
 });

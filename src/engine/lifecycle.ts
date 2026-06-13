@@ -42,7 +42,7 @@ export async function createContainer(config: schema.Config, workspaceFolder: st
     }
     const imageHash = imageRes.stdout.trim();
 
-    const startRes = await run([...settings.getEngineCmd(), ...cc.getCreateArgs(imageName)], {});
+    const startRes = await run([...settings.getEngineCmd(), ...cc.getCreateCmd(imageName)], {});
     let containerId: string | undefined = undefined;
 
     if (startRes.exit !== 0) {

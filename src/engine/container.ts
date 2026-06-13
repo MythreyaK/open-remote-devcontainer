@@ -14,19 +14,20 @@ function ensure(func: (() => boolean), msg: string) {
 export class ContainerConfig<T extends schema.Config = schema.Config> {
     public readonly cfg: T;
     public readonly workspacePath: string;
+    private readonly localEnv: NodeJS.ProcessEnv;
 
-    private constructor(cfg: T, workspacePath: string) {
+    private constructor(cfg: T, workspacePath: string, localEnv: NodeJS.ProcessEnv) {
         this.cfg = cfg;
         this.workspacePath = path.resolve(workspacePath);
-
+        this.localEnv = localEnv
         // normalize mount
     }
 
-    static create<T extends schema.Config>(cfg: T, workspacePath: string, skipValidation: boolean = false): ContainerConfig<T> {
+    static create<T extends schema.Config>(cfg: T, workspacePath: string, localEnv: NodeJS.ProcessEnv = process.env, skipValidation: boolean = false): ContainerConfig<T> {
         if (!skipValidation && !this.validate(cfg, workspacePath)) {
             throw new ConfigError("Invalid config");
         }
-        return new ContainerConfig(cfg, workspacePath);
+        return new ContainerConfig(cfg, workspacePath, localEnv);
     }
 
     static validate(cfg: schema.Config, workspacePath: string) {
@@ -59,10 +60,11 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             ...(this.cfg.build.target ? ["--target", this.cfg.build.target] : []),
             ...(this.cfg.build.options ? this.cfg.build.options : []),
             this.cfg.build.context ?? this.workspacePath,
-        ];
+        ].filter(Boolean)
+        .map(e => interpolateLocal(e, this.workspacePath, this.getRemoteMountDir(), this.localEnv));
     }
 
-    public getCreateArgs(imageName: string): string[] {
+    public getCreateCmd(imageName: string): string[] {
         return [
             "create",
             ...this.addContainerUser(),
@@ -76,7 +78,9 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             this.cfg.privileged ? "--privileged" : "",
             this.cfg.init ? "--init" : "",
             imageName,
-        ].filter(Boolean);
+            //
+        ].filter(Boolean)
+        .map(e => interpolateLocal(e, this.workspacePath, this.getRemoteMountDir(), this.localEnv));
     }
 
     public getImageName(this: ContainerConfig<schema.DockerfileDevcontainer>): string {
@@ -160,7 +164,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         else { return []; }
     }
 
-    private getRemoteMountDir(): string {
+    public getRemoteMountDir(): string {
         if (this.cfg.workspaceMount) {
             return schema.extractWorkspaceMount(this.cfg.workspaceMount)[0];
         }
@@ -266,6 +270,18 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     }
 }
 
+export function interpolateLocal(val: string, localWorkspace: string, remoteWorkspace: string, localEnv: NodeJS.ProcessEnv) {
+    const varsRemoved = interpolateVars(val, localWorkspace, remoteWorkspace);
+    return interpolateEnv(varsRemoved, localEnv, 'localEnv');
+}
+
+export function interpolateContainer(val: string, localWorkspace: string, remoteWorkspace: string, localEnv: NodeJS.ProcessEnv, remoteEnv: NodeJS.ProcessEnv) {
+    const varsRemoved = interpolateVars(val, localWorkspace, remoteWorkspace);
+    const localEnvRemoved = interpolateEnv(varsRemoved, localEnv, 'localEnv');
+    const remoteEnvRemoved = interpolateEnv(localEnvRemoved, remoteEnv, 'containerEnv');
+    return remoteEnvRemoved;
+}
+
 export function interpolateVars(val: string, localWorkspace: string, remoteWorkspace: string) {
     const localWorkspaceBasename = path.parse(localWorkspace).base;
     const remoteWorkspaceBasename = path.parse(remoteWorkspace).base;
@@ -279,8 +295,9 @@ export function interpolateVars(val: string, localWorkspace: string, remoteWorks
 
 }
 
-export function interpolateLocalEnv(envStr: string, procEnv: NodeJS.ProcessEnv) {
-    const matches = Array.from(envStr.matchAll(/\${localEnv:([^}]+)}/g));
+export function interpolateEnv(envStr: string, procEnv: NodeJS.ProcessEnv, envHook: string) {
+    const regExp = new RegExp(`\\$\{${envHook}:([^}]+)}`, 'g');
+    const matches = Array.from(envStr.matchAll(regExp));
 
     let ret = envStr;
     for (const match of matches) {
@@ -295,8 +312,4 @@ export function interpolateLocalEnv(envStr: string, procEnv: NodeJS.ProcessEnv) 
         }
     }
     return ret;
-}
-
-export function interpolateRemoteEnv(value: string, env: Record<string, string>) {
-
 }
