@@ -303,8 +303,8 @@ export function interpolateEnv(envStr: string, procEnv: NodeJS.ProcessEnv, envHo
     for (const match of matches) {
         const [varName, defaultValue, ...rest] = match[1].split(":");
 
-        if (procEnv[varName]) {
-            ret = ret.replaceAll(match[0], procEnv[varName]);
+        if (varName in procEnv) {
+            ret = ret.replaceAll(match[0], procEnv[varName] ?? "");
         }
         else {
             const varValue = [defaultValue, ...rest].join(":");

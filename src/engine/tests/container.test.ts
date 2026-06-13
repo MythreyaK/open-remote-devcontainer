@@ -103,6 +103,7 @@ describe("ContainerConfig tests", () => {
             "PATH": "/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/var/lib/snapd/snap/bin",
             "TERM": "xterm-256color",
             "SHELL": "/bin/bash",
+            "EMPTY": "",
         };
 
         const localWsp = getWorkspaceFolder();
@@ -113,11 +114,15 @@ describe("ContainerConfig tests", () => {
         {
             const tests = [
                 { test: `\${containerWorkspaceFolder}:\${localEnv:PATH}`, result: `${remoteWsp}:${procEnv.PATH}` },
-                { test: `\${localWorkspaceFolder}:\${localEnv:PATH}:\${containerWorkspaceFolder}:\${localEnv:PATH}`, result: `${localWsp}:${procEnv.PATH}\:${remoteWsp}:${procEnv.PATH}` },
+                { test: `\${localWorkspaceFolder}:\${localEnv:PATH}:\${containerWorkspaceFolder}:\${localEnv:PATH}`, result: `${localWsp}:${procEnv.PATH}:${remoteWsp}:${procEnv.PATH}` },
                 { test: `\${localWorkspaceFolder}:\${containerWorkspaceFolder}:\${localEnv:MYPATH:/usr/bin:/opt/app}`, result: `${localWsp}:${remoteWsp}:/usr/bin:/opt/app` },
                 { test: `\${localWorkspaceFolder}:\${containerWorkspaceFolder}:\${localEnv:MYPATH:/usr/bin:/opt/app}:\${localEnv:PATH}`, result: `${localWsp}:${remoteWsp}:/usr/bin:/opt/app:${procEnv.PATH}` },
                 { test: `\${localEnv:SHELL:/bin/sh}`, result: "/bin/bash" },
                 { test: `\${localEnv:MYSHELL:/bin/sh}`, result: "/bin/sh" },
+                { test: `\${localEnv:EMPTY}`, result: "" },
+                { test: `\${localEnv:EMPTY:empty}`, result: "" },
+                { test: `\${localEnv:HUMPTY:}`, result: "" },
+                { test: `\${localEnv:HUMPTY:dumpty}`, result: "dumpty" },
                 {
                     test: `\${localEnv:SHELL:/bin/sh}:\${localEnv:MYSHELL:/bin/fish}:\${localWorkspaceFolder}:\${localWorkspaceFolderBasename}:\${containerWorkspaceFolder}:\${containerWorkspaceFolderBasename}`,
                     result: `/bin/bash:/bin/fish:${localWsp}:${localWspBase}:${remoteWsp}:${remoteWspBase}`
@@ -138,6 +143,7 @@ describe("ContainerConfig tests", () => {
             "SHELL": "/bin/bash",
             "HOME": "/home/username",
             "LOC": "LOCAL",
+            "EMPTY": "",
         };
         const containerEnv = {
             "PATH": "/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin",
@@ -145,6 +151,7 @@ describe("ContainerConfig tests", () => {
             "SHELL": "/bin/zsh",
             "HOME": "/home/root",
             "LOC": "REMOTE",
+            "EMPTY": "",
         };
 
         const remoteWsp = "/workdir/dir";
@@ -170,6 +177,14 @@ describe("ContainerConfig tests", () => {
                     test: `\${containerEnv:SHELL:/bin/sh}:\${containerEnv:MYSHELL:/bin/fish}:\${localEnv:SHELL:/bin/sh}:\${localEnv:MYSHELL:/bin/myfish}:\${localWorkspaceFolder}:\${localWorkspaceFolderBasename}:\${containerWorkspaceFolder}:\${containerWorkspaceFolderBasename}`,
                     result: `/bin/zsh:/bin/fish:/bin/bash:/bin/myfish:${localWsp}:${localWspBase}:${remoteWsp}:${remoteWspBase}`
                 },
+                { test: `\${localEnv:EMPTY}`, result: "" },
+                { test: `\${localEnv:EMPTY:empty}`, result: "" },
+                { test: `\${localEnv:HUMPTY:}`, result: "" },
+                { test: `\${localEnv:HUMPTY:dumpty}`, result: "dumpty" },
+                { test: `\${containerEnv:EMPTY}`, result: "" },
+                { test: `\${containerEnv:EMPTY:empty}`, result: "" },
+                { test: `\${containerEnv:HUMPTY:}`, result: "" },
+                { test: `\${containerEnv:HUMPTY:dumpty}`, result: "dumpty" },
             ];
 
             for (const test of tests) {

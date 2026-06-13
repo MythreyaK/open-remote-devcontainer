@@ -9,15 +9,6 @@ export interface CmdResult {
     stderr: string,
 };
 
-export class CmdError extends Error {
-    constructor(
-        public readonly exit: number | NodeJS.Signals,
-        public readonly stdout: string,
-        public readonly stderr: string,
-    ) {
-        super(`exit ${exit.toString()}: ${stderr.slice(0, 200)}`);
-    }
-}
 
 let cmdCount: number = 1;
 
@@ -88,11 +79,11 @@ export function spawn(
                 stderr: stderr,
             };
 
-            log.error(`${cmdStr()} Command failed with {code / signal ${res.exit}}`);
-
-            if ((code !== null && code !== 0) || (signal)) {
-                // TODO: reject?
-                return resolve(new CmdError(code ?? (signal ?? 256), stdout, stderr));
+            if (code !== 0) {
+                log.error(`${cmdStr()} Command failed with {code / signal ${res.exit}}`);
+            }
+            else {
+                log.info(`${cmdStr()} command exit: ${res.exit}`);
             }
 
             return resolve(res);

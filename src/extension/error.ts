@@ -5,8 +5,8 @@ export class ParseError extends Error {
     constructor(
         public readonly reason: string
     ) {
-        getLogSink().error(reason);
         super(reason);
+        getLogSink().error(reason);
     }
 };
 
@@ -15,8 +15,8 @@ export class ConfigError extends Error {
     constructor(
         public readonly reason: string
     ) {
-        getLogSink().error(reason);
         super(reason);
+        getLogSink().error(reason);
     }
 }
 
@@ -24,8 +24,8 @@ export class SpawnError extends Error {
     constructor(
         public readonly reason: string
     ) {
-        getLogSink().error(reason);
         super(reason);
+        getLogSink().error(reason);
     }
 }
 
@@ -34,8 +34,8 @@ export class EngineError extends Error {
     constructor(
         public readonly reason: string
     ) {
-        getLogSink().error(reason);
         super(reason);
+        getLogSink().error(reason);
     }
 }
 
@@ -44,8 +44,8 @@ export class InternalError extends Error {
     constructor(
         public readonly reason: string
     ) {
-        getLogSink().error(reason);
         super(reason);
+        getLogSink().error(reason);
     }
 }
 
