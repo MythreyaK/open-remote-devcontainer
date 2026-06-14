@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { InternalError } from './error';
+import * as crypto from 'node:crypto';
 
 export function getActiveWorkspace(): string {
     const workspaces = vscode.workspace.workspaceFolders;
@@ -10,4 +11,12 @@ export function getActiveWorkspace(): string {
     }
 
     return workspaces[0].uri.fsPath;
+}
+
+export function getWorkspaceId(): string {
+    return crypto
+        .createHash('sha256')
+        .update(getActiveWorkspace())
+        .digest('hex')
+        .slice(16);
 }

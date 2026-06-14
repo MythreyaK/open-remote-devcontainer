@@ -40,6 +40,16 @@ export class EngineError extends Error {
 }
 
 // better name?
+export class InstallError extends Error {
+    constructor(
+        public readonly reason: string
+    ) {
+        super(reason);
+        getLogSink().error(reason);
+    }
+}
+
+// better name?
 export class InternalError extends Error {
     constructor(
         public readonly reason: string

@@ -24,3 +24,7 @@ export function getEngineCmd(): string[] {
 function getExtraArgs(): string[] {
     return (getConfig<string[]>("extraArgs") ??  []);
 }
+
+export function getExtensionList(): string[] {
+    return (getConfig<string[]>("defaultExtensions") ??  []);
+}
