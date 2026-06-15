@@ -65,6 +65,9 @@ describe("integration: lifecycle: img-basic", () => {
             console.log(`Stopping and removing container ${containerId}`);
             const proc1 = await runCmd(getEngine(), ["container", "stop", containerId], {});
             const proc2 = await runCmd(getEngine(), ["container", "rm", containerId], {});
+
+            expect(proc1.exit).eq(0);
+            expect(proc2.exit).eq(0);
         }
         else {
             throw new Error("Container ID after test was undefined. Expected a value");

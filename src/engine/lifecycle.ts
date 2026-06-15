@@ -85,7 +85,7 @@ export class ContainerState {
 
         if (startRes.exit !== 0) {
             throw new EngineError(
-                `${settings.getContainerEngine()} Image '${imageName}' does not exist:\n`
+                `Failed to start ${this.containerId}:\n`
                 + `stdout: ${startRes.stdout}\n`
                 + `stderr: ${startRes.stderr}\n`
             );
@@ -102,6 +102,7 @@ export class ContainerState {
     }
 
     public async getContainerEnv(): Promise<Record<string, string>> {
+        // TODO: tty might cause issues?
         const out = await run(
             [
                 ...settings.getEngineCmd(),
@@ -143,8 +144,8 @@ export class ContainerState {
         const prodJson = await (async () => {
             const pj = await server.getProductJson();
             pj.serverUrlTemplate = pj.serverUrlTemplate
-                .replace("os", "CODIUM_OS_PLATFORM")
-                .replace("arch", "CODIUM_ARCH");
+                .replace("${os}", "${CODIUM_OS_PLATFORM}")
+                .replace("${arch}", "${CODIUM_ARCH}");
             return pj;
         })();
 
