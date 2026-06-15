@@ -1,5 +1,4 @@
 import * as schema from '../parser/schema';
-import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 
@@ -11,6 +10,11 @@ function ensure(func: (() => boolean), msg: string) {
     if (!func()) { throw new ConfigError(`Invalid config: ${msg}`); };
 }
 
+export interface ExecOpts {
+    tty?: boolean,
+    withRemoteEnv?: boolean,
+};
+
 export class ContainerConfig<T extends schema.Config = schema.Config> {
     public readonly cfg: T;
     public readonly workspacePath: string;
@@ -19,27 +23,12 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     private constructor(cfg: T, workspacePath: string, localEnv: NodeJS.ProcessEnv) {
         this.cfg = cfg;
         this.workspacePath = path.resolve(workspacePath);
-        this.localEnv = localEnv
+        this.localEnv = localEnv;
         // normalize mount
     }
 
-    static create<T extends schema.Config>(cfg: T, workspacePath: string, localEnv: NodeJS.ProcessEnv = process.env, skipValidation: boolean = false): ContainerConfig<T> {
-        if (!skipValidation && !this.validate(cfg, workspacePath)) {
-            throw new ConfigError("Invalid config");
-        }
+    static create<T extends schema.Config>(workspacePath: string, cfg: T, localEnv: NodeJS.ProcessEnv = process.env): ContainerConfig<T> {
         return new ContainerConfig(cfg, workspacePath, localEnv);
-    }
-
-    static validate(cfg: schema.Config, workspacePath: string) {
-        // TODO: validation?
-        ensure(() => { return existsSync(workspacePath); },
-            `Invalid workspace folder '${workspacePath}'`);
-
-        // const mounts = this.getWorkspaceMount();
-        // ensure(() => {
-        //     return existsSync(path.resolve(mounts.source));
-        // }, `Invalid mount source '${mounts.source}'`);
-        return true;
     }
 
     public isImageBased(): this is ContainerConfig<schema.ImageDevcontainer> {
@@ -61,12 +50,14 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             ...(this.cfg.build.options ? this.cfg.build.options : []),
             this.cfg.build.context ?? this.workspacePath,
         ].filter(Boolean)
-        .map(e => interpolateLocal(e, this.workspacePath, this.getRemoteMountDir(), this.localEnv));
+            .map(e => interpolateLocal(e, this.workspacePath, this.getRemoteMountDir(), this.localEnv));
     }
 
-    public getCreateCmd(imageName: string): string[] {
+    public getRunCreateCmd(imageName: string): string[] {
+        // TODO: handle overrideCmd
         return [
-            "create",
+            "run",
+            "-d",
             ...this.addContainerUser(),
             ...this.addAppPorts(),
             ...this.addMounts(),
@@ -77,10 +68,14 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             ...this.addSecurityOpts(),
             this.cfg.privileged ? "--privileged" : "",
             this.cfg.init ? "--init" : "",
+            "--entrypoint",
+            this.getShell(),
             imageName,
             //
+            "-c",
+            "trap \"echo Got signal, exiting...; exit 0\" SIGINT SIGTERM; while sleep 60 & wait $! ; do : ; done"
         ].filter(Boolean)
-        .map(e => interpolateLocal(e, this.workspacePath, this.getRemoteMountDir(), this.localEnv));
+            .map(e => interpolateLocal(e, this.workspacePath, this.getRemoteMountDir(), this.localEnv));
     }
 
     public getImageName(this: ContainerConfig<schema.DockerfileDevcontainer>): string {
@@ -96,21 +91,24 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         return `codium-devcontainer-${idHash}`;
     }
 
-    public getExecArgs(): string[] {
+    public getExecArgs(containerId: string, containerEnvs: NodeJS.ProcessEnv, opts: ExecOpts = { tty: false, withRemoteEnv: true }): string[] {
         return [
+            "exec",
             ...this.addRemoteUser(),
-            ...this.addRemoteEnv(),
-        ];
+            ...(opts.withRemoteEnv ? this.addRemoteEnv(containerEnvs) : []),
+            (opts.tty? "-t" : ""),
+            containerId,
+        ].filter(Boolean);
     }
 
     public getUserEnvProbeArgs(): string[] {
         switch (this.cfg.userEnvProbe) {
-            case 'none': return [];
+            case 'none': return [this.getShell()];
             case 'loginShell': return [this.getShell(), "-l"];
             case 'interactiveShell': return [this.getShell(), "-i"];
             case 'loginInteractiveShell': return [this.getShell(), "-il"];
         }
-        return [];
+        return [this.getShell(), "-il"];
     }
 
     private getBuildArgs(this: ContainerConfig<schema.DockerfileDevcontainer>): string[] {
@@ -209,7 +207,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         return ret;
     }
 
-    private addRemoteEnv(): string[] {
+    private addRemoteEnv(containerEnvsProbe: NodeJS.ProcessEnv): string[] {
         const ret: string[] = [];
 
         for (const [k, v] of Object.entries(this.cfg.remoteEnv ?? {})) {
@@ -218,7 +216,8 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
                 /* ret.push("--env", k); */
             }
             else {
-                ret.push("--env", `${k}=${v}`);
+                const resolvedVal = interpolateContainer(v, this.workspacePath, this.getRemoteMountDir(), process.env, containerEnvsProbe);
+                ret.push("--env", `${k}=${resolvedVal}`);
             }
         }
         return ret;

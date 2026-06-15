@@ -6,13 +6,8 @@ import { z } from 'zod/mini';
 import { ContainerConfig, interpolateVars, interpolateLocal, interpolateContainer } from '../container';
 import * as schema from '../../parser/schema';
 import { initLog } from '../../extension/log';
+import { getActiveWorkspace } from '../../extension/workspace';
 
-function getWorkspaceFolder() {
-    if (!workspace.workspaceFolders) { throw new Error("Workspace not set up"); }
-    else {
-        return workspace.workspaceFolders[0].uri.fsPath;
-    }
-}
 
 describe("ContainerConfig tests", () => {
     (workspace as any).setWorkspaceFolders([
@@ -35,15 +30,16 @@ describe("ContainerConfig tests", () => {
                 image: "ubuntu:24.04",
             };
 
-            const cc = ContainerConfig.create(cfg, getWorkspaceFolder(), {}, true);
+            const cc = ContainerConfig.create(getActiveWorkspace(), cfg, {});
             expect(cc.isImageBased()).toBe(true);
 
             if (cc.isImageBased()) {
-                const createArgs = cc.getCreateCmd(cfg.image);
+                const createArgs = cc.getRunCreateCmd(cfg.image);
 
                 expect(cc.getRemoteMountDir()).eq("/workspace/dir");
+                expect(createArgs[0]).eq("run");
+                expect(createArgs[1]).eq("-d");
                 expect(createArgs)
-                    .contains("create")
                     .contains("/tmp/dir:/workspace/dir")
                     ;
             }
@@ -61,17 +57,18 @@ describe("ContainerConfig tests", () => {
                 workspaceMount: 'source=${localWorkspaceFolder}/sub-folder,target=/workspace/dir,type=bind,consistency=cached'
             };
 
-            const cc = ContainerConfig.create(cfg, getWorkspaceFolder(), {}, true);
+            const cc = ContainerConfig.create(getActiveWorkspace(), cfg, {});
             expect(cc.isImageBased()).toBe(true);
 
             if (cc.isImageBased()) {
-                const createArgs = cc.getCreateCmd(cfg.image);
+                const createArgs = cc.getRunCreateCmd(cfg.image);
                 // console.log(createArgs);
 
                 expect(cc.getRemoteMountDir()).eq("/workspace/dir");
+                expect(createArgs[0]).eq("run");
+                expect(createArgs[1]).eq("-d");
                 expect(createArgs)
-                    .contains("create")
-                    .contains(`${cfg.workspaceMount?.replace("${localWorkspaceFolder}", getWorkspaceFolder())}`)
+                    .contains(`${cfg.workspaceMount?.replace("${localWorkspaceFolder}", getActiveWorkspace())}`)
                     .not.contains("${localWorkspaceFolder}")
                     ;
             }
@@ -106,8 +103,8 @@ describe("ContainerConfig tests", () => {
             "EMPTY": "",
         };
 
-        const localWsp = getWorkspaceFolder();
-        const localWspBase = path.parse(getWorkspaceFolder()).base;
+        const localWsp = getActiveWorkspace();
+        const localWspBase = path.parse(getActiveWorkspace()).base;
         const remoteWsp = "/workspace/dir";
         const remoteWspBase = path.parse("/workspace/dir").base;
 
@@ -156,8 +153,8 @@ describe("ContainerConfig tests", () => {
 
         const remoteWsp = "/workdir/dir";
         const remoteWspBase = "dir";
-        const localWsp = getWorkspaceFolder();
-        const localWspBase = path.parse(getWorkspaceFolder()).base;
+        const localWsp = getActiveWorkspace();
+        const localWspBase = path.parse(getActiveWorkspace()).base;
 
         {
             const tests = [
@@ -202,12 +199,12 @@ describe("ContainerConfig tests", () => {
 
     } as NodeJS.ProcessEnv;
 
-    const common = {
+    const common: schema.DevcontainerCommon = {
         name: "foobar",
         containerUser: "foo",
         appPort: [100, "123:456", "${localEnv:APP_PORT:4040}:${localEnv:FOO_PORT:5012}"],
         mounts: [
-            { source: "${localWorkspaceFolder}", target: "${localEnv:HOME:/home/root}/projects/${localWorkspaceFolderBasename}" }
+            { type: "bind", source: "${localWorkspaceFolder}", target: "${localEnv:HOME:/home/root}/projects/${localWorkspaceFolderBasename}" }
         ],
         workspaceMount: 'source=${localWorkspaceFolder}/sub-folder,target=/workspace/dir,type=bind,consistency=cached',
         containerEnv: { "MY_ENV1": "MY_VAL1=${localEnv:HOME}", "HOME": "${localEnv:HOME}" },
@@ -228,23 +225,22 @@ describe("ContainerConfig tests", () => {
             context: "${localWorkspaceFolder}",
             args: { "ARG1": "VAL1", "ARG2": "${localWorkspaceFolderBasename}", "HOMEDIR": "${localWorkspaceFolder}" },
         }
-    }
+    };
 
-    const localWsp = getWorkspaceFolder();
-    const localWspBase = path.parse(getWorkspaceFolder()).base;
+    const localWsp = getActiveWorkspace();
+    const localWspBase = path.parse(getActiveWorkspace()).base;
     const remoteWsp = "/workspace/dir";
     const remoteWspBase = path.parse("/workspace/dir").base;
 
     test("create container cmd", () => {
-        const cc = ContainerConfig.create(imgCfg, localWsp, localEnv, true);
+        const cc = ContainerConfig.create(localWsp, imgCfg, localEnv);
         expect(cc.isImageBased()).toBe(true);
         expect(cc.isDockerfileBased()).toBe(false);
 
         if (cc.isImageBased()) {
-            const createArgs = cc.getCreateCmd(imgCfg.image).join(" ");
-            // console.log(createArgs);
+            const createArgs = cc.getRunCreateCmd(imgCfg.image).join(" ");
             expect(createArgs)
-                .includes("create ")
+                .includes("run -d ")
                 .includes("-u foo:foo ")
                 .includes("-p 100 -p 123:456 -p 5040:5012 ")
                 .includes(`-v ${localWsp}:${localEnv.HOME}/projects/${localWspBase} `)
@@ -258,13 +254,12 @@ describe("ContainerConfig tests", () => {
     });
 
     test("build image cmd", () => {
-        const cc = ContainerConfig.create(dockerfileCfg, localWsp, localEnv, true);
+        const cc = ContainerConfig.create(localWsp, dockerfileCfg, localEnv);
         expect(cc.isImageBased()).toBe(false);
         expect(cc.isDockerfileBased()).toBe(true);
 
         if (cc.isDockerfileBased()) {
             const buildArgs = cc.getBuildCmd().join(" ");
-            console.log(buildArgs);
             expect(buildArgs)
                 .includes("build ")
                 .includes(`--build-arg ARG1=VAL1 --build-arg ARG2=${localWspBase} --build-arg HOMEDIR=${localWsp}`)

@@ -1,0 +1,17 @@
+{
+    "image": "ubuntu:24.04",
+    "containerEnv": {
+        "LOCAL_WSF": "${localWorkspaceFolder}",
+        "REMOTE_WSF": "${containerWorkspaceFolder}",
+        "CONTAINER_ENV1": "CONTAINER_VAL1",
+        "CONTAINER_ENV2": "CONTAINER_VAL2"
+    },
+    "remoteEnv": {
+        "INTERPOLATE_ALL": "${containerEnv:CONTAINER_ENV1}:${localEnv:LOCAL_ENV1}",
+        "WITH_DEFAULT": "${containerEnv:NONEXISTENT:fallback}",
+        "LOCAL_DEFAULT": "${localEnv:NONEXISTENT:/usr/bin:/opt}",
+        "APPEND_PATH": "${containerEnv:PATH}:/extra/bin",
+        "EMPTY_DEFAULT": "${localEnv:NONEXISTENT:}",
+        "WORKSPACE_MIX": "${localWorkspaceFolder}:${containerEnv:CONTAINER_ENV2}"
+    }
+}

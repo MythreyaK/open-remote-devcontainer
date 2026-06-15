@@ -66,17 +66,8 @@ export function updateScript(script: string, info: ScriptInstallInfo, debug: boo
 
 export const INSTALL_SCRIPT_LOCATION: string = path.join(__dirname, "installServer.sh");
 
-async function generateInstallScript(info: ScriptInstallInfo, debug: boolean = false) {
+export async function generateInstallScript(info: ScriptInstallInfo, debug: boolean = false) {
     const script = await fs.readFile(INSTALL_SCRIPT_LOCATION, { encoding: 'utf-8' });
-
-    const prodJson = await (async () => {
-        const pj = await getProductJson();
-        pj.serverUrlTemplate = pj.serverUrlTemplate
-            .replace("os", "CODIUM_OS_PLATFORM")
-            .replace("arch", "CODIUM_ARCH");
-        return pj;
-    })();
-
     return updateScript(script, info, debug);
 }
 
