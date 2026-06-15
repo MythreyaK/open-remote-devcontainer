@@ -62,7 +62,7 @@ export const BuildOptions = z.object({
     options: z.optional(z.array(z.string())),
 });
 
-export const NonComposeBase = z.object({
+export const NonComposeBase_z = z.object({
     appPort: z.optional(oneOf([
         minString,
         z.number(),
@@ -123,7 +123,7 @@ export const DockerfileContainer_z = z.pipe(_DockerfileContainer_ZodBase, z.tran
 const _envPairsNullable = z.record(z.string(), z.nullable(z.string()));
 const _envPairs = z.record(z.string(), z.string());
 
-export const DevcontainerCommon = z.object({
+export const DevcontainerCommon_z = z.object({
     name: z.optional(minString),
     // features : Features,
     forwardPorts: z.optional(z.array(_stringOrNumber)),
@@ -149,7 +149,8 @@ export const DevcontainerCommon = z.object({
     userEnvProbe: z.optional(EnvProbe),
 });
 
-export const DevcontainerConfig = allOf(DevcontainerCommon, NonComposeBase);
+export const DevcontainerConfig = allOf(DevcontainerCommon_z, NonComposeBase_z);
+export type DevcontainerCommon = z.infer<typeof DevcontainerConfig>;
 
 const ConfigSchemaBase = allOf(oneOf([ImageContainer_z, DockerfileContainer_z]), DevcontainerConfig);
 export const ConfigSchema = ConfigSchemaBase.check((c) => {
