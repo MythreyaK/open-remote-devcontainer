@@ -18,5 +18,5 @@ export function getWorkspaceId(): string {
         .createHash('sha256')
         .update(getActiveWorkspace())
         .digest('hex')
-        .slice(16);
+        .slice(0, 8);
 }

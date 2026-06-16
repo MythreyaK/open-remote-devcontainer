@@ -11,6 +11,8 @@ import { parseDevcontainerFile } from '../parser/parser';
 import { extractWorkspaceMount } from '../parser/schema';
 import { ContainerConfig } from '../engine/container';
 import { parseEnv } from '../common/utils';
+import * as server from '../remote/installServer';
+import { ServerInfo } from '../remote/installServer';
 
 function getEngine() {
     return "podman";
@@ -41,6 +43,13 @@ const init = () => {
             return config[key];
         }
     } as any);
+
+    const spyProdsJson = vi.spyOn(server, 'getProductJson');
+    spyProdsJson.mockResolvedValue({
+        version: "1.121.03429",
+        commit: "824c4c46a288b839f13b24022655329c2aeb9f81",
+        serverUrlTemplate: "https://github.com/VSCodium/vscodium/releases/download/1.121.03429/vscodium-reh-${os}-${arch}-1.121.03429.tar.gz"
+    } as ServerInfo);
 
     initLog("Remote - Devcontainer (tests)");
 };
@@ -123,5 +132,10 @@ describe("integration: lifecycle: img-basic", () => {
         expect(remoteEnvs.EMPTY_DEFAULT).eq("");
         expect(remoteEnvs.WORKSPACE_MIX).eq(`${getActiveWorkspace()}:${containerEnvs.CONTAINER_ENV2}`);
     });
+
+    test("install script and health-check", async () => {
+        const installResult = await container.installServer();
+        expect(installResult.exit).eq(0);
+    }, 60 * 1000);
 
 });

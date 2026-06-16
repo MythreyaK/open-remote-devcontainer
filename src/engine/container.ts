@@ -53,11 +53,13 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             .map(e => interpolateLocal(e, this.workspacePath, this.getRemoteMountDir(), this.localEnv));
     }
 
-    public getRunCreateCmd(imageName: string): string[] {
+    public getRunCreateCmd(imageName: string, containerName: string): string[] {
         // TODO: handle overrideCmd
         return [
             "run",
             "-d",
+            "--name",
+            containerName,
             ...this.addContainerUser(),
             ...this.addAppPorts(),
             ...this.addMounts(),
@@ -85,7 +87,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             .createHash('sha256')
             .update(this.workspacePath)
             .digest('hex')
-            .slice(16);
+            .slice(0, 8);
 
         getLogSink().info(`Image name from workspace '${this.workspacePath}' : '${idHash}'`);
         return `codium-devcontainer-${idHash}`;
@@ -96,7 +98,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             "exec",
             ...this.addRemoteUser(),
             ...(opts.withRemoteEnv ? this.addRemoteEnv(containerEnvs) : []),
-            (opts.tty? "-t" : ""),
+            (opts.tty ? "-t" : ""),
             containerId,
         ].filter(Boolean);
     }
@@ -207,8 +209,8 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         return ret;
     }
 
-    private addRemoteEnv(containerEnvsProbe: NodeJS.ProcessEnv): string[] {
-        const ret: string[] = [];
+    public getResolvedRemoteEnv(containerEnvsProbe: NodeJS.ProcessEnv): Record<string, string> {
+        const ret: Record<string, string> = {};
 
         for (const [k, v] of Object.entries(this.cfg.remoteEnv ?? {})) {
             if (v === null) {
@@ -216,9 +218,17 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
                 /* ret.push("--env", k); */
             }
             else {
-                const resolvedVal = interpolateContainer(v, this.workspacePath, this.getRemoteMountDir(), process.env, containerEnvsProbe);
-                ret.push("--env", `${k}=${resolvedVal}`);
+                ret[k] = interpolateContainer(v, this.workspacePath, this.getRemoteMountDir(), process.env, containerEnvsProbe);
             }
+        }
+        return ret;
+    }
+
+    private addRemoteEnv(containerEnvsProbe: NodeJS.ProcessEnv): string[] {
+        const ret: string[] = [];
+
+        for (const [k, v] of Object.entries(this.getResolvedRemoteEnv(containerEnvsProbe))) {
+            ret.push("--env", `${k}=${v}`);
         }
         return ret;
     }

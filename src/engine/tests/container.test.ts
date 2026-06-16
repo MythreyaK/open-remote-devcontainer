@@ -34,7 +34,7 @@ describe("ContainerConfig tests", () => {
             expect(cc.isImageBased()).toBe(true);
 
             if (cc.isImageBased()) {
-                const createArgs = cc.getRunCreateCmd(cfg.image);
+                const createArgs = cc.getRunCreateCmd(cfg.image, "foobar");
 
                 expect(cc.getRemoteMountDir()).eq("/workspace/dir");
                 expect(createArgs[0]).eq("run");
@@ -61,7 +61,7 @@ describe("ContainerConfig tests", () => {
             expect(cc.isImageBased()).toBe(true);
 
             if (cc.isImageBased()) {
-                const createArgs = cc.getRunCreateCmd(cfg.image);
+                const createArgs = cc.getRunCreateCmd(cfg.image, "foobar");
                 // console.log(createArgs);
 
                 expect(cc.getRemoteMountDir()).eq("/workspace/dir");
@@ -238,7 +238,7 @@ describe("ContainerConfig tests", () => {
         expect(cc.isDockerfileBased()).toBe(false);
 
         if (cc.isImageBased()) {
-            const createArgs = cc.getRunCreateCmd(imgCfg.image).join(" ");
+            const createArgs = cc.getRunCreateCmd(imgCfg.image, "foobar").join(" ");
             expect(createArgs)
                 .includes("run -d ")
                 .includes("-u foo:foo ")

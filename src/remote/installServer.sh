@@ -128,8 +128,7 @@ function download_server() {
     echo "INSTALL_SCRIPT_INFO: Downloading server from URL ${CODIUM_DOWNLOAD_URL} ..."
 
     # TODO: 10 for now because github downtime
-    if command -v curl &>/dev/null && \
-        curl -fsSL --retry 10 "${CODIUM_DOWNLOAD_URL}" --connect-timeout 10 --max-time ${DOWNLOAD_TIMEOUT} -o /tmp/codium.tar.gz; then
+    if curl -fsSL --retry 10 "${CODIUM_DOWNLOAD_URL}" --connect-timeout 10 --max-time ${DOWNLOAD_TIMEOUT} -o /tmp/codium.tar.gz; then
         return 0;
     fi
 
