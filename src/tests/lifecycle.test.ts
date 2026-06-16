@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { afterAll, describe, expect, test, vi } from 'vitest';
+import { afterAll, describe, expect, expectTypeOf, test, vi } from 'vitest';
 import { Uri, window, workspace } from 'vscode';
 
 import { ContainerState } from '../engine/lifecycle';
@@ -13,6 +13,7 @@ import { ContainerConfig } from '../engine/container';
 import { parseEnv } from '../common/utils';
 import * as server from '../remote/installServer';
 import { ServerInfo } from '../remote/installServer';
+import { setTimeout } from 'node:timers/promises';
 
 function getEngine() {
     return "podman";
@@ -22,6 +23,11 @@ function getcwd() {
     return __dirname;
 }
 
+const TEST_CODIUM_INFO = {
+    version: "1.121.03429",
+    commit: "824c4c46a288b839f13b24022655329c2aeb9f81",
+    serverUrlTemplate: "https://github.com/VSCodium/vscodium/releases/download/1.121.03429/vscodium-reh-${os}-${arch}-1.121.03429.tar.gz"
+} as ServerInfo
 
 const init = () => {
     const spyCreateOutput = vi.spyOn(window, 'createOutputChannel');
@@ -45,11 +51,7 @@ const init = () => {
     } as any);
 
     const spyProdsJson = vi.spyOn(server, 'getProductJson');
-    spyProdsJson.mockResolvedValue({
-        version: "1.121.03429",
-        commit: "824c4c46a288b839f13b24022655329c2aeb9f81",
-        serverUrlTemplate: "https://github.com/VSCodium/vscodium/releases/download/1.121.03429/vscodium-reh-${os}-${arch}-1.121.03429.tar.gz"
-    } as ServerInfo);
+    spyProdsJson.mockResolvedValue(TEST_CODIUM_INFO);
 
     initLog("Remote - Devcontainer (tests)");
 };
@@ -136,6 +138,37 @@ describe("integration: lifecycle: img-basic", () => {
     test("install script and health-check", async () => {
         const installResult = await container.installServer();
         expect(installResult.exit).eq(0);
+
+        const token = await container.getConnectionToken();
+
+        // UUID4
+        expect(token.length).eq(36);
+        expect(token.split('-').length).eq(5); // 5 items from 4 '-'
+
+        let healthVersion: string | undefined;
+
+        await (async () => {
+            for (let retry = 0; retry < 5; ++retry) {
+                try {
+                    const res = await fetch("http://127.0.0.1:65432/version");
+                    if (res.ok) {
+                        healthVersion = await res.text();
+                        break;
+                    }
+                    else {
+                        console.log(`res.ok: ${res.ok}: ${JSON.stringify(res)}`);
+                    }
+                }
+                catch (e) {
+                    console.log(`caught: ${JSON.stringify(e)}`);
+                }
+
+                await setTimeout(1000);
+            }
+        })();
+
+        expect(healthVersion).eq(TEST_CODIUM_INFO.commit);
+
     }, 60 * 1000);
 
 });

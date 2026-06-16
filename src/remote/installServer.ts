@@ -6,6 +6,7 @@ import { runCmd } from '../common/cmd';
 
 export interface ServerInfo {
     version: string,
+    commit: string,
     serverUrlTemplate: string,
 };
 
@@ -48,7 +49,7 @@ export function updateScript(script: string, info: ScriptInstallInfo, debug: boo
         .join(" ");
 
     const remoteEnvs = Object.entries(info.remoteEnvs)
-        .flatMap(([k,v]) => `export ${k}=${v}`)
+        .flatMap(([k, v]) => `export ${k}=${v}`)
         .join(";\n")
         .concat(";\n");
 

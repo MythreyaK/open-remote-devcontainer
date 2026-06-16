@@ -81,6 +81,30 @@ export class ContainerState {
         }
     }
 
+    public async getConnectionToken(): Promise<string> {
+        if (this.checkContainerExists(this.getContainerName()) != undefined) {
+            // TODO: token in tempdir?
+            const token = await run([
+                ...settings.getEngineCmd(),
+                ...this.cc.getExecArgs(this.containerId, this.remoteEnvProbe),
+                'bash',
+                '-c',
+                'cat ${HOME}/.vscode-oss-devcontainer/token',
+            ], {});
+
+            if (token.exit != 0) {
+                // TODO: reinstall server? force-restart with new token?
+                throw new InstallError(`Could not query existing token in container [stdout:${token.stdout}] [stderr:${token.stderr}]`);
+            }
+            this.connectionToken = token.stdout.trim();
+            return this.connectionToken;
+        }
+        else {
+            // use whatever the ctor had ... may need to force-restart server or the container
+            return this.connectionToken;
+        }
+    }
+
     public async createContainer() {
         let imageName: string | undefined;
 
@@ -122,7 +146,7 @@ export class ContainerState {
                 ...this.cc.getRunCreateCmd(
                     imageName,
                     this.getContainerName(),
-                    [ "-p", `${DEVCONTAINER_SERVER_LISTEN_PORT}:${DEVCONTAINER_SERVER_LISTEN_PORT}` ])
+                    ["-p", `${DEVCONTAINER_SERVER_LISTEN_PORT}:${DEVCONTAINER_SERVER_LISTEN_PORT}`])
             ], {}
         );
 
