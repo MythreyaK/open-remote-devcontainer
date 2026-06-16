@@ -115,10 +115,14 @@ export class ContainerState {
         }
         const imageHash = imageRes.stdout.trim();
 
+        // TODO: auto-assign free port and query
         const startRes = await run(
             [
                 ...settings.getEngineCmd(),
-                ...this.cc.getRunCreateCmd(imageName, this.getContainerName())
+                ...this.cc.getRunCreateCmd(
+                    imageName,
+                    this.getContainerName(),
+                    [ "-p", `${DEVCONTAINER_SERVER_LISTEN_PORT}:${DEVCONTAINER_SERVER_LISTEN_PORT}` ])
             ], {}
         );
 

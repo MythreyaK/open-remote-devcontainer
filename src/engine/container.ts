@@ -53,7 +53,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             .map(e => interpolateLocal(e, this.workspacePath, this.getRemoteMountDir(), this.localEnv));
     }
 
-    public getRunCreateCmd(imageName: string, containerName: string): string[] {
+    public getRunCreateCmd(imageName: string, containerName: string, extraArgs: string[] = []): string[] {
         // TODO: handle overrideCmd
         return [
             "run",
@@ -68,6 +68,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             ...this.addRunArgs(),
             ...this.addCaps(),
             ...this.addSecurityOpts(),
+            ...extraArgs,
             this.cfg.privileged ? "--privileged" : "",
             this.cfg.init ? "--init" : "",
             "--entrypoint",
