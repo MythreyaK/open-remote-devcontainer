@@ -6,10 +6,6 @@ import { getLogSink } from '../extension/log';
 import { ConfigError } from '../extension/error';
 
 
-function ensure(func: (() => boolean), msg: string) {
-    if (!func()) { throw new ConfigError(`Invalid config: ${msg}`); };
-}
-
 export interface ExecOpts {
     tty?: boolean,
     withRemoteEnv?: boolean,

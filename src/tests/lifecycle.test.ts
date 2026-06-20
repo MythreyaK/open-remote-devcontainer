@@ -74,8 +74,8 @@ describe("integration: lifecycle: img-basic", () => {
     afterAll(async () => {
         if (containerId !== undefined) {
             console.log(`Stopping and removing container ${containerId}`);
-            const proc1 = await runCmd(getEngine(), ["container", "stop", containerId], {});
-            const proc2 = await runCmd(getEngine(), ["container", "rm", containerId], {});
+            const proc1 = await runCmd(getEngine(), ["container", "stop", containerId], getActiveWorkspace(), {});
+            const proc2 = await runCmd(getEngine(), ["container", "rm", containerId], getActiveWorkspace(), {});
 
             expect(proc1.exit).eq(0);
             expect(proc2.exit).eq(0);

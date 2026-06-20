@@ -1,7 +1,7 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
-import { getContainerEngineVersion, showHello } from './extension/commands';
+import { getContainerEngineVersion } from './extension/commands';
 import { initLog, getLogSink } from './extension/log';
 
 // This method is called when your extension is activated
@@ -13,7 +13,6 @@ export function activate(context: vscode.ExtensionContext) {
     logger.info('Activating open-remote-devcontainer');
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('open-remote-devcontainer.helloWorld', showHello),
         vscode.commands.registerCommand('open-remote-devcontainer.getVersion', getContainerEngineVersion),
         logger
     );

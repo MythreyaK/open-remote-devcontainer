@@ -71,7 +71,7 @@ export class ContainerState {
                 "inspect",
                 name,
                 ...jsonFormat,
-            ], {}
+            ], this.workspaceFolder, {}
         );
 
         if (ret.exit !== 0) {
@@ -90,7 +90,7 @@ export class ContainerState {
                 'bash',
                 '-c',
                 'cat ${HOME}/.vscode-oss-devcontainer/token',
-            ], {});
+            ], this.workspaceFolder, {});
 
             if (token.exit != 0) {
                 // TODO: reinstall server? force-restart with new token?
@@ -105,7 +105,7 @@ export class ContainerState {
         }
     }
 
-    public async createContainer() {
+    private async createContainer() {
         let imageName: string | undefined;
 
         if (this.cc.isDockerfileBased()) {
@@ -147,7 +147,7 @@ export class ContainerState {
                     imageName,
                     this.getContainerName(),
                     ["-p", `${DEVCONTAINER_SERVER_LISTEN_PORT}:${DEVCONTAINER_SERVER_LISTEN_PORT}`])
-            ], {}
+            ], this.workspaceFolder, {}
         );
 
         if (startRes.exit !== 0) {
@@ -175,8 +175,7 @@ export class ContainerState {
                 ...this.cc.getUserEnvProbeArgs(),
                 "-c",
                 "env -0",
-            ],
-            {});
+            ], this.workspaceFolder, {});
 
         if (out.exit === 0) {
             const containerEnvs: Record<string, string> = parseEnv(out.stdout);
@@ -193,13 +192,13 @@ export class ContainerState {
                 "inspect",
                 name,
                 ...jsonFormat,
-            ], {}
+            ], this.workspaceFolder, {}
         );
     }
 
-    public build(args: string[]) {
+    private build(args: string[]) {
         // TODO: extend user's dockerfile? BASE_IMG?
-        return run([...settings.getEngineCmd(), ...args], {});
+        return run([...settings.getEngineCmd(), ...args], this.workspaceFolder, {});
     }
 
     public engineExec(cmdArgs: string[]) {
@@ -208,7 +207,7 @@ export class ContainerState {
                 ...settings.getEngineCmd(),
                 ...this.cc.getExecArgs(this.containerId, this.remoteEnvProbe),
                 ...cmdArgs
-            ], {}
+            ], this.workspaceFolder, {}
         );
     }
 
@@ -246,7 +245,7 @@ export class ContainerState {
                 "bash",
                 "-c",
                 "apt update -y && apt install curl -y"
-            ], {}
+            ], this.workspaceFolder, {}
         );
 
         // copy the script and run it
@@ -256,7 +255,7 @@ export class ContainerState {
                 "cp",
                 installScriptPath,
                 `${this.containerId}:${destFile}`
-            ], {}
+            ], this.workspaceFolder, {}
         );
 
         if (copyResult.exit != 0) {
@@ -269,7 +268,7 @@ export class ContainerState {
                 ...this.cc.getExecArgs(this.containerId, this.remoteEnvProbe),
                 "bash",
                 destFile
-            ], {}
+            ], this.workspaceFolder, {}
         );
 
         if (installExecResult.exit != 0) {
