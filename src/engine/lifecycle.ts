@@ -55,6 +55,10 @@ export class ContainerState {
         return ret;
     }
 
+    public getConfig(): ContainerConfig {
+        return this.cc;
+    }
+
     public getContainerId(): string {
         return this.containerId;
     }
