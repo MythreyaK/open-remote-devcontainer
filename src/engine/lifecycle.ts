@@ -131,12 +131,19 @@ export class ContainerState {
 
         const imageRes = await this.getImage(imageName);
         if (imageRes.exit !== 0) {
-            throw new EngineError(
-                `${settings.getContainerEngine()} Image '${imageName}' does not exist:\n`
-                + `stdout: ${imageRes.stdout.trim()}\n`
-                + `stderr: ${imageRes.stderr.trim()}\n`
-            );
+            // attempt to pull the image
+            getLogSink().warn(`Image '${imageName}' does not exist, attempting to pull ...`);
+            const pullRes = await run([
+                ...settings.getEngineCmd(),
+                "pull",
+                imageName,
+            ], this.workspaceFolder, {});
+
+            if (pullRes.exit !== 0) {
+                throw new EngineError(`Failed to pull image ${imageName}. Image '${imageName}' does not exist on host.`);
+            }
         }
+
         const imageHash = imageRes.stdout.trim();
 
         // TODO: auto-assign free port and query
@@ -276,7 +283,7 @@ export class ContainerState {
             throw new InstallError(`Install script at ${this.containerId}:${destFile} failed with code ${installExecResult.exit}: Error: ${err}`);
         }
 
-        return installExecResult;
+        return { host: "127.0.0.1", port: DEVCONTAINER_SERVER_LISTEN_PORT, result: installExecResult};
     }
 }
 

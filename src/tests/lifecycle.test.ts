@@ -5,10 +5,8 @@ import { Uri, window, workspace } from 'vscode';
 import { ContainerState } from '../engine/lifecycle';
 import { getActiveWorkspace } from '../extension/workspace';
 import { initLog } from '../extension/log';
-import { spawn } from 'node:child_process';
 import { runCmd } from '../common/cmd';
 import { parseDevcontainerFile } from '../parser/parser';
-import { extractWorkspaceMount } from '../parser/schema';
 import { ContainerConfig } from '../engine/container';
 import { parseEnv } from '../common/utils';
 import * as server from '../remote/installServer';
@@ -136,8 +134,8 @@ describe("integration: lifecycle: img-basic", () => {
     });
 
     test("install script and health-check", async () => {
-        const installResult = await container.installServer();
-        expect(installResult.exit).eq(0);
+        const {_, _s, result} = await container.installServer();
+        expect(result.exit).eq(0);
 
         const token = await container.getConnectionToken();
 
