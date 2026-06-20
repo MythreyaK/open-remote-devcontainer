@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import path from 'node:path';
 
 import { getLogSink } from '../extension/log';
 import { ContainerState } from '../engine/lifecycle';
@@ -30,6 +31,8 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
     private containerState: ContainerState | undefined;
     private localWsf: string = "";
 
+    private statusItemFormatter: vscode.Disposable | undefined;
+
     constructor(context: vscode.ExtensionContext) {}
 
     resolve(authority: string, context: vscode.RemoteAuthorityResolverContext): Thenable<vscode.ResolverResult> {
@@ -54,6 +57,22 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
         progress.report({message: "Building image and starting container...", increment: 50});
         this.containerState = await ContainerState.create(this.localWsf, "", containerConfig);
 
+        const containerId = this.containerState.getContainerId();
+        const localWsfBasename = path.parse(this.localWsf).base;
+
+        // set status bar item
+        this.statusItemFormatter =
+            vscode.workspace.registerResourceLabelFormatter({
+              scheme: "vscode-remote",
+              authority: `${AUTHORITY_BASE}+*`,
+              formatting: {
+                label: "${path}",
+                separator: "/",
+                tildify: true,
+                workspaceSuffix: `📦 ${containerId.slice(0, 6)}: ${localWsfBasename}`,
+              },
+            });
+
         progress.report({message: "Created container...", increment: 75});
         progress.report({message: "Installing server...", increment: 85});
 
@@ -75,5 +94,7 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
 
     // showCandidatePort?: (host: string, port: number, detail: string) => Thenable<boolean>;
 
-    dispose() {}
+    dispose() {
+        this.statusItemFormatter?.dispose();
+    }
 };

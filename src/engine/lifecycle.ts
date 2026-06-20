@@ -20,7 +20,6 @@ const jsonFormat = ['--format', '{{json .}}'];
 export class ContainerState {
     private readonly workspaceFolder: string;
     private readonly tempDir: string;
-    private readonly devcontainerJson: string;
     private readonly cc: ContainerConfig;
 
     private containerId: string = "";
@@ -28,18 +27,17 @@ export class ContainerState {
     private remoteEnvProbe: Record<string, string> = {};
     // private imageId: string;
 
-    private constructor(workspaceFolder: string, devcPath: string, cc: ContainerConfig) {
+    private constructor(workspaceFolder: string, _: string, cc: ContainerConfig) {
         this.workspaceFolder = path.resolve(workspaceFolder);
         this.tempDir = path.join(tmpdir(), `codium-devcontainer-${getWorkspaceId()}`);
         mkdirSync(this.tempDir, { recursive: true });
 
         getLogSink().info(`Created / using temp dir at ${this.tempDir}`);
-        this.devcontainerJson = devcPath;
         this.cc = cc;
     }
 
-    public static async create(workspaceFolder: string, devcPath: string, cc: ContainerConfig): Promise<ContainerState> {
-        const ret = new ContainerState(workspaceFolder, devcPath, cc);
+    public static async create(workspaceFolder: string, _: string, cc: ContainerConfig): Promise<ContainerState> {
+        const ret = new ContainerState(workspaceFolder, _, cc);
 
         ret.connectionToken = crypto.randomUUID();
         const containerExists = await ret.checkContainerExists(ret.getContainerName());
