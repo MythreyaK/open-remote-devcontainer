@@ -24,26 +24,56 @@ export function decodeRemoteAuthority(authority: string) {
 }
 
 
+export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vscode.Disposable {
+
     // candidatePortSource?: vscode.CandidatePortSource;
+    private containerState: ContainerState | undefined;
+    private localWsf: string = "";
 
+    constructor(context: vscode.ExtensionContext) {}
 
-    resolve(authority: string, context: vscode.RemoteAuthorityResolverContext): vscode.ResolverResult | Thenable<vscode.ResolverResult> {
-        throw new Error('Method not implemented.');
+    resolve(authority: string, context: vscode.RemoteAuthorityResolverContext): Thenable<vscode.ResolverResult> {
+        this.localWsf = decodeRemoteAuthority(authority);
+
+        getLogSink().info(`Starting remote session from ${this.localWsf} (authority ${authority})...`);
+
+        return vscode.window.withProgress(
+            {location: vscode.ProgressLocation.Notification},
+            (p, i) => this.createWindowTask(p, i)
+        );
     }
 
-    resolveExecServer?(remoteAuthority: string, context: vscode.RemoteAuthorityResolverContext): vscode.ExecServer | Thenable<vscode.ExecServer> {
-        throw new Error('Method not implemented.');
+    private async createWindowTask(progress: vscode.Progress<{message?: string; increment?: number;}>, _: vscode.CancellationToken): Promise<vscode.ResolverResult> {
+        progress.report({message: "Parsing config...", increment: 5});
+
+        const devcontainerJson = findDevcontainerJson(this.localWsf);
+        const parsedConfig = parseDevcontainerFile(devcontainerJson);
+
+        const containerConfig = ContainerConfig.create(this.localWsf, parsedConfig);
+
+        progress.report({message: "Building image and starting container...", increment: 50});
+        this.containerState = await ContainerState.create(this.localWsf, "", containerConfig);
+
+        progress.report({message: "Created container...", increment: 75});
+        progress.report({message: "Installing server...", increment: 85});
+
+        const {host, port, result} = await this.containerState.installServer();
+        progress.report({message: "Server install complete, opening remote...", increment: 85});
+
+        const ctkn = await this.containerState.getConnectionToken();
+        progress.report({message: "Opening remote ...", increment: 100});
+
+        const ret: vscode.ResolverResult = new vscode.ResolvedAuthority(host, port, ctkn);
+        return ret;
     }
 
-    getCanonicalURI?(uri: vscode.Uri): vscode.ProviderResult<vscode.Uri> {
-        throw new Error('Method not implemented.');
-    }
+    // getCanonicalURI?(uri: vscode.Uri): vscode.ProviderResult<vscode.Uri> {
+    //     throw new Error('Method not implemented.');
+    // }
 
-    tunnelFactory?: (tunnelOptions: vscode.TunnelOptions, tunnelCreationOptions: vscode.TunnelCreationOptions) => Thenable<vscode.Tunnel> | undefined;
+    // tunnelFactory?: (tunnelOptions: vscode.TunnelOptions, tunnelCreationOptions: vscode.TunnelCreationOptions) => Thenable<vscode.Tunnel> | undefined;
 
-    showCandidatePort?: (host: string, port: number, detail: string) => Thenable<boolean>;
+    // showCandidatePort?: (host: string, port: number, detail: string) => Thenable<boolean>;
 
-    dispose() {
-        throw new Error('Method not implemented.');
-    }
+    dispose() {}
 };
