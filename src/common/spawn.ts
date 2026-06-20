@@ -1,5 +1,5 @@
-import * as chproc from 'node:child_process';
-import { LogOutputChannel } from 'vscode';
+import { LogOutputChannel } from "vscode";
+import * as chproc from "node:child_process";
 
 export type Envs = Record<string, string | undefined>;
 
@@ -9,7 +9,6 @@ export interface CmdResult {
     stderr: string,
 };
 
-
 let cmdCount: number = 1;
 
 /* eslint-disable @typescript-eslint/no-confusing-void-expression */
@@ -18,13 +17,13 @@ export function spawn(
     args: string[],
     cwd: string,
     env: Envs,
-    log: LogOutputChannel
+    log: LogOutputChannel,
 ): Promise<CmdResult> {
     return new Promise((resolve, reject) => {
         cmdCount += 1;
         const cmdId = cmdCount;
 
-        const cmdStr = () => `[CMD${String(cmdId).padStart(4, '0')}]:`;
+        const cmdStr = () => `[CMD${String(cmdId).padStart(4, "0")}]:`;
 
         let stdout: string = "";
         let stderr: string = "";
@@ -32,24 +31,24 @@ export function spawn(
         // TODO: do we need env without inheriting parent's env?
         const finalEnv = {
             ...process.env,
-            ...env
+            ...env,
         };
 
         const proc = chproc.spawn(cmd, args, {
             cwd: cwd,
             env: finalEnv,
-            stdio: 'pipe',
+            stdio: "pipe",
         });
-        proc.stdout.setEncoding('utf-8');
-        proc.stderr.setEncoding('utf-8');
+        proc.stdout.setEncoding("utf-8");
+        proc.stderr.setEncoding("utf-8");
 
-        proc.on('spawn', () => {
-            const strz_args = args.map((e) => `'${e}'`).join(", ");
+        proc.on("spawn", () => {
+            const strz_args = args.map(e => `'${e}'`).join(", ");
             // TODO: log env values as well
             log.info(`${cmdStr()} Running (spawn) ['${cmd}', ${strz_args}]`);
         });
 
-        proc.on('error', (err: NodeJS.ErrnoException) => {
+        proc.on("error", (err: NodeJS.ErrnoException) => {
             const msg = `${err.code} :: ${err.message} :: :: ${err.syscall}`;
             const res: CmdResult = {
                 exit: err.errno ?? 255,
@@ -62,17 +61,17 @@ export function spawn(
             return resolve(res);
         });
 
-        proc.stdout.on('data', (data: string) => {
+        proc.stdout.on("data", (data: string) => {
             stdout += data;
             log.info(cmdStr(), data);
         });
 
-        proc.stderr.on('data', (data: string) => {
+        proc.stderr.on("data", (data: string) => {
             stderr += data;
             log.error(cmdStr(), data);
         });
 
-        proc.on('exit', (code, signal) => {
+        proc.on("exit", (code, signal) => {
             const res: CmdResult = {
                 exit: code ?? (signal ?? 256),
                 stdout: stdout,
@@ -91,4 +90,3 @@ export function spawn(
     });
 }
 /* eslint-enable @typescript-eslint/no-confusing-void-expression */
-

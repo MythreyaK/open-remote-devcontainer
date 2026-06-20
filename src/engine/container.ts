@@ -1,10 +1,9 @@
-import * as schema from '../parser/schema';
-import * as path from 'node:path';
-import * as crypto from 'node:crypto';
+import * as path from "node:path";
+import * as crypto from "node:crypto";
 
-import { getLogSink } from '../extension/log';
-import { ConfigError } from '../extension/error';
-
+import * as schema from "../parser/schema";
+import { getLogSink } from "../extension/log";
+import { ConfigError } from "../extension/error";
 
 export interface ExecOpts {
     tty?: boolean,
@@ -20,7 +19,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         this.cfg = cfg;
         this.workspacePath = path.resolve(workspacePath);
         this.localEnv = localEnv;
-        // normalize mount
+    // normalize mount
     }
 
     static create<T extends schema.Config>(workspacePath: string, cfg: T, localEnv: NodeJS.ProcessEnv = process.env): ContainerConfig<T> {
@@ -50,7 +49,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     }
 
     public getRunCreateCmd(imageName: string, containerName: string, extraArgs: string[] = []): string[] {
-        // TODO: handle overrideCmd
+    // TODO: handle overrideCmd
         return [
             "run",
             "-d",
@@ -72,18 +71,18 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             imageName,
             //
             "-c",
-            "trap \"echo Got signal, exiting...; exit 0\" SIGINT SIGTERM; while sleep 60 & wait $! ; do : ; done"
+            'trap "echo Got signal, exiting...; exit 0" SIGINT SIGTERM; while sleep 60 & wait $! ; do : ; done',
         ].filter(Boolean)
             .map(e => interpolateLocal(e, this.workspacePath, this.getRemoteMountDir(), this.localEnv));
     }
 
     public getImageName(this: ContainerConfig<schema.DockerfileDevcontainer>): string {
-        // TODO: resolve symlinks?
-        // const safeImgName = this.workspacePath.replaceAll('/[^a-z0-9.-]', '-');
+    // TODO: resolve symlinks?
+    // const safeImgName = this.workspacePath.replaceAll('/[^a-z0-9.-]', '-');
         const idHash = crypto
-            .createHash('sha256')
+            .createHash("sha256")
             .update(this.workspacePath)
-            .digest('hex')
+            .digest("hex")
             .slice(0, 8);
 
         getLogSink().info(`Image name from workspace '${this.workspacePath}' : '${idHash}'`);
@@ -102,10 +101,10 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
 
     public getUserEnvProbeArgs(): string[] {
         switch (this.cfg.userEnvProbe) {
-            case 'none': return [this.getShell()];
-            case 'loginShell': return [this.getShell(), "-l"];
-            case 'interactiveShell': return [this.getShell(), "-i"];
-            case 'loginInteractiveShell': return [this.getShell(), "-il"];
+            case "none": return [this.getShell()];
+            case "loginShell": return [this.getShell(), "-l"];
+            case "interactiveShell": return [this.getShell(), "-i"];
+            case "loginInteractiveShell": return [this.getShell(), "-il"];
         }
         return [this.getShell(), "-il"];
     }
@@ -119,9 +118,11 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     }
 
     private addAppPorts(): string[] {
-        if (!this.cfg.appPort) { return []; }
-        const ret: string[] = [];
+        if (!this.cfg.appPort) {
+            return [];
+        }
 
+        const ret: string[] = [];
         if (Array.isArray(this.cfg.appPort)) {
             for (const port of this.cfg.appPort) {
                 ret.push("-p", `${port}`);
@@ -135,30 +136,49 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     }
 
     private addContainerUser(): string[] {
-        if (this.cfg.containerUser) { return ["-u", `${this.cfg.containerUser}:${this.cfg.containerUser}`]; }
-        else { return []; } // uses container's default USER, "" is removed
+        if (this.cfg.containerUser) {
+            return ["-u", `${this.cfg.containerUser}:${this.cfg.containerUser}`];
+        }
+        else {
+            // uses container's default USER, "" is removed
+            return [];
+        }
     }
 
     private addRemoteUser(): string[] {
-        if (this.cfg.remoteUser) { return ["-u", `${this.cfg.remoteUser}:${this.cfg.remoteUser}`]; }
-        else { return this.addContainerUser(); }
+        if (this.cfg.remoteUser) {
+            return ["-u", `${this.cfg.remoteUser}:${this.cfg.remoteUser}`];
+        }
+        else {
+            return this.addContainerUser();
+        }
     }
 
     private addSecurityOpts(): string[] {
-        if (this.cfg.securityOpt) { return this.cfg.securityOpt.flatMap(s => ["--security-opt", s]); }
-        else { return []; }
+        if (this.cfg.securityOpt) {
+            return this.cfg.securityOpt.flatMap(s => ["--security-opt", s]);
+        }
+        else {
+            return [];
+        }
     }
 
     private addCaps(): string[] {
-        if (this.cfg.capAdd) { return this.cfg.capAdd.flatMap(c => ["--cap-add", c]); }
-        else { return []; }
+        if (this.cfg.capAdd) {
+            return this.cfg.capAdd.flatMap(c => ["--cap-add", c]);
+        }
+        else {
+            return [];
+        }
     }
 
     private addRunArgs(): string[] {
         if (this.cfg.runArgs) {
             return this.cfg.runArgs;
         }
-        else { return []; }
+        else {
+            return [];
+        }
     }
 
     public getRemoteMountDir(): string {
@@ -189,15 +209,27 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
                     ret.push("-v", mount);
                 }
                 else if (mount.type === "bind") {
-                    if (!mount.source) { throw new ConfigError("Bind mount requires both source and target"); }
-                    if (mount.options) { ret.push("-v", `${mount.source}:${mount.target}:${mount.options}`); }
-                    else { ret.push("-v", `${mount.source}:${mount.target}`); }
-                } else {
+                    if (!mount.source) {
+                        throw new ConfigError("Bind mount requires both source and target");
+                    }
+                    if (mount.options) {
+                        ret.push("-v", `${mount.source}:${mount.target}:${mount.options}`);
+                    }
+                    else {
+                        ret.push("-v", `${mount.source}:${mount.target}`);
+                    }
+                }
+                else {
                     let mnt = "";
                     // TODO: This is order-dependent. Cleanup later?
-                    if (mount.source) { mnt += `${mount.source}:`; }
+                    if (mount.source) {
+                        mnt += `${mount.source}:`;
+                    }
+
                     mnt += mount.target;
-                    if (mount.options) { mnt += `:${mount.options}`; }
+                    if (mount.options) {
+                        mnt += `:${mount.options}`;
+                    }
                     ret.push("-v", mnt);
                 }
             }
@@ -240,7 +272,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     }
 
     private getShell(): string {
-        // TODO: supporrt other shells
+    // TODO: supporrt other shells
         return "bash";
     }
 
@@ -270,21 +302,21 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         ]);
 
         return crypto
-            .createHash('sha256')
+            .createHash("sha256")
             .update(items)
-            .digest('hex');
+            .digest("hex");
     }
 }
 
 export function interpolateLocal(val: string, localWorkspace: string, remoteWorkspace: string, localEnv: NodeJS.ProcessEnv) {
     const varsRemoved = interpolateVars(val, localWorkspace, remoteWorkspace);
-    return interpolateEnv(varsRemoved, localEnv, 'localEnv');
+    return interpolateEnv(varsRemoved, localEnv, "localEnv");
 }
 
 export function interpolateContainer(val: string, localWorkspace: string, remoteWorkspace: string, localEnv: NodeJS.ProcessEnv, remoteEnv: NodeJS.ProcessEnv) {
     const varsRemoved = interpolateVars(val, localWorkspace, remoteWorkspace);
-    const localEnvRemoved = interpolateEnv(varsRemoved, localEnv, 'localEnv');
-    const remoteEnvRemoved = interpolateEnv(localEnvRemoved, remoteEnv, 'containerEnv');
+    const localEnvRemoved = interpolateEnv(varsRemoved, localEnv, "localEnv");
+    const remoteEnvRemoved = interpolateEnv(localEnvRemoved, remoteEnv, "containerEnv");
     return remoteEnvRemoved;
 }
 
@@ -293,16 +325,14 @@ export function interpolateVars(val: string, localWorkspace: string, remoteWorks
     const remoteWorkspaceBasename = path.parse(remoteWorkspace).base;
 
     return val
-        .replaceAll('${localWorkspaceFolder}', localWorkspace)
-        .replaceAll('${containerWorkspaceFolder}', remoteWorkspace)
-        .replaceAll('${localWorkspaceFolderBasename}', localWorkspaceBasename)
-        .replaceAll('${containerWorkspaceFolderBasename}', remoteWorkspaceBasename)
-        ;
-
+        .replaceAll("${localWorkspaceFolder}", localWorkspace)
+        .replaceAll("${containerWorkspaceFolder}", remoteWorkspace)
+        .replaceAll("${localWorkspaceFolderBasename}", localWorkspaceBasename)
+        .replaceAll("${containerWorkspaceFolderBasename}", remoteWorkspaceBasename);
 }
 
 export function interpolateEnv(envStr: string, procEnv: NodeJS.ProcessEnv, envHook: string) {
-    const regExp = new RegExp(`\\$\{${envHook}:([^}]+)}`, 'g');
+    const regExp = new RegExp(`\\$\{${envHook}:([^}]+)}`, "g");
     const matches = Array.from(envStr.matchAll(regExp));
 
     let ret = envStr;

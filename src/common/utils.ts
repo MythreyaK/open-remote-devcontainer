@@ -1,10 +1,10 @@
-
 /**
  *
  * @param envStdout null-char (env -0) seperated list of env vars
  * @returns Record<string, string | undefined>
  */
 export function parseEnv(envStdout: string) {
+    /* eslint-disable @stylistic/quotes */
     const envs: string[] = envStdout.split('\0').filter(Boolean);
     const parsesEnvs: Record<string, string> = {};
 
@@ -14,4 +14,5 @@ export function parseEnv(envStdout: string) {
         parsesEnvs[k] = v;
     }
     return parsesEnvs;
+    /* eslint-enable @stylistic/quotes */
 }

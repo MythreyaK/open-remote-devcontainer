@@ -1,20 +1,18 @@
-import { describe, expect, test, vi } from 'vitest';
-import { Uri, window, workspace } from 'vscode';
-import path from 'node:path';
-import { z } from 'zod/mini';
+import path from "node:path";
+import { Uri, window, workspace } from "vscode";
+import { describe, expect, test, vi } from "vitest";
 
-import { ContainerConfig, interpolateVars, interpolateLocal, interpolateContainer } from '../container';
-import * as schema from '../../parser/schema';
-import { initLog } from '../../extension/log';
-import { getActiveWorkspace } from '../../extension/workspace';
-
+import * as schema from "../../parser/schema";
+import { initLog } from "../../extension/log";
+import { getActiveWorkspace } from "../../extension/workspace";
+import { ContainerConfig, interpolateVars, interpolateLocal, interpolateContainer } from "../container";
 
 describe("ContainerConfig tests", () => {
     (workspace as any).setWorkspaceFolders([
-        { uri: Uri.file('/tmp/dir'), name: 'dir', index: 0 },
+        { uri: Uri.file("/tmp/dir"), name: "dir", index: 0 },
     ]);
 
-    const spy = vi.spyOn(window, 'createOutputChannel');
+    const spy = vi.spyOn(window, "createOutputChannel");
     spy.mockReturnValue({
         info: vi.fn(), // console.log,
         warn: vi.fn(), // console.log,
@@ -40,8 +38,7 @@ describe("ContainerConfig tests", () => {
                 expect(createArgs[0]).eq("run");
                 expect(createArgs[1]).eq("-d");
                 expect(createArgs)
-                    .contains("/tmp/dir:/workspace/dir")
-                    ;
+                    .contains("/tmp/dir:/workspace/dir");
             }
 
             // console.log(cfg);
@@ -54,7 +51,7 @@ describe("ContainerConfig tests", () => {
                 name: "test",
                 image: "ubuntu:24.04",
                 // workspaceFolder: "/custom/subdir/repodir",
-                workspaceMount: 'source=${localWorkspaceFolder}/sub-folder,target=/workspace/dir,type=bind,consistency=cached'
+                workspaceMount: "source=${localWorkspaceFolder}/sub-folder,target=/workspace/dir,type=bind,consistency=cached",
             };
 
             const cc = ContainerConfig.create(getActiveWorkspace(), cfg, {});
@@ -69,8 +66,7 @@ describe("ContainerConfig tests", () => {
                 expect(createArgs[1]).eq("-d");
                 expect(createArgs)
                     .contains(`${cfg.workspaceMount?.replace("${localWorkspaceFolder}", getActiveWorkspace())}`)
-                    .not.contains("${localWorkspaceFolder}")
-                    ;
+                    .not.contains("${localWorkspaceFolder}");
             }
 
             // console.log(cfg);
@@ -83,10 +79,10 @@ describe("ContainerConfig tests", () => {
             const remoteWsf = "/workspace/projects/codium";
 
             const tests = [
-                { test: 'PATH:${localWorkspaceFolder}', result: `PATH:${localWsf}` },
-                { test: 'DIR=${containerWorkspaceFolder}', result: `DIR=${remoteWsf}` },
-                { test: 'LOCAL_DIRNAME=${localWorkspaceFolderBasename}', result: "LOCAL_DIRNAME=codium" },
-                { test: 'REMOTE_DIRNAME=${containerWorkspaceFolderBasename}', result: "REMOTE_DIRNAME=codium" },
+                { test: "PATH:${localWorkspaceFolder}", result: `PATH:${localWsf}` },
+                { test: "DIR=${containerWorkspaceFolder}", result: `DIR=${remoteWsf}` },
+                { test: "LOCAL_DIRNAME=${localWorkspaceFolderBasename}", result: "LOCAL_DIRNAME=codium" },
+                { test: "REMOTE_DIRNAME=${containerWorkspaceFolderBasename}", result: "REMOTE_DIRNAME=codium" },
             ];
 
             for (const test of tests) {
@@ -97,10 +93,10 @@ describe("ContainerConfig tests", () => {
 
     test("localEnv and var interpolation", () => {
         const procEnv = {
-            "PATH": "/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/var/lib/snapd/snap/bin",
-            "TERM": "xterm-256color",
-            "SHELL": "/bin/bash",
-            "EMPTY": "",
+            PATH: "/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/var/lib/snapd/snap/bin",
+            TERM: "xterm-256color",
+            SHELL: "/bin/bash",
+            EMPTY: "",
         };
 
         const localWsp = getActiveWorkspace();
@@ -110,19 +106,19 @@ describe("ContainerConfig tests", () => {
 
         {
             const tests = [
-                { test: `\${containerWorkspaceFolder}:\${localEnv:PATH}`, result: `${remoteWsp}:${procEnv.PATH}` },
-                { test: `\${localWorkspaceFolder}:\${localEnv:PATH}:\${containerWorkspaceFolder}:\${localEnv:PATH}`, result: `${localWsp}:${procEnv.PATH}:${remoteWsp}:${procEnv.PATH}` },
-                { test: `\${localWorkspaceFolder}:\${containerWorkspaceFolder}:\${localEnv:MYPATH:/usr/bin:/opt/app}`, result: `${localWsp}:${remoteWsp}:/usr/bin:/opt/app` },
-                { test: `\${localWorkspaceFolder}:\${containerWorkspaceFolder}:\${localEnv:MYPATH:/usr/bin:/opt/app}:\${localEnv:PATH}`, result: `${localWsp}:${remoteWsp}:/usr/bin:/opt/app:${procEnv.PATH}` },
-                { test: `\${localEnv:SHELL:/bin/sh}`, result: "/bin/bash" },
-                { test: `\${localEnv:MYSHELL:/bin/sh}`, result: "/bin/sh" },
-                { test: `\${localEnv:EMPTY}`, result: "" },
-                { test: `\${localEnv:EMPTY:empty}`, result: "" },
-                { test: `\${localEnv:HUMPTY:}`, result: "" },
-                { test: `\${localEnv:HUMPTY:dumpty}`, result: "dumpty" },
+                { test: "${containerWorkspaceFolder}:${localEnv:PATH}", result: `${remoteWsp}:${procEnv.PATH}` },
+                { test: "${localWorkspaceFolder}:${localEnv:PATH}:${containerWorkspaceFolder}:${localEnv:PATH}", result: `${localWsp}:${procEnv.PATH}:${remoteWsp}:${procEnv.PATH}` },
+                { test: "${localWorkspaceFolder}:${containerWorkspaceFolder}:${localEnv:MYPATH:/usr/bin:/opt/app}", result: `${localWsp}:${remoteWsp}:/usr/bin:/opt/app` },
+                { test: "${localWorkspaceFolder}:${containerWorkspaceFolder}:${localEnv:MYPATH:/usr/bin:/opt/app}:${localEnv:PATH}", result: `${localWsp}:${remoteWsp}:/usr/bin:/opt/app:${procEnv.PATH}` },
+                { test: "${localEnv:SHELL:/bin/sh}", result: "/bin/bash" },
+                { test: "${localEnv:MYSHELL:/bin/sh}", result: "/bin/sh" },
+                { test: "${localEnv:EMPTY}", result: "" },
+                { test: "${localEnv:EMPTY:empty}", result: "" },
+                { test: "${localEnv:HUMPTY:}", result: "" },
+                { test: "${localEnv:HUMPTY:dumpty}", result: "dumpty" },
                 {
-                    test: `\${localEnv:SHELL:/bin/sh}:\${localEnv:MYSHELL:/bin/fish}:\${localWorkspaceFolder}:\${localWorkspaceFolderBasename}:\${containerWorkspaceFolder}:\${containerWorkspaceFolderBasename}`,
-                    result: `/bin/bash:/bin/fish:${localWsp}:${localWspBase}:${remoteWsp}:${remoteWspBase}`
+                    test: "${localEnv:SHELL:/bin/sh}:${localEnv:MYSHELL:/bin/fish}:${localWorkspaceFolder}:${localWorkspaceFolderBasename}:${containerWorkspaceFolder}:${containerWorkspaceFolderBasename}",
+                    result: `/bin/bash:/bin/fish:${localWsp}:${localWspBase}:${remoteWsp}:${remoteWspBase}`,
                 },
             ];
 
@@ -133,22 +129,21 @@ describe("ContainerConfig tests", () => {
     });
 
     test("localEnv, containerEnv, and var interpolation", () => {
-
         const localEnv = {
-            "PATH": "/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/var/lib/snapd/snap/bin",
-            "TERM": "xterm-256color",
-            "SHELL": "/bin/bash",
-            "HOME": "/home/username",
-            "LOC": "LOCAL",
-            "EMPTY": "",
+            PATH: "/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/var/lib/snapd/snap/bin",
+            TERM: "xterm-256color",
+            SHELL: "/bin/bash",
+            HOME: "/home/username",
+            LOC: "LOCAL",
+            EMPTY: "",
         };
         const containerEnv = {
-            "PATH": "/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin",
-            "TERM": "xterm-256color",
-            "SHELL": "/bin/zsh",
-            "HOME": "/home/root",
-            "LOC": "REMOTE",
-            "EMPTY": "",
+            PATH: "/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin",
+            TERM: "xterm-256color",
+            SHELL: "/bin/zsh",
+            HOME: "/home/root",
+            LOC: "REMOTE",
+            EMPTY: "",
         };
 
         const remoteWsp = "/workdir/dir";
@@ -160,28 +155,28 @@ describe("ContainerConfig tests", () => {
             const tests = [
                 {
                     test: "${localEnv:LOC}:${containerEnv:LOC}:${containerWorkspaceFolder}:${localEnv:PATH}",
-                    result: `LOCAL:REMOTE:/workdir/dir:${localEnv.PATH}`
+                    result: `LOCAL:REMOTE:/workdir/dir:${localEnv.PATH}`,
                 },
                 {
                     test: "${localEnv:LOC}:${containerEnv:LOC}:${localEnv:PATH}:${containerEnv:PATH}",
-                    result: `${localEnv.LOC}:${containerEnv.LOC}:${localEnv.PATH}:${containerEnv.PATH}`
+                    result: `${localEnv.LOC}:${containerEnv.LOC}:${localEnv.PATH}:${containerEnv.PATH}`,
                 },
                 {
                     test: "${localEnv:LOC}:${containerEnv:LOC}${localWorkspaceFolder}:${containerWorkspaceFolder}:${localWorkspaceFolderBasename}:${containerWorkspaceFolderBasename}",
                     result: `${localEnv.LOC}:${containerEnv.LOC}${localWsp}:${remoteWsp}:${localWspBase}:${remoteWspBase}`,
                 },
                 {
-                    test: `\${containerEnv:SHELL:/bin/sh}:\${containerEnv:MYSHELL:/bin/fish}:\${localEnv:SHELL:/bin/sh}:\${localEnv:MYSHELL:/bin/myfish}:\${localWorkspaceFolder}:\${localWorkspaceFolderBasename}:\${containerWorkspaceFolder}:\${containerWorkspaceFolderBasename}`,
-                    result: `/bin/zsh:/bin/fish:/bin/bash:/bin/myfish:${localWsp}:${localWspBase}:${remoteWsp}:${remoteWspBase}`
+                    test: "${containerEnv:SHELL:/bin/sh}:${containerEnv:MYSHELL:/bin/fish}:${localEnv:SHELL:/bin/sh}:${localEnv:MYSHELL:/bin/myfish}:${localWorkspaceFolder}:${localWorkspaceFolderBasename}:${containerWorkspaceFolder}:${containerWorkspaceFolderBasename}",
+                    result: `/bin/zsh:/bin/fish:/bin/bash:/bin/myfish:${localWsp}:${localWspBase}:${remoteWsp}:${remoteWspBase}`,
                 },
-                { test: `\${localEnv:EMPTY}`, result: "" },
-                { test: `\${localEnv:EMPTY:empty}`, result: "" },
-                { test: `\${localEnv:HUMPTY:}`, result: "" },
-                { test: `\${localEnv:HUMPTY:dumpty}`, result: "dumpty" },
-                { test: `\${containerEnv:EMPTY}`, result: "" },
-                { test: `\${containerEnv:EMPTY:empty}`, result: "" },
-                { test: `\${containerEnv:HUMPTY:}`, result: "" },
-                { test: `\${containerEnv:HUMPTY:dumpty}`, result: "dumpty" },
+                { test: "${localEnv:EMPTY}", result: "" },
+                { test: "${localEnv:EMPTY:empty}", result: "" },
+                { test: "${localEnv:HUMPTY:}", result: "" },
+                { test: "${localEnv:HUMPTY:dumpty}", result: "dumpty" },
+                { test: "${containerEnv:EMPTY}", result: "" },
+                { test: "${containerEnv:EMPTY:empty}", result: "" },
+                { test: "${containerEnv:HUMPTY:}", result: "" },
+                { test: "${containerEnv:HUMPTY:dumpty}", result: "dumpty" },
             ];
 
             for (const test of tests) {
@@ -191,8 +186,8 @@ describe("ContainerConfig tests", () => {
     });
 
     const localEnv = {
-        "APP_PORT": "5040",
-        "HOME": "/foo/bar"
+        APP_PORT: "5040",
+        HOME: "/foo/bar",
     } as NodeJS.ProcessEnv;
 
     const containerEnv = {
@@ -204,10 +199,10 @@ describe("ContainerConfig tests", () => {
         containerUser: "foo",
         appPort: [100, "123:456", "${localEnv:APP_PORT:4040}:${localEnv:FOO_PORT:5012}"],
         mounts: [
-            { type: "bind", source: "${localWorkspaceFolder}", target: "${localEnv:HOME:/home/root}/projects/${localWorkspaceFolderBasename}" }
+            { type: "bind", source: "${localWorkspaceFolder}", target: "${localEnv:HOME:/home/root}/projects/${localWorkspaceFolderBasename}" },
         ],
-        workspaceMount: 'source=${localWorkspaceFolder}/sub-folder,target=/workspace/dir,type=bind,consistency=cached',
-        containerEnv: { "MY_ENV1": "MY_VAL1=${localEnv:HOME}", "HOME": "${localEnv:HOME}" },
+        workspaceMount: "source=${localWorkspaceFolder}/sub-folder,target=/workspace/dir,type=bind,consistency=cached",
+        containerEnv: { MY_ENV1: "MY_VAL1=${localEnv:HOME}", HOME: "${localEnv:HOME}" },
         runArgs: ["--device", "/dev/kfd", "--pid", "host"],
         capAdd: ["CAP_BPF", "CAP_CHOWN"],
         securityOpt: ["seccomp=unconfined", "no-new-privileges=true"],
@@ -223,8 +218,8 @@ describe("ContainerConfig tests", () => {
         build: {
             dockerfile: "dockerfile",
             context: "${localWorkspaceFolder}",
-            args: { "ARG1": "VAL1", "ARG2": "${localWorkspaceFolderBasename}", "HOMEDIR": "${localWorkspaceFolder}" },
-        }
+            args: { ARG1: "VAL1", ARG2: "${localWorkspaceFolderBasename}", HOMEDIR: "${localWorkspaceFolder}" },
+        },
     };
 
     const localWsp = getActiveWorkspace();
@@ -248,8 +243,7 @@ describe("ContainerConfig tests", () => {
                 .includes("--env MY_ENV1=MY_VAL1=/foo/bar --env HOME=/foo/bar ")
                 .includes("--device /dev/kfd --pid host ")
                 .includes("--cap-add CAP_BPF --cap-add CAP_CHOWN ")
-                .includes("--security-opt seccomp=unconfined --security-opt no-new-privileges=true ")
-                ;
+                .includes("--security-opt seccomp=unconfined --security-opt no-new-privileges=true ");
         }
     });
 
@@ -264,8 +258,7 @@ describe("ContainerConfig tests", () => {
                 .includes("build ")
                 .includes(`--build-arg ARG1=VAL1 --build-arg ARG2=${localWspBase} --build-arg HOMEDIR=${localWsp}`)
                 .includes("-f dockerfile")
-                .includes(localWsp)
-                ;
+                .includes(localWsp);
         }
     });
 

@@ -1,4 +1,4 @@
-import * as vscode from 'vscode';
+import * as vscode from "vscode";
 
 // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
 export function getConfig<T>(key: string): T | undefined {
@@ -17,14 +17,13 @@ export function getContainerEngine(): string {
  * `podman --root <root dir> command <command args>`
 */
 export function getEngineCmd(): string[] {
-    return [ getContainerEngine(), ...getExtraArgs() ];
+    return [getContainerEngine(), ...getExtraArgs()];
 }
 
-
 function getExtraArgs(): string[] {
-    return (getConfig<string[]>("extraArgs") ??  []);
+    return (getConfig<string[]>("extraArgs") ?? []);
 }
 
 export function getExtensionList(): string[] {
-    return (getConfig<string[]>("defaultExtensions") ??  []);
+    return (getConfig<string[]>("defaultExtensions") ?? []);
 }

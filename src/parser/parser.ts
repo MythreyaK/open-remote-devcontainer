@@ -1,9 +1,8 @@
-import { readFile } from 'node:fs/promises';
-import * as jc from 'jsonc-parser';
+import * as jc from "jsonc-parser";
+import { readFileSync } from "node:fs";
 
-import * as schema from './schema';
-import { ParseError } from '../extension/error';
-import { readFileSync } from 'node:fs';
+import * as schema from "./schema";
+import { ParseError } from "../extension/error";
 
 export function parseDevcontainerFile(fspath: string): schema.Config {
     try {

@@ -1,7 +1,8 @@
-import { workspace } from 'vscode';
-import * as common from './spawn';
-import { ConfigError } from '../extension/error';
-import { getLogSink } from '../extension/log';
+import { workspace } from "vscode";
+
+import * as common from "./spawn";
+import { ConfigError } from "../extension/error";
+import { getLogSink } from "../extension/log";
 
 export async function runCmd(cmd: string, args: string[], cwd: string, env: common.Envs) {
     const folders = workspace.workspaceFolders;

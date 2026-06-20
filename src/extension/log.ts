@@ -1,5 +1,5 @@
-import { window, LogOutputChannel } from 'vscode';
-import { InternalError } from './error';
+import { window, LogOutputChannel } from "vscode";
+import { InternalError } from "./error";
 
 let log: LogOutputChannel | undefined;
 

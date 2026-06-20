@@ -35,7 +35,6 @@ export const ShutdownAction = z.enum([
     "stopContainer",
 ]);
 
-
 const _stringOrNumber = oneOf([
     z.string(),
     z.number(),
@@ -48,7 +47,7 @@ const _cmd = oneOf([
         oneOf([
             z.string(),
             z.array(z.string()),
-        ])
+        ]),
     ),
 ]);
 
@@ -99,20 +98,20 @@ const _DockerfileContainer_ZodBase = oneOf([
         }),
         z.object({
             build: z.optional(BuildOptions),
-        })
-    )
+        }),
+    ),
 ]);
 
 // always use buid: {...} syntax, by moving dockerFile and context inside
 type DockerfileContainer = z.infer<typeof _DockerfileContainer_ZodBase>;
-export const DockerfileContainer_z = z.pipe(_DockerfileContainer_ZodBase, z.transform<DockerfileContainer>(e => {
+export const DockerfileContainer_z = z.pipe(_DockerfileContainer_ZodBase, z.transform<DockerfileContainer>((e) => {
     if ("dockerFile" in e) {
         const ret: DockerfileContainer = {
             build: {
                 dockerfile: e.dockerFile,
                 context: e.context,
                 ...e.build,
-            }
+            },
         };
         return ret;
     }
@@ -157,9 +156,9 @@ export const ConfigSchema = ConfigSchemaBase.check((c) => {
     const val = c.value;
     /* eslint-disable @typescript-eslint/no-unnecessary-condition */
     const hasMount = (val.workspaceMount !== undefined)
-        && (val.workspaceMount !== null);
+      && (val.workspaceMount !== null);
     const hasFolder = (val.workspaceFolder !== undefined)
-        && (val.workspaceFolder !== null);
+      && (val.workspaceFolder !== null);
     /* eslint-enable @typescript-eslint/no-unnecessary-condition */
 
     // TODO: relax this requirement, and set mount to /workspace if unset?
@@ -172,7 +171,6 @@ export const ConfigSchema = ConfigSchemaBase.check((c) => {
     }
 
     if (val.workspaceMount) {
-
         const targets = extractWorkspaceMount(val.workspaceMount);
 
         if (targets.length === 0) {
@@ -209,7 +207,7 @@ export function isDockerfileBased(config: Config): config is DockerfileDevcontai
 }
 
 export function extractWorkspaceMount(mnt: string) {
-    const matches = mnt.split(',');
+    const matches = mnt.split(",");
 
     const targets: string[] = (() => {
         const tgt: string[] = [];

@@ -1,24 +1,24 @@
-import { describe, expect, test } from 'vitest';
-import * as assert from 'assert';
+import { describe, expect, test } from "vitest";
+import * as assert from "assert";
 
-import * as parser from '../schema';
-import { z } from 'zod/mini';
+import * as parser from "../schema";
 
 describe("Parser tests", () => {
-
     test("Parse mounts", () => {
         {
             const jsondata = {
-                "type": "bind",
-                "source": "/home/username/dir",
-                "target": "/workspace/dir",
-                "options": "ro,z"
+                type: "bind",
+                source: "/home/username/dir",
+                target: "/workspace/dir",
+                options: "ro,z",
             };
 
             const p = parser.Mount.safeParse(jsondata);
             expect(p.success);
 
-            if (!p.success) { throw new Error("Expected parse to work"); }
+            if (!p.success) {
+                throw new Error("Expected parse to work");
+            }
 
             const o = p.data;
             assert.strictEqual(o.type, "bind");
@@ -28,13 +28,15 @@ describe("Parser tests", () => {
         }
         {
             const jsondata = {
-                "type": "volume",
-                "target": "/workspace/dir",
-                "options": "ro"
+                type: "volume",
+                target: "/workspace/dir",
+                options: "ro",
             };
 
             const p = parser.Mount.safeParse(jsondata);
-            if (!p.success) { throw new Error("Expected parse to work"); }
+            if (!p.success) {
+                throw new Error("Expected parse to work");
+            }
 
             const o = p.data;
             assert.strictEqual(o.type, "volume");
@@ -44,9 +46,9 @@ describe("Parser tests", () => {
         }
         {
             const jsondata = {
-                "type": "somethingelse",
-                "target": "/workspace/dir",
-                "options": "ro"
+                type: "somethingelse",
+                target: "/workspace/dir",
+                options: "ro",
             };
 
             const p = parser.Mount.safeParse(jsondata);
@@ -57,14 +59,14 @@ describe("Parser tests", () => {
     test("Parse both build syntax", () => {
         {
             const jsondata = {
-                "name": "devc",
-                "build": {
-                    "dockerfile": "ubuntu",
-                    "context": "dir",
-                    "args": {
-                        "ARG1": "VAL1"
+                name: "devc",
+                build: {
+                    dockerfile: "ubuntu",
+                    context: "dir",
+                    args: {
+                        ARG1: "VAL1",
                     },
-                }
+                },
             };
 
             const o = parser.ConfigSchema.parse(jsondata);
@@ -76,14 +78,14 @@ describe("Parser tests", () => {
         }
         {
             const jsondata = {
-                "name": "devc",
-                "dockerFile": "ubuntu",
-                "context": "dir",
-                "build": {
-                    "args": {
-                        "ARG1": "VAL1"
+                name: "devc",
+                dockerFile: "ubuntu",
+                context: "dir",
+                build: {
+                    args: {
+                        ARG1: "VAL1",
                     },
-                }
+                },
             };
 
             const o = parser.ConfigSchema.parse(jsondata);
@@ -98,13 +100,13 @@ describe("Parser tests", () => {
 
     test("Both workspaceFolder and workspaceMount must be set/unset", () => {
         const jsondata = {
-            "name": "devc",
-            "build": {
-                "dockerfile": "ubuntu",
-                "args": {
-                    "ARG1": "VAL1"
+            name: "devc",
+            build: {
+                dockerfile: "ubuntu",
+                args: {
+                    ARG1: "VAL1",
                 },
-            }
+            },
         };
 
         {
@@ -114,14 +116,14 @@ describe("Parser tests", () => {
         {
             const o = parser.ConfigSchema.safeParse({
                 ...jsondata,
-                "workspaceFolder": "a",
-                "workspaceMount": "source=b,target=c",
+                workspaceFolder: "a",
+                workspaceMount: "source=b,target=c",
             });
             expect(o.success).toBe(true);
         }
         {
-            const jsondata1 = { ...jsondata, "workspaceFolder": "a" };
-            const jsondata2 = { ...jsondata, "workspaceMount": "source=/b,target=/b" };
+            const jsondata1 = { ...jsondata, workspaceFolder: "a" };
+            const jsondata2 = { ...jsondata, workspaceMount: "source=/b,target=/b" };
             const o1 = parser.ConfigSchema.safeParse(jsondata1);
             const o2 = parser.ConfigSchema.safeParse(jsondata2);
             expect(o1.success).toBe(false);
@@ -135,29 +137,28 @@ describe("Parser tests", () => {
         {
             // restricting it to just one is handled in the parser
             const mounts = [
-                { test: 'source=/foo,target=/bar', result: "/bar" },
-                { test: 'source=/dir1/foo,target=/dir2/bar,type=bind', result: "/dir2/bar" },
-                { test: 'source=/dir1/foo,target=/dir3/bar/baz,consistency=cached,foo=bar', result: "/dir3/bar/baz" },
-                { test: 'source=/home/用户/项目,target=/workspace/проект,type=bind', result: "/workspace/проект" },
-                { test: 'source=/home/用户/项目,target=/workspace/проект/target,type=bind', result: "/workspace/проект/target" },
+                { test: "source=/foo,target=/bar", result: "/bar" },
+                { test: "source=/dir1/foo,target=/dir2/bar,type=bind", result: "/dir2/bar" },
+                { test: "source=/dir1/foo,target=/dir3/bar/baz,consistency=cached,foo=bar", result: "/dir3/bar/baz" },
+                { test: "source=/home/用户/项目,target=/workspace/проект,type=bind", result: "/workspace/проект" },
+                { test: "source=/home/用户/项目,target=/workspace/проект/target,type=bind", result: "/workspace/проект/target" },
 
             ];
 
             for (const mount of mounts) {
                 expect(parser.extractWorkspaceMount(mount.test)).contains(mount.result);
-
             }
         }
     });
 
     test("Reject multiple target matches in workspaceMount", () => {
         {
-            const jsonbase = { "name": "foo", "image": "ubuntu", "workspaceFolder": "/foo" };
+            const jsonbase = { name: "foo", image: "ubuntu", workspaceFolder: "/foo" };
             const jsondatas = [
-                { ...jsonbase, "workspaceMount": 'source=/foo,target=/bar,target' },
-                { ...jsonbase, "workspaceMount": 'source="/dir1/foo,target",target=/dir2/bar,type=bind' },
+                { ...jsonbase, workspaceMount: "source=/foo,target=/bar,target" },
+                { ...jsonbase, workspaceMount: 'source="/dir1/foo,target",target=/dir2/bar,type=bind' },
                 // { ...jsonbase, "workspaceMount": 'source=/dir1/foo,target=/dir3/bar/target,consistency=cached,foo=bar' },
-                { ...jsonbase, "workspaceMount": 'source=/home/用户/target=项目,target=/workspace,target=проект,type=bind' },
+                { ...jsonbase, workspaceMount: "source=/home/用户/target=项目,target=/workspace,target=проект,type=bind" },
             ];
 
             for (const data of jsondatas) {
@@ -165,19 +166,17 @@ describe("Parser tests", () => {
                 expect(res.success).toBe(false);
                 expect(res.error?.message.search("multiple mount targets")).greaterThan(0);
             }
-
         }
     });
 
     test("Image or dockerfile must be present", () => {
         {
             const jsondata = {
-                "name": "devc",
+                name: "devc",
             };
 
             const o = parser.ConfigSchema.safeParse(jsondata);
             expect(o.success).toBe(false);
         }
     });
-
 });

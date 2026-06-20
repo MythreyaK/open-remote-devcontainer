@@ -1,21 +1,20 @@
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { mkdtemp } from 'node:fs/promises';
-import path, { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import path from "node:path";
+import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 
-import { parseEnv } from '../common/utils';
-import { run } from '../common/cmd';
-import { getLogSink } from '../extension/log';
-import { ContainerConfig } from './container';
-import { EngineError, InstallError, InternalError } from '../extension/error';
-import { getWorkspaceId } from '../extension/workspace';
+import { run } from "../common/cmd";
+import { parseEnv } from "../common/utils";
+import { getLogSink } from "../extension/log";
+import { ContainerConfig } from "./container";
+import { getWorkspaceId } from "../extension/workspace";
+import { EngineError, InstallError, InternalError } from "../extension/error";
 
-import * as settings from '../extension/settings';
-import * as server from '../remote/installServer';
+import * as settings from "../extension/settings";
+import * as server from "../remote/installServer";
 
 const DEVCONTAINER_SERVER_LISTEN_PORT = 65432;
 
-const jsonFormat = ['--format', '{{json .}}'];
+const jsonFormat = ["--format", "{{json .}}"];
 
 export class ContainerState {
     private readonly workspaceFolder: string;
@@ -62,7 +61,7 @@ export class ContainerState {
     }
 
     public getContainerName(): string {
-        return `codium-devc-${getWorkspaceId()}`
+        return `codium-devc-${getWorkspaceId()}`;
     }
 
     public async checkContainerExists(name: string): Promise<string | undefined> {
@@ -73,28 +72,31 @@ export class ContainerState {
                 "inspect",
                 name,
                 ...jsonFormat,
-            ], this.workspaceFolder, {}
+            ], this.workspaceFolder, {},
         );
 
         if (ret.exit !== 0) {
             return undefined;
-        } else {
-            return JSON.parse(ret.stdout.trim())["Id"];
+        }
+        else {
+            const idData = JSON.parse(ret.stdout.trim()) as { Id: string };
+            return idData.Id;
         }
     }
 
     public async getConnectionToken(): Promise<string> {
-        if (this.checkContainerExists(this.getContainerName()) != undefined) {
+        const checkExists = await this.checkContainerExists(this.getContainerName());
+        if (checkExists !== undefined) {
             // TODO: token in tempdir?
             const token = await run([
                 ...settings.getEngineCmd(),
                 ...this.cc.getExecArgs(this.containerId, this.remoteEnvProbe),
-                'bash',
-                '-c',
-                'cat ${HOME}/.vscode-oss-devcontainer/token',
+                "bash",
+                "-c",
+                "cat ${HOME}/.vscode-oss-devcontainer/token",
             ], this.workspaceFolder, {});
 
-            if (token.exit != 0) {
+            if (token.exit !== 0) {
                 // TODO: reinstall server? force-restart with new token?
                 throw new InstallError(`Could not query existing token in container [stdout:${token.stdout}] [stderr:${token.stderr}]`);
             }
@@ -116,7 +118,7 @@ export class ContainerState {
                 throw new EngineError(
                     `${settings.getContainerEngine()} build failed with error code ${buildRes.exit}:\n`
                     + `stdout: ${buildRes.stdout}\n`
-                    + `stderr: ${buildRes.stderr}\n`
+                    + `stderr: ${buildRes.stderr}\n`,
                 );
             }
             else {
@@ -155,21 +157,20 @@ export class ContainerState {
                 ...this.cc.getRunCreateCmd(
                     imageName,
                     this.getContainerName(),
-                    ["-p", `${DEVCONTAINER_SERVER_LISTEN_PORT}:${DEVCONTAINER_SERVER_LISTEN_PORT}`])
-            ], this.workspaceFolder, {}
+                    ["-p", `${DEVCONTAINER_SERVER_LISTEN_PORT}:${DEVCONTAINER_SERVER_LISTEN_PORT}`]),
+            ], this.workspaceFolder, {},
         );
 
         if (startRes.exit !== 0) {
             throw new EngineError(
                 `Failed to start ${this.containerId}:\n`
                 + `stdout: ${startRes.stdout}\n`
-                + `stderr: ${startRes.stderr}\n`
+                + `stderr: ${startRes.stderr}\n`,
             );
         }
         else {
             this.containerId = startRes.stdout.trim();
             getLogSink().info(`Started container from image ${imageName} (${imageHash}) with ID ${this.containerId}`);
-
         }
 
         return this.containerId;
@@ -201,7 +202,7 @@ export class ContainerState {
                 "inspect",
                 name,
                 ...jsonFormat,
-            ], this.workspaceFolder, {}
+            ], this.workspaceFolder, {},
         );
     }
 
@@ -215,8 +216,8 @@ export class ContainerState {
             [
                 ...settings.getEngineCmd(),
                 ...this.cc.getExecArgs(this.containerId, this.remoteEnvProbe),
-                ...cmdArgs
-            ], this.workspaceFolder, {}
+                ...cmdArgs,
+            ], this.workspaceFolder, {},
         );
     }
 
@@ -242,7 +243,7 @@ export class ContainerState {
 
         const scriptData = await server.generateInstallScript(info, true);
         const installScriptPath = path.join(this.tempDir, "installScript.sh");
-        writeFileSync(installScriptPath, scriptData, { encoding: 'utf-8' });
+        writeFileSync(installScriptPath, scriptData, { encoding: "utf-8" });
 
         const destFile = "/tmp/codium-devcontainer-installScript.sh";
 
@@ -253,8 +254,8 @@ export class ContainerState {
                 ...this.cc.getExecArgs(this.containerId, this.remoteEnvProbe),
                 "bash",
                 "-c",
-                "apt update -y && apt install curl -y"
-            ], this.workspaceFolder, {}
+                "apt update -y && apt install curl -y",
+            ], this.workspaceFolder, {},
         );
 
         // copy the script and run it
@@ -263,11 +264,11 @@ export class ContainerState {
                 ...settings.getEngineCmd(),
                 "cp",
                 installScriptPath,
-                `${this.containerId}:${destFile}`
-            ], this.workspaceFolder, {}
+                `${this.containerId}:${destFile}`,
+            ], this.workspaceFolder, {},
         );
 
-        if (copyResult.exit != 0) {
+        if (copyResult.exit !== 0) {
             throw new InstallError(`Could not copy install script from ${installScriptPath} (host) to ${this.containerId}:${destFile} (container)`);
         }
 
@@ -276,16 +277,16 @@ export class ContainerState {
                 ...settings.getEngineCmd(),
                 ...this.cc.getExecArgs(this.containerId, this.remoteEnvProbe),
                 "bash",
-                destFile
-            ], this.workspaceFolder, {}
+                destFile,
+            ], this.workspaceFolder, {},
         );
 
-        if (installExecResult.exit != 0) {
+        if (installExecResult.exit !== 0) {
             const err = getInstallError(installExecResult.stdout);
             throw new InstallError(`Install script at ${this.containerId}:${destFile} failed with code ${installExecResult.exit}: Error: ${err}`);
         }
 
-        return { host: "127.0.0.1", port: DEVCONTAINER_SERVER_LISTEN_PORT, result: installExecResult};
+        return { host: "127.0.0.1", port: DEVCONTAINER_SERVER_LISTEN_PORT, result: installExecResult };
     }
 }
 
@@ -293,7 +294,7 @@ function getInstallError(data: string) {
     const errMsgMatches = Array.from(data.matchAll(/^INSTALL_SCRIPT_ERROR:(.*)$/gm));
     const errCodeMatches = Array.from(data.matchAll(/^EXITCODE\[\[(.*)\]\]$/gm));
 
-    if (!errCodeMatches || !errMsgMatches) {
+    if (errCodeMatches.length === 0 || errMsgMatches.length === 0) {
         throw new InstallError(`Could not extract error message from\n'${data}'`);
     }
     else {
@@ -303,5 +304,4 @@ function getInstallError(data: string) {
         // return `${errCode}${errMsg}`;
         return data;
     }
-
 }

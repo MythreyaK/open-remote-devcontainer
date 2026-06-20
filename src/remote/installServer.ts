@@ -1,6 +1,6 @@
-import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
-import * as vscode from 'vscode';
+import * as vscode from "vscode";
+import * as path from "node:path";
+import * as fs from "node:fs/promises";
 
 export interface ServerInfo {
     version: string,
@@ -16,13 +16,13 @@ export async function getProductJson() {
     }
 
     const jsonPath = path.join(vscode.env.appRoot, "product.json");
-    const jsonData = JSON.parse(await fs.readFile(jsonPath, { encoding: "utf-8", "flag": "r" })) as ProductJson;
+    const jsonData = JSON.parse(await fs.readFile(jsonPath, { encoding: "utf-8", flag: "r" })) as ProductJson;
 
     return {
         version: jsonData.version,
         commit: jsonData.commit,
         serverUrlTemplate: jsonData.serverDownloadUrlTemplate,
-    } as ServerInfo;
+    };
 }
 
 export interface ScriptInstallInfo {
@@ -48,7 +48,9 @@ export function updateScript(script: string, info: ScriptInstallInfo, debug: boo
 
     const remoteEnvs = (() => {
         const entries = Object.entries(info.remoteEnvs);
-        if (entries.length === 0) return "";
+        if (entries.length === 0) {
+            return "";
+        }
 
         return entries
             .map(([k, v]) => `export ${k}=${v}`)
@@ -71,7 +73,6 @@ export function updateScript(script: string, info: ScriptInstallInfo, debug: boo
 export const INSTALL_SCRIPT_LOCATION: string = path.join(__dirname, "installServer.sh");
 
 export async function generateInstallScript(info: ScriptInstallInfo, debug: boolean = false) {
-    const script = await fs.readFile(INSTALL_SCRIPT_LOCATION, { encoding: 'utf-8' });
+    const script = await fs.readFile(INSTALL_SCRIPT_LOCATION, { encoding: "utf-8" });
     return updateScript(script, info, debug);
 }
-

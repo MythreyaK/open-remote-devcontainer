@@ -1,9 +1,8 @@
 import { getLogSink } from "./log";
 
-
 export class ParseError extends Error {
     constructor(
-        public readonly reason: string
+        public readonly reason: string,
     ) {
         super(reason);
         getLogSink().error(reason);
@@ -13,7 +12,7 @@ export class ParseError extends Error {
 // better name?
 export class ConfigError extends Error {
     constructor(
-        public readonly reason: string
+        public readonly reason: string,
     ) {
         super(reason);
         getLogSink().error(reason);
@@ -22,7 +21,7 @@ export class ConfigError extends Error {
 
 export class SpawnError extends Error {
     constructor(
-        public readonly reason: string
+        public readonly reason: string,
     ) {
         super(reason);
         getLogSink().error(reason);
@@ -32,7 +31,7 @@ export class SpawnError extends Error {
 // better name?
 export class EngineError extends Error {
     constructor(
-        public readonly reason: string
+        public readonly reason: string,
     ) {
         super(reason);
         getLogSink().error(reason);
@@ -42,7 +41,7 @@ export class EngineError extends Error {
 // better name?
 export class InstallError extends Error {
     constructor(
-        public readonly reason: string
+        public readonly reason: string,
     ) {
         super(reason);
         getLogSink().error(reason);
@@ -52,10 +51,9 @@ export class InstallError extends Error {
 // better name?
 export class InternalError extends Error {
     constructor(
-        public readonly reason: string
+        public readonly reason: string,
     ) {
         super(reason);
         getLogSink().error(reason);
     }
 }
-

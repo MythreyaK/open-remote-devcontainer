@@ -1,9 +1,9 @@
-import * as vscode from 'vscode';
-import * as crypto from 'node:crypto';
-import { existsSync } from 'node:fs';
-import path from 'node:path';
+import * as vscode from "vscode";
+import path from "node:path";
+import { existsSync } from "node:fs";
+import * as crypto from "node:crypto";
 
-import { InternalError } from './error';
+import { InternalError } from "./error";
 
 export function getActiveWorkspace(): string {
     const workspaces = vscode.workspace.workspaceFolders;
@@ -18,9 +18,9 @@ export function getActiveWorkspace(): string {
 
 export function getWorkspaceId(): string {
     return crypto
-        .createHash('sha256')
+        .createHash("sha256")
         .update(getActiveWorkspace())
-        .digest('hex')
+        .digest("hex")
         .slice(0, 8);
 }
 
@@ -28,7 +28,7 @@ export function findDevcontainerJson(dir: string): string {
     const filePaths = [
         path.join(dir, ".devcontainer", "devcontainer.json"),
         path.join(dir, ".devcontainer.json"),
-    ]
+    ];
 
     for (const f of filePaths) {
         if (existsSync(f)) {

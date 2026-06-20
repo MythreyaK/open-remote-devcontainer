@@ -1,17 +1,17 @@
-import path from 'node:path';
-import { afterAll, describe, expect, expectTypeOf, test, vi } from 'vitest';
-import { Uri, window, workspace } from 'vscode';
+import path from "node:path";
+import { Uri, window, workspace } from "vscode";
+import { afterAll, describe, expect, test, vi } from "vitest";
 
-import { ContainerState } from '../engine/lifecycle';
-import { getActiveWorkspace } from '../extension/workspace';
-import { initLog } from '../extension/log';
-import { runCmd } from '../common/cmd';
-import { parseDevcontainerFile } from '../parser/parser';
-import { ContainerConfig } from '../engine/container';
-import { parseEnv } from '../common/utils';
-import * as server from '../remote/installServer';
-import { ServerInfo } from '../remote/installServer';
-import { setTimeout } from 'node:timers/promises';
+import { ContainerState } from "../engine/lifecycle";
+import { getActiveWorkspace } from "../extension/workspace";
+import { initLog } from "../extension/log";
+import { runCmd } from "../common/cmd";
+import { parseDevcontainerFile } from "../parser/parser";
+import { ContainerConfig } from "../engine/container";
+import { parseEnv } from "../common/utils";
+import * as server from "../remote/installServer";
+import { ServerInfo } from "../remote/installServer";
+import { setTimeout } from "node:timers/promises";
 
 function getEngine() {
     return "podman";
@@ -21,34 +21,34 @@ function getcwd() {
     return __dirname;
 }
 
-const TEST_CODIUM_INFO = {
+const TEST_CODIUM_INFO: ServerInfo = {
     version: "1.121.03429",
     commit: "824c4c46a288b839f13b24022655329c2aeb9f81",
-    serverUrlTemplate: "https://github.com/VSCodium/vscodium/releases/download/1.121.03429/vscodium-reh-${os}-${arch}-1.121.03429.tar.gz"
-} as ServerInfo
+    serverUrlTemplate: "https://github.com/VSCodium/vscodium/releases/download/1.121.03429/vscodium-reh-${os}-${arch}-1.121.03429.tar.gz",
+};
 
 const init = () => {
-    const spyCreateOutput = vi.spyOn(window, 'createOutputChannel');
+    const spyCreateOutput = vi.spyOn(window, "createOutputChannel");
     spyCreateOutput.mockReturnValue({
-        // info: console.log,
-        // warn: console.log,
-        // error: console.log,
+    // info: console.log,
+    // warn: console.log,
+    // error: console.log,
         info: vi.fn(),
         warn: vi.fn(),
         error: vi.fn(),
     } as any);
 
-    const spySettings = vi.spyOn(workspace, 'getConfiguration');
+    const spySettings = vi.spyOn(workspace, "getConfiguration");
     spySettings.mockReturnValue({
         get: (key: string) => {
             const config: Record<string, string | undefined> = {
-                "engine": "podman"
+                engine: "podman",
             };
             return config[key];
-        }
+        },
     } as any);
 
-    const spyProdsJson = vi.spyOn(server, 'getProductJson');
+    const spyProdsJson = vi.spyOn(server, "getProductJson");
     spyProdsJson.mockResolvedValue(TEST_CODIUM_INFO);
 
     initLog("Remote - Devcontainer (tests)");
@@ -60,7 +60,7 @@ describe("integration: lifecycle: img-basic", () => {
     const fixtureDir = path.join(getcwd(), "fixtures", "img-basic");
 
     (workspace as any).setWorkspaceFolders([
-        { uri: Uri.file(fixtureDir), name: 'img-basic', index: 0 },
+        { uri: Uri.file(fixtureDir), name: "img-basic", index: 0 },
     ]);
 
     let containerId: string | undefined;
@@ -91,7 +91,7 @@ describe("integration: lifecycle: img-basic", () => {
     let container: ContainerState;
 
     test("create", async () => {
-        // TODO: use auto-detection
+    // TODO: use auto-detection
         const devcPath = path.join(getActiveWorkspace(), "devcontainer.json");
         const cfg = parseDevcontainerFile(devcPath);
 
@@ -134,14 +134,14 @@ describe("integration: lifecycle: img-basic", () => {
     });
 
     test("install script and health-check", async () => {
-        const {_, _s, result} = await container.installServer();
+        const { _, _s, result } = await container.installServer();
         expect(result.exit).eq(0);
 
         const token = await container.getConnectionToken();
 
         // UUID4
         expect(token.length).eq(36);
-        expect(token.split('-').length).eq(5); // 5 items from 4 '-'
+        expect(token.split("-").length).eq(5); // 5 items from 4 '-'
 
         let healthVersion: string | undefined;
 
@@ -166,7 +166,5 @@ describe("integration: lifecycle: img-basic", () => {
         })();
 
         expect(healthVersion).eq(TEST_CODIUM_INFO.commit);
-
     }, 60 * 1000);
-
 });

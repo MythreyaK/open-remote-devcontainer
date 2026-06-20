@@ -92,6 +92,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@stylistic/eslint-plugin": "^5.10.0",
     "@types/node": "22.x",
     "@types/vscode": "^1.110.0",
     "@vscode/dts": "^0.4.1",
