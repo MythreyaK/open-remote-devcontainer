@@ -29,17 +29,18 @@
   "main": "./dist/extension.js",
   "activationEvents": [
     "workspaceContains:.devcontainer/devcontainer.json",
-    "workspaceContains:.devcontainer.json"
+    "workspaceContains:.devcontainer.json",
+    "onResolveRemoteAuthority:devcontainer-remote"
   ],
   "contributes": {
     "commands": [
       {
-        "command": "open-remote-devcontainer.helloWorld",
-        "title": "Hello World"
+        "command": "open-remote-devcontainer.getVersion",
+        "title": "Remote - Devcontainer: Get engine version"
       },
       {
-        "command": "open-remote-devcontainer.getVersion",
-        "title": "getVersion"
+        "command": "open-remote-devcontainer.openRemote",
+        "title": "Remote - Devcontainer: Open workspace in container"
       }
     ],
     "configuration": {
