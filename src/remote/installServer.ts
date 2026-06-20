@@ -2,8 +2,6 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 
-import { runCmd } from '../common/cmd';
-
 export interface ServerInfo {
     version: string,
     commit: string,
@@ -48,10 +46,15 @@ export function updateScript(script: string, info: ScriptInstallInfo, debug: boo
         .map(e => `--install-extension ${e}`)
         .join(" ");
 
-    const remoteEnvs = Object.entries(info.remoteEnvs)
-        .flatMap(([k, v]) => `export ${k}=${v}`)
-        .join(";\n")
-        .concat(";\n");
+    const remoteEnvs = (() => {
+        const entries = Object.entries(info.remoteEnvs);
+        if (entries.length === 0) return "";
+
+        return entries
+            .map(([k, v]) => `export ${k}=${v}`)
+            .join(";\n")
+            .concat("\n");
+    })();
 
     scriptCopy = scriptCopy
         .replace("CODIUM_INJECT_INSTALL_EXTENSIONS", extensArgs)

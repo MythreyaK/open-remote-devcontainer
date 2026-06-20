@@ -1,6 +1,9 @@
 import * as vscode from 'vscode';
-import { InternalError } from './error';
 import * as crypto from 'node:crypto';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+
+import { InternalError } from './error';
 
 export function getActiveWorkspace(): string {
     const workspaces = vscode.workspace.workspaceFolders;
@@ -19,4 +22,19 @@ export function getWorkspaceId(): string {
         .update(getActiveWorkspace())
         .digest('hex')
         .slice(0, 8);
+}
+
+export function findDevcontainerJson(dir: string): string {
+    const filePaths = [
+        path.join(dir, ".devcontainer", "devcontainer.json"),
+        path.join(dir, ".devcontainer.json"),
+    ]
+
+    for (const f of filePaths) {
+        if (existsSync(f)) {
+            return f;
+        }
+    }
+
+    throw new Error(`devcontainer.json not found. Searched: ${filePaths.join(", ")}`);
 }

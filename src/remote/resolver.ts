@@ -1,8 +1,28 @@
 import * as vscode from 'vscode';
 
-export const AUTHORITY_BASE: string = "devc";
+import { getLogSink } from '../extension/log';
+import { ContainerState } from '../engine/lifecycle';
+import { findDevcontainerJson } from '../extension/workspace';
+import { ContainerConfig } from '../engine/container';
+import { parseDevcontainerFile } from '../parser/parser';
 
-class DevContainer implements vscode.RemoteAuthorityResolver, vscode.Disposable {
+export const AUTHORITY_BASE: string = "devcontainer-remote";
+
+export function encodeRemoteAuthority(localWsf: string) {
+    const encoded = Buffer.from(localWsf).toString('base64url');
+    return `${AUTHORITY_BASE}+${encoded}`;
+}
+
+export function decodeRemoteAuthority(authority: string) {
+    const authorityPrefix = `${AUTHORITY_BASE}+`
+    if (authority.startsWith(authorityPrefix)) {
+        const [_, wsf] = authority.split(authorityPrefix);
+        getLogSink().info(`Trying to decode ${authority}: got '${_}' and '${wsf}'`);
+        return Buffer.from(wsf, 'base64url').toString('utf-8');
+    }
+    else throw new Error(`Bad remote authority '${authority}'`);
+}
+
 
     // candidatePortSource?: vscode.CandidatePortSource;
 
