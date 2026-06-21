@@ -12,6 +12,7 @@
         "LOCAL_DEFAULT": "${localEnv:NONEXISTENT:/usr/bin:/opt}",
         "APPEND_PATH": "${containerEnv:PATH}:/extra/bin",
         "EMPTY_DEFAULT": "${localEnv:NONEXISTENT:}",
-        "WORKSPACE_MIX": "${localWorkspaceFolder}:${containerEnv:CONTAINER_ENV2}"
+        "WORKSPACE_MIX": "${localWorkspaceFolder}:${containerEnv:CONTAINER_ENV2}",
+        "CUSTOM_LOCAL_ENV_CHECK": "${localEnv:CUSTOM_LOCAL_ENV:FAIL}",
     }
 }

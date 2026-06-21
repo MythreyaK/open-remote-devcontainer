@@ -30,9 +30,9 @@ const TEST_CODIUM_INFO: ServerInfo = {
 const init = () => {
     const spyCreateOutput = vi.spyOn(window, "createOutputChannel");
     spyCreateOutput.mockReturnValue({
-    // info: console.log,
-    // warn: console.log,
-    // error: console.log,
+        // info: console.log,
+        // warn: console.log,
+        // error: console.log,
         info: vi.fn(),
         warn: vi.fn(),
         error: vi.fn(),
@@ -91,11 +91,15 @@ describe("integration: lifecycle: img-basic", () => {
     let container: ContainerState;
 
     test("create", async () => {
-    // TODO: use auto-detection
+        // TODO: use auto-detection
         const devcPath = path.join(getActiveWorkspace(), "devcontainer.json");
         const cfg = parseDevcontainerFile(devcPath);
 
-        cc = ContainerConfig.create(getActiveWorkspace(), cfg);
+        cc = ContainerConfig.create(
+            getActiveWorkspace(),
+            cfg,
+            { ...process.env, CUSTOM_LOCAL_ENV: "CUSTOM_LOCAL_VAR" }
+        );
 
         container = await ContainerState.create(getActiveWorkspace(), devcPath, cc);
         containerId = container.getContainerId();
@@ -131,6 +135,15 @@ describe("integration: lifecycle: img-basic", () => {
         expect(remoteEnvs.APPEND_PATH).eq(`${containerEnvs.PATH}:/extra/bin`);
         expect(remoteEnvs.EMPTY_DEFAULT).eq("");
         expect(remoteEnvs.WORKSPACE_MIX).eq(`${getActiveWorkspace()}:${containerEnvs.CONTAINER_ENV2}`);
+    });
+
+    test("getResolvedRemoteEnv uses injected custom local env at create time", async () => {
+        const containerEnvs = await container.getContainerEnv();
+        expect("CUSTOM_LOCAL_ENV" in containerEnvs).toBe(false);
+        expect("CUSTOM_LOCAL_ENV_CHECK" in containerEnvs).toBe(false);
+
+        const remoteEnvs = container.getConfig().getResolvedRemoteEnv(containerEnvs);
+        expect(remoteEnvs.CUSTOM_LOCAL_ENV_CHECK).toBe("CUSTOM_LOCAL_VAR");
     });
 
     test("install script and health-check", async () => {

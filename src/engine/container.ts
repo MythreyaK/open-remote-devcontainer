@@ -247,7 +247,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
                 /* ret.push("--env", k); */
             }
             else {
-                ret[k] = interpolateContainer(v, this.workspacePath, this.getRemoteMountDir(), process.env, containerEnvsProbe);
+                ret[k] = interpolateContainer(v, this.workspacePath, this.getRemoteMountDir(), this.localEnv, containerEnvsProbe);
             }
         }
         return ret;
