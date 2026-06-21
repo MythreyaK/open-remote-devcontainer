@@ -266,10 +266,6 @@ export class ContainerState {
         return createRes.stdout.trim();
     }
 
-    private static assertSet(tok: string | undefined, msg: string): asserts tok is string {
-        if (!tok) { throw new Error(msg); }
-    }
-
     public async getContainerEnv(): Promise<Record<string, string>> {
         // TODO: tty might cause issues?
         const out = await run(

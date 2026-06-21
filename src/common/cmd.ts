@@ -1,5 +1,3 @@
-import { workspace } from "vscode";
-
 import * as common from "./spawn";
 import { getLogSink } from "../extension/log";
 
