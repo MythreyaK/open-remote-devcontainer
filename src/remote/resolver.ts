@@ -57,9 +57,9 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
         const containerConfig = ContainerConfig.create(this.localWsf, parsedConfig);
 
         progress.report({ message: "Building image and starting container...", increment: 50 });
-        this.containerState = await ContainerState.create(this.localWsf, "", containerConfig);
+        this.containerState = await ContainerState.create(this.localWsf, containerConfig);
 
-        const containerId = this.containerState.getContainerId();
+        const containerId = await this.containerState.getContainerId();
         const localWsfBasename = path.parse(this.localWsf).base;
 
         // set status bar item
@@ -71,7 +71,8 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
                     label: "${path}",
                     separator: "/",
                     tildify: true,
-                    workspaceSuffix: `📦 ${containerId.slice(0, 6)}: ${localWsfBasename}`,
+                    workspaceSuffix: `📦 ${containerId.slice(0, 7)}: ${localWsfBasename}`,
+                    authorityPrefix: this.localWsf,
                 },
             });
 

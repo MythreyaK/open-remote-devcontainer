@@ -11,22 +11,30 @@ import { EngineError, InstallError, InternalError } from "../extension/error";
 
 import * as settings from "../extension/settings";
 import * as server from "../remote/installServer";
+import { CmdResult } from "../common/spawn";
 
 const DEVCONTAINER_SERVER_LISTEN_PORT = 65432;
+const UUID_TOKEN_LEN = 36;
 
 const jsonFormat = ["--format", "{{json .}}"];
+
+export interface ContainerInspectResult {
+    Id: string,
+    State: {
+        Status: "created" | "running" | "paused" | "stopped" | "exited",
+        Running: boolean,
+    },
+};
 
 export class ContainerState {
     private readonly workspaceFolder: string;
     private readonly tempDir: string;
     private readonly cc: ContainerConfig;
 
-    private containerId: string = "";
-    private connectionToken: string = "";
     private remoteEnvProbe: Record<string, string> = {};
     // private imageId: string;
 
-    private constructor(workspaceFolder: string, _: string, cc: ContainerConfig) {
+    private constructor(workspaceFolder: string, cc: ContainerConfig) {
         this.workspaceFolder = path.resolve(workspaceFolder);
         this.tempDir = path.join(tmpdir(), `codium-devcontainer-${getWorkspaceId(this.workspaceFolder)}`);
         mkdirSync(this.tempDir, { recursive: true });
@@ -35,20 +43,30 @@ export class ContainerState {
         this.cc = cc;
     }
 
-    public static async create(workspaceFolder: string, _: string, cc: ContainerConfig): Promise<ContainerState> {
-        const ret = new ContainerState(workspaceFolder, _, cc);
+    public static async create(workspaceFolder: string, cc: ContainerConfig): Promise<ContainerState> {
+        const ret = new ContainerState(workspaceFolder, cc);
 
-        ret.connectionToken = crypto.randomUUID();
-        const containerExists = await ret.checkContainerExists(ret.getContainerName());
+        const containerExists = await ret.containerExists(ret.getContainerName());
+        let containerId: string | undefined;
+
         if (containerExists === undefined) {
-            await ret.createContainer();
+            containerId = await ret.createContainer();
+            if (!await ret.isRunning()) {
+                throw new Error(`Could not start container ${ret.getContainerName()}`);
+            }
+        }
+        else if (!containerExists.State.Running) {
+            containerId = await ret.startContainer();
         }
         else {
-            ret.containerId = containerExists;
+            containerId = containerExists.Id;
+        }
+
+        if (!containerId) {
+            throw new Error("Could not start container. Check logs");
         }
 
         ret.remoteEnvProbe = await ret.getContainerEnv();
-
         return ret;
     }
 
@@ -56,57 +74,17 @@ export class ContainerState {
         return this.cc;
     }
 
-    public getContainerId(): string {
-        return this.containerId;
+    public async getContainerId(): Promise<string> {
+        const ret = await this.inspectContainer(this.getContainerName());
+        return ret.Id;
+    }
+
+    public static getContainerName(wsf: string): string {
+        return `codium-devc-${getWorkspaceId(wsf)}`;
     }
 
     public getContainerName(): string {
         return `codium-devc-${getWorkspaceId(this.workspaceFolder)}`;
-    }
-
-    public async checkContainerExists(name: string): Promise<string | undefined> {
-        const ret = await run(
-            [
-                ...settings.getEngineCmd(),
-                "container",
-                "inspect",
-                name,
-                ...jsonFormat,
-            ], this.workspaceFolder, {},
-        );
-
-        if (ret.exit !== 0) {
-            return undefined;
-        }
-        else {
-            const idData = JSON.parse(ret.stdout.trim()) as { Id: string };
-            return idData.Id;
-        }
-    }
-
-    public async getConnectionToken(): Promise<string> {
-        const checkExists = await this.checkContainerExists(this.getContainerName());
-        if (checkExists !== undefined) {
-            // TODO: token in tempdir?
-            const token = await run([
-                ...settings.getEngineCmd(),
-                ...this.cc.getExecArgs(this.containerId, this.remoteEnvProbe),
-                "bash",
-                "-c",
-                "cat ${HOME}/.vscode-oss-devcontainer/token",
-            ], this.workspaceFolder, {});
-
-            if (token.exit !== 0) {
-                // TODO: reinstall server? force-restart with new token?
-                throw new InstallError(`Could not query existing token in container [stdout:${token.stdout}] [stderr:${token.stderr}]`);
-            }
-            this.connectionToken = token.stdout.trim();
-            return this.connectionToken;
-        }
-        else {
-            // use whatever the ctor had ... may need to force-restart server or the container
-            return this.connectionToken;
-        }
     }
 
     private async createContainer() {
@@ -115,11 +93,7 @@ export class ContainerState {
         if (this.cc.isDockerfileBased()) {
             const buildRes = await this.build(this.cc.getBuildCmd());
             if (buildRes.exit !== 0) {
-                throw new EngineError(
-                    `${settings.getContainerEngine()} build failed with error code ${buildRes.exit}:\n`
-                    + `stdout: ${buildRes.stdout}\n`
-                    + `stderr: ${buildRes.stderr}\n`,
-                );
+                throw new EngineError(`${settings.getContainerEngine()} build failed ${formatCmdErr(buildRes)}`);
             }
             else {
                 imageName = this.cc.getImageName();
@@ -161,30 +135,135 @@ export class ContainerState {
             throw new Error("Invalid image hash. This is a bug, please report it");
         }
 
+        return await this.runCreate(imageName, imageHash);
+    }
+
+    public async isRunning(): Promise<boolean> {
+        const ret = await this.inspectContainer(this.getContainerName());
+        return ret.State.Running;
+    }
+
+    private async startContainer(): Promise<string> {
+        const ret = await run([
+            ...settings.getEngineCmd(),
+            "start",
+            this.getContainerName(),
+        ], this.workspaceFolder, {});
+
+        if (ret.exit !== 0) {
+            throw new EngineError(`Failed to start container: ${formatCmdErr(ret)}`);
+        }
+        else {
+            return ret.stdout.trim();
+        }
+    }
+
+    public async stopContainer() {
+        const ret = await run([
+            ...settings.getEngineCmd(),
+            "stop",
+            this.getContainerName(),
+        ], this.workspaceFolder, {});
+
+        if (ret.exit !== 0) {
+            throw new EngineError(`Failed to stop container: ${formatCmdErr(ret)}`);
+        }
+        else {
+            return ret.stdout.trim();
+        }
+    }
+
+    private async inspectContainer(identifier: string): Promise<ContainerInspectResult> {
+        const res = await run(
+            [
+                ...settings.getEngineCmd(),
+                "container",
+                "inspect",
+                identifier,
+                ...jsonFormat,
+            ], this.workspaceFolder, {},
+        );
+
+        if (res.exit !== 0) {
+            throw new EngineError(`Could not inspect ${this.getContainerName()}: ${formatCmdErr(res)}`);
+        }
+        else {
+            return JSON.parse(res.stdout.trim()) as ContainerInspectResult;
+        }
+    }
+
+    public async containerExists(identifier: string): Promise<ContainerInspectResult | undefined> {
+        const res = await run(
+            [
+                ...settings.getEngineCmd(),
+                "container",
+                "inspect",
+                identifier,
+                ...jsonFormat,
+            ], this.workspaceFolder, {},
+        );
+
+        if (res.exit !== 0) {
+            return undefined;
+        }
+        else {
+            return JSON.parse(res.stdout.trim()) as ContainerInspectResult;
+        }
+    }
+
+    /**
+     * Container must be running before calling this. Throws otherwise.
+     *
+     * @returns Connection token that is used for authenticating with server.
+     */
+    public async getConnectionToken(): Promise<string> {
+        const checkExists = await this.containerExists(this.getContainerName());
+        if (checkExists !== undefined && checkExists.State.Running) {
+            // TODO: token in tempdir?
+            const token = await run([
+                ...settings.getEngineCmd(),
+                ...this.cc.getExecArgs(this.getContainerName(), this.remoteEnvProbe),
+                "bash",
+                "-c",
+                "cat ${HOME}/.vscode-oss-devcontainer/token",
+            ], this.workspaceFolder, {});
+
+            if (token.exit !== 0 || token.stdout.trim().length !== UUID_TOKEN_LEN) {
+                // TODO: reinstall server? force-restart with new token?
+                throw new InstallError(`Could not query token in container [stdout:${token.stdout}] [stderr:${token.stderr}]`);
+            }
+            return token.stdout.trim();
+        }
+        else {
+            throw new Error(`Container ${this.getContainerName()} does not exist or is not running: (state: ${JSON.stringify(checkExists?.State)})`);
+        }
+    }
+
+    private async runCreate(imageName: string, imageHash: string): Promise<string> {
         // TODO: auto-assign free port and query
-        const startRes = await run(
+        const createRes = await run(
             [
                 ...settings.getEngineCmd(),
                 ...this.cc.getRunCreateCmd(
                     imageName,
                     this.getContainerName(),
-                    ["-p", `${DEVCONTAINER_SERVER_LISTEN_PORT}:${DEVCONTAINER_SERVER_LISTEN_PORT}`]),
+                    ["-p", `${DEVCONTAINER_SERVER_LISTEN_PORT}`],
+                ),
             ], this.workspaceFolder, {},
         );
 
-        if (startRes.exit !== 0) {
+        if (createRes.exit !== 0) {
             throw new EngineError(
-                `Failed to start ${this.containerId}:\n`
-                + `stdout: ${startRes.stdout}\n`
-                + `stderr: ${startRes.stderr}\n`,
+                `Failed to start ${this.getContainerName()}:\n`
+                + `stdout: ${createRes.stdout}\n`
+                + `stderr: ${createRes.stderr}\n`,
             );
         }
         else {
-            this.containerId = startRes.stdout.trim();
-            getLogSink().info(`Started container from image ${imageName} (${imageHash}) with ID ${this.containerId}`);
+            getLogSink().info(`Started container ${this.getContainerName()} from image ${imageName} (${imageHash})`);
         }
 
-        return this.containerId;
+        return createRes.stdout.trim();
     }
 
     public async getContainerEnv(): Promise<Record<string, string>> {
@@ -192,7 +271,7 @@ export class ContainerState {
         const out = await run(
             [
                 ...settings.getEngineCmd(),
-                ...this.cc.getExecArgs(this.containerId, {}, { tty: true, withRemoteEnv: false }),
+                ...this.cc.getExecArgs(this.getContainerName(), {}, { tty: true, withRemoteEnv: false }),
                 ...this.cc.getUserEnvProbeArgs(),
                 "-c",
                 "env -0",
@@ -226,13 +305,19 @@ export class ContainerState {
         return run(
             [
                 ...settings.getEngineCmd(),
-                ...this.cc.getExecArgs(this.containerId, this.remoteEnvProbe),
+                ...this.cc.getExecArgs(this.getContainerName(), this.remoteEnvProbe),
                 ...cmdArgs,
             ], this.workspaceFolder, {},
         );
     }
 
     public async installServer(forceReinstall: boolean = false) {
+        if (!await this.isRunning()) {
+            if (!await this.startContainer() && !await this.isRunning()) {
+                throw new Error("Failed to start container. Check logs");
+            }
+        }
+
         // TODO: let users customize the URL
         const prodJson = await (async () => {
             const pj = await server.getProductJson();
@@ -242,13 +327,24 @@ export class ContainerState {
             return pj;
         })();
 
+        let token: string | undefined;
+
+        try {
+            token = await this.getConnectionToken();
+        }
+        catch {
+            getLogSink().warn("Could not query existing token. Perhaps a fresh install? Using a new token");
+            forceReinstall = true;
+            token = crypto.randomUUID();
+        }
+
         const info: server.ScriptInstallInfo = {
             port: DEVCONTAINER_SERVER_LISTEN_PORT,
             extensions: settings.getExtensionList(),
             remoteEnvs: this.cc.getResolvedRemoteEnv(this.remoteEnvProbe),
             downloadTemplteUrl: prodJson.serverUrlTemplate,
             codiumVersion: prodJson.version,
-            connectionToken: this.connectionToken,
+            connectionToken: token,
             forceReinstall: forceReinstall,
         };
 
@@ -262,7 +358,7 @@ export class ContainerState {
         const _res = await run(
             [
                 ...settings.getEngineCmd(),
-                ...this.cc.getExecArgs(this.containerId, this.remoteEnvProbe),
+                ...this.cc.getExecArgs(this.getContainerName(), this.remoteEnvProbe),
                 "bash",
                 "-c",
                 "apt update -y && apt install curl -y",
@@ -276,18 +372,18 @@ export class ContainerState {
                 ...settings.getEngineCmd(),
                 "cp",
                 installScriptPath,
-                `${this.containerId}:${destFile}`,
+                `${this.getContainerName()}:${destFile}`,
             ], this.workspaceFolder, {},
         );
 
         if (copyResult.exit !== 0) {
-            throw new InstallError(`Could not copy install script from ${installScriptPath} (host) to ${this.containerId}:${destFile} (container)`);
+            throw new InstallError(`Could not copy install script from ${installScriptPath} (host) to ${this.getContainerName()}:${destFile} (container)`);
         }
 
         const installExecResult = await run(
             [
                 ...settings.getEngineCmd(),
-                ...this.cc.getExecArgs(this.containerId, this.remoteEnvProbe),
+                ...this.cc.getExecArgs(this.getContainerName(), this.remoteEnvProbe),
                 "bash",
                 destFile,
             ], this.workspaceFolder, {},
@@ -295,10 +391,29 @@ export class ContainerState {
 
         if (installExecResult.exit !== 0) {
             const err = getInstallError(installExecResult.stdout);
-            throw new InstallError(`Install script at ${this.containerId}:${destFile} failed with code ${installExecResult.exit}: Error: ${err}`);
+            throw new InstallError(`Install script at ${this.getContainerName()}:${destFile} failed with code ${installExecResult.exit}: Error: ${err}`);
         }
 
-        return { host: "127.0.0.1", port: DEVCONTAINER_SERVER_LISTEN_PORT, result: installExecResult };
+        const hostPort = await this.getHostmappedPort();
+
+        return { host: "127.0.0.1", port: Number(hostPort), result: installExecResult };
+    }
+
+    private async getHostmappedPort() {
+        const portCmdRes = await run([
+            ...settings.getEngineCmd(),
+            "port",
+            this.getContainerName(),
+            `${DEVCONTAINER_SERVER_LISTEN_PORT}`,
+        ], this.workspaceFolder, {});
+
+        if (portCmdRes.exit !== 0) {
+            throw new EngineError(`Failed to query host port: ${formatCmdErr(portCmdRes)}`);
+        }
+        else {
+            const allParts = portCmdRes.stdout.trim().split(":");
+            return allParts.at(-1);
+        }
     }
 }
 
@@ -316,4 +431,8 @@ function getInstallError(data: string) {
         // return `${errCode}${errMsg}`;
         return data;
     }
+}
+
+function formatCmdErr(res: CmdResult) {
+    return `Error: ${res.exit}: stdout: [${res.stdout.trim()}] stderr: [${res.stderr.trim()}]`;
 }

@@ -19,7 +19,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         this.cfg = cfg;
         this.workspacePath = path.resolve(workspacePath);
         this.localEnv = localEnv;
-    // normalize mount
+        // normalize mount
     }
 
     static create<T extends schema.Config>(workspacePath: string, cfg: T, localEnv: NodeJS.ProcessEnv = process.env): ContainerConfig<T> {
@@ -49,7 +49,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     }
 
     public getRunCreateCmd(imageName: string, containerName: string, extraArgs: string[] = []): string[] {
-    // TODO: handle overrideCmd
+        // TODO: handle overrideCmd
         return [
             "run",
             "-d",
@@ -77,8 +77,8 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     }
 
     public getImageName(this: ContainerConfig<schema.DockerfileDevcontainer>): string {
-    // TODO: resolve symlinks?
-    // const safeImgName = this.workspacePath.replaceAll('/[^a-z0-9.-]', '-');
+        // TODO: resolve symlinks?
+        // const safeImgName = this.workspacePath.replaceAll('/[^a-z0-9.-]', '-');
         const idHash = crypto
             .createHash("sha256")
             .update(this.workspacePath)
@@ -136,49 +136,28 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     }
 
     private addContainerUser(): string[] {
-        if (this.cfg.containerUser) {
-            return ["-u", `${this.cfg.containerUser}:${this.cfg.containerUser}`];
-        }
-        else {
-            // uses container's default USER, "" is removed
-            return [];
-        }
+        if (this.cfg.containerUser) { return ["-u", `${this.cfg.containerUser}:${this.cfg.containerUser}`]; }
+        else { return []; /* uses container's default USER, empty items are filtered */ }
     }
 
     private addRemoteUser(): string[] {
-        if (this.cfg.remoteUser) {
-            return ["-u", `${this.cfg.remoteUser}:${this.cfg.remoteUser}`];
-        }
-        else {
-            return this.addContainerUser();
-        }
+        if (this.cfg.remoteUser) { return ["-u", `${this.cfg.remoteUser}:${this.cfg.remoteUser}`]; }
+        else { return this.addContainerUser(); }
     }
 
     private addSecurityOpts(): string[] {
-        if (this.cfg.securityOpt) {
-            return this.cfg.securityOpt.flatMap(s => ["--security-opt", s]);
-        }
-        else {
-            return [];
-        }
+        if (this.cfg.securityOpt) { return this.cfg.securityOpt.flatMap(s => ["--security-opt", s]); }
+        else { return []; }
     }
 
     private addCaps(): string[] {
-        if (this.cfg.capAdd) {
-            return this.cfg.capAdd.flatMap(c => ["--cap-add", c]);
-        }
-        else {
-            return [];
-        }
+        if (this.cfg.capAdd) { return this.cfg.capAdd.flatMap(c => ["--cap-add", c]); }
+        else { return []; }
     }
 
     private addRunArgs(): string[] {
-        if (this.cfg.runArgs) {
-            return this.cfg.runArgs;
-        }
-        else {
-            return [];
-        }
+        if (this.cfg.runArgs) { return this.cfg.runArgs; }
+        else { return []; }
     }
 
     public getRemoteMountDir(): string {
@@ -192,12 +171,8 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     }
 
     private addWorkspaceMount(): string[] {
-        if (this.cfg.workspaceMount) {
-            return ["--mount", this.cfg.workspaceMount];
-        }
-        else {
-            return ["-v", `${this.workspacePath}:${this.getRemoteMountDir()}`];
-        }
+        if (this.cfg.workspaceMount) { return ["--mount", this.cfg.workspaceMount]; }
+        else { return ["-v", `${this.workspacePath}:${this.getRemoteMountDir()}`]; }
     }
 
     private addMounts(): string[] {
@@ -272,7 +247,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     }
 
     private getShell(): string {
-    // TODO: supporrt other shells
+        // TODO: supporrt other shells
         return "bash";
     }
 
