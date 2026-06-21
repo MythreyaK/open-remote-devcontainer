@@ -37,7 +37,6 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
     }
 
     resolve(authority: string, _: vscode.RemoteAuthorityResolverContext): Thenable<vscode.ResolverResult> {
-        (this.extensionCtx); // TODO
         this.localWsf = decodeRemoteAuthority(authority);
 
         getLogSink().info(`Starting remote session from ${this.localWsf} (authority ${authority})...`);

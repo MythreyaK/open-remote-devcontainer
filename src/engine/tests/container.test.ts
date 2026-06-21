@@ -4,8 +4,8 @@ import { describe, expect, test, vi } from "vitest";
 
 import * as schema from "../../parser/schema";
 import { initLog } from "../../extension/log";
-import { getActiveWorkspace } from "../../extension/workspace";
 import { ContainerConfig, interpolateVars, interpolateLocal, interpolateContainer } from "../container";
+import { getActiveWorkspace } from "../../tests/common";
 
 describe("ContainerConfig tests", () => {
     (workspace as any).setWorkspaceFolders([

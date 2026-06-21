@@ -1,25 +1,16 @@
-import * as vscode from "vscode";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import * as crypto from "node:crypto";
 
-import { InternalError } from "./error";
-
-export function getActiveWorkspace(): string {
-    const workspaces = vscode.workspace.workspaceFolders;
-
-    // TODO: handle multi-workspace folders
-    if (!workspaces || workspaces.length === 0) {
-        throw new InternalError("This extension must be opened in a workspace");
-    }
-
-    return workspaces[0].uri.fsPath;
-}
-
-export function getWorkspaceId(): string {
+/**
+ *
+ * @param localWsp : Full path to the local workspace folder, without resolving symlinks
+ * @returns
+ */
+export function getWorkspaceId(localWsp: string): string {
     return crypto
         .createHash("sha256")
-        .update(getActiveWorkspace())
+        .update(localWsp)
         .digest("hex")
         .slice(0, 8);
 }

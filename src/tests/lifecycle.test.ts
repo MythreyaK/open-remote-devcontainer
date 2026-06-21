@@ -1,17 +1,18 @@
 import path from "node:path";
 import { Uri, window, workspace } from "vscode";
 import { afterAll, describe, expect, test, vi } from "vitest";
-
-import { ContainerState } from "../engine/lifecycle";
-import { getActiveWorkspace } from "../extension/workspace";
-import { initLog } from "../extension/log";
-import { runCmd } from "../common/cmd";
-import { parseDevcontainerFile } from "../parser/parser";
-import { ContainerConfig } from "../engine/container";
-import { parseEnv } from "../common/utils";
-import * as server from "../remote/installServer";
-import { ServerInfo } from "../remote/installServer";
 import { setTimeout } from "node:timers/promises";
+
+import { runCmd } from "../common/cmd";
+import { parseEnv } from "../common/utils";
+import { initLog } from "../extension/log";
+import { ContainerState } from "../engine/lifecycle";
+import { ServerInfo } from "../remote/installServer";
+import { ContainerConfig } from "../engine/container";
+import { parseDevcontainerFile } from "../parser/parser";
+import * as server from "../remote/installServer";
+
+import { getActiveWorkspace } from "./common";
 
 function getEngine() {
     return "podman";
@@ -98,7 +99,7 @@ describe("integration: lifecycle: img-basic", () => {
         cc = ContainerConfig.create(
             getActiveWorkspace(),
             cfg,
-            { ...process.env, CUSTOM_LOCAL_ENV: "CUSTOM_LOCAL_VAR" }
+            { ...process.env, CUSTOM_LOCAL_ENV: "CUSTOM_LOCAL_VAR" },
         );
 
         container = await ContainerState.create(getActiveWorkspace(), devcPath, cc);

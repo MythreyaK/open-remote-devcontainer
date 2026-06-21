@@ -28,7 +28,7 @@ export class ContainerState {
 
     private constructor(workspaceFolder: string, _: string, cc: ContainerConfig) {
         this.workspaceFolder = path.resolve(workspaceFolder);
-        this.tempDir = path.join(tmpdir(), `codium-devcontainer-${getWorkspaceId()}`);
+        this.tempDir = path.join(tmpdir(), `codium-devcontainer-${getWorkspaceId(this.workspaceFolder)}`);
         mkdirSync(this.tempDir, { recursive: true });
 
         getLogSink().info(`Created / using temp dir at ${this.tempDir}`);
@@ -61,7 +61,7 @@ export class ContainerState {
     }
 
     public getContainerName(): string {
-        return `codium-devc-${getWorkspaceId()}`;
+        return `codium-devc-${getWorkspaceId(this.workspaceFolder)}`;
     }
 
     public async checkContainerExists(name: string): Promise<string | undefined> {
