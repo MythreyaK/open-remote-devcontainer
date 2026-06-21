@@ -148,7 +148,7 @@ describe("integration: lifecycle: img-basic", () => {
     });
 
     test("install script and health-check", async () => {
-        const { _, _s, result } = await container.installServer();
+        const { result } = await container.installServer();
         expect(result.exit).eq(0);
 
         const token = await container.getConnectionToken();

@@ -19,7 +19,7 @@ export function spawn(
     env: Envs,
     log: LogOutputChannel,
 ): Promise<CmdResult> {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve, _) => {
         cmdCount += 1;
         const cmdId = cmdCount;
 

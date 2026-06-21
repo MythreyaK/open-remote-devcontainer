@@ -34,9 +34,10 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
 
     constructor(context: vscode.ExtensionContext) {
         this.extensionCtx = context;
+        void this.extensionCtx; // TODO
     }
 
-    resolve(authority: string, _: vscode.RemoteAuthorityResolverContext): Thenable<vscode.ResolverResult> {
+    resolve(authority: string, _1: vscode.RemoteAuthorityResolverContext): Thenable<vscode.ResolverResult> {
         this.localWsf = decodeRemoteAuthority(authority);
 
         getLogSink().info(`Starting remote session from ${this.localWsf} (authority ${authority})...`);
@@ -47,7 +48,7 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
         );
     }
 
-    private async createWindowTask(progress: vscode.Progress<{ message?: string, increment?: number }>, _: vscode.CancellationToken): Promise<vscode.ResolverResult> {
+    private async createWindowTask(progress: vscode.Progress<{ message?: string, increment?: number }>, _2: vscode.CancellationToken): Promise<vscode.ResolverResult> {
         progress.report({ message: "Parsing config...", increment: 5 });
 
         const devcontainerJson = findDevcontainerJson(this.localWsf);
@@ -77,7 +78,7 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
         progress.report({ message: "Created container...", increment: 75 });
         progress.report({ message: "Installing server...", increment: 85 });
 
-        const { host, port, result } = await this.containerState.installServer();
+        const { host, port } = await this.containerState.installServer();
         progress.report({ message: "Server install complete, opening remote...", increment: 85 });
 
         const ctkn = await this.containerState.getConnectionToken();

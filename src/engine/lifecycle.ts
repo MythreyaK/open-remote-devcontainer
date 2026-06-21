@@ -248,7 +248,7 @@ export class ContainerState {
         const destFile = "/tmp/codium-devcontainer-installScript.sh";
 
         // TODO_IMMEDIATE: move to dockerfile
-        const res = await run(
+        const _res = await run(
             [
                 ...settings.getEngineCmd(),
                 ...this.cc.getExecArgs(this.containerId, this.remoteEnvProbe),
@@ -257,6 +257,7 @@ export class ContainerState {
                 "apt update -y && apt install curl -y",
             ], this.workspaceFolder, {},
         );
+        void _res;
 
         // copy the script and run it
         const copyResult = await run(

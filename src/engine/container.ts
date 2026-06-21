@@ -276,9 +276,9 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         return "bash";
     }
 
-    private getRunInBash(args: string[]): string[] {
-        return [this.getShell(), ...args];
-    }
+    // private getRunInBash(args: string[]): string[] {
+    //     return [this.getShell(), ...args];
+    // }
 
     // reference: https://containers.dev/implementors/json_reference/
     public getConfigId(): string {

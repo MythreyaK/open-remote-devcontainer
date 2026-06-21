@@ -12,7 +12,7 @@ export async function getContainerEngineVersion(localWsf: string) {
     vscode.window.showInformationMessage(`${getContainerEngine()} version: ${stdout}`);
 }
 
-export async function openRemote(localWsf: string, context: vscode.ExtensionContext) {
+export async function openRemote(localWsf: string, _: vscode.ExtensionContext) {
     const devcontainerJson = findDevcontainerJson(localWsf);
     const parsedConfig = parseDevcontainerFile(devcontainerJson);
     const cc = ContainerConfig.create(localWsf, parsedConfig);
