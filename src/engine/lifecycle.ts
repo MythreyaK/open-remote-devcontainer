@@ -247,7 +247,7 @@ export class ContainerState {
                 ...this.cc.getRunCreateCmd(
                     imageName,
                     this.getContainerName(),
-                    ["-p", `${DEVCONTAINER_SERVER_LISTEN_PORT}:${DEVCONTAINER_SERVER_LISTEN_PORT}`],
+                    ["-p", `${DEVCONTAINER_SERVER_LISTEN_PORT}`],
                 ),
             ], this.workspaceFolder, {},
         );
@@ -398,7 +398,26 @@ export class ContainerState {
             throw new InstallError(`Install script at ${this.getContainerName()}:${destFile} failed with code ${installExecResult.exit}: Error: ${err}`);
         }
 
-        return { host: "127.0.0.1", port: DEVCONTAINER_SERVER_LISTEN_PORT, result: installExecResult };
+        const hostPort = await this.getHostmappedPort();
+
+        return { host: "127.0.0.1", port: Number(hostPort), result: installExecResult };
+    }
+
+    private async getHostmappedPort() {
+        const portCmdRes = await run([
+            ...settings.getEngineCmd(),
+            "port",
+            this.getContainerName(),
+            `${DEVCONTAINER_SERVER_LISTEN_PORT}`,
+        ], this.workspaceFolder, {});
+
+        if (portCmdRes.exit !== 0) {
+            throw new EngineError(`Failed to query host port: ${formatCmdErr(portCmdRes)}`);
+        }
+        else {
+            const allParts = portCmdRes.stdout.trim().split(":");
+            return allParts.at(-1);
+        }
     }
 }
 
