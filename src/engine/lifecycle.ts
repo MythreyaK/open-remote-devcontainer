@@ -133,22 +133,33 @@ export class ContainerState {
             throw new InternalError("ContainerConfig isn't dockerfile or image based");
         }
 
-        const imageRes = await this.getImage(imageName);
-        if (imageRes.exit !== 0) {
-            // attempt to pull the image
-            getLogSink().warn(`Image '${imageName}' does not exist, attempting to pull ...`);
-            const pullRes = await run([
-                ...settings.getEngineCmd(),
-                "pull",
-                imageName,
-            ], this.workspaceFolder, {});
-
-            if (pullRes.exit !== 0) {
-                throw new EngineError(`Failed to pull image ${imageName}. Image '${imageName}' does not exist on host.`);
+        const imageHash = await (async () => {
+            const imageRes = await this.getImage(imageName);
+            if (imageRes.exit === 0) {
+                // image exists, just return that hash
+                return imageRes.stdout.trim();
             }
-        }
+            else {
+                // attempt to pull the image
+                getLogSink().warn(`Image '${imageName}' does not exist, attempting to pull ...`);
+                const pullRes = await run([
+                    ...settings.getEngineCmd(),
+                    "pull",
+                    imageName,
+                ], this.workspaceFolder, {});
 
-        const imageHash = imageRes.stdout.trim();
+                if (pullRes.exit !== 0) {
+                    throw new EngineError(`Failed to pull image ${imageName}. Image '${imageName}' does not exist on host.`);
+                }
+
+                // pull was successful, image hash is whatever pull has
+                return pullRes.stdout.trim();
+            }
+        })();
+
+        if (!imageHash) {
+            throw new Error("Invalid image hash. This is a bug, please report it");
+        }
 
         // TODO: auto-assign free port and query
         const startRes = await run(
