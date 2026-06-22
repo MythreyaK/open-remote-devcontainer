@@ -32,8 +32,8 @@ export interface ContainerInspectResult {
         Mode: string,
         Options: string[],
         RW: boolean,
-        Propagation: "shared" | "slave" | "private" | "unbindable" | "rshared" | "rslave" | "runbindable" | "rprivate";
-    }[];
+        Propagation: "shared" | "slave" | "private" | "unbindable" | "rshared" | "rslave" | "runbindable" | "rprivate",
+    }[],
 };
 
 export class ContainerState {
