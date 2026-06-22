@@ -13,7 +13,7 @@ describe("Parser tests", () => {
                 options: "ro,z",
             };
 
-            const p = parser.Mount.safeParse(jsondata);
+            const p = parser.Mount_z.safeParse(jsondata);
             expect(p.success);
 
             if (!p.success) {
@@ -33,7 +33,7 @@ describe("Parser tests", () => {
                 options: "ro",
             };
 
-            const p = parser.Mount.safeParse(jsondata);
+            const p = parser.Mount_z.safeParse(jsondata);
             if (!p.success) {
                 throw new Error("Expected parse to work");
             }
@@ -51,7 +51,7 @@ describe("Parser tests", () => {
                 options: "ro",
             };
 
-            const p = parser.Mount.safeParse(jsondata);
+            const p = parser.Mount_z.safeParse(jsondata);
             expect(!p.success);
         }
     });

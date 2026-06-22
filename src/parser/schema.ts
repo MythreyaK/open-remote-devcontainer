@@ -18,10 +18,12 @@ export const VolumeMount = z.object({
     options: z.optional(minString),
 });
 
-export const Mount = z.discriminatedUnion("type", [
+export const Mount_z = z.discriminatedUnion("type", [
     BindMount,
     VolumeMount,
 ]);
+
+export type Mount = z.infer<typeof Mount_z>;
 
 export const EnvProbe = z.enum([
     "none",
@@ -127,7 +129,7 @@ export const DevcontainerCommon_z = z.object({
     // features : Features,
     forwardPorts: z.optional(z.array(_stringOrNumber)),
     mounts: z.optional(z.array(oneOf([
-        Mount,
+        Mount_z,
         minString,
     ]))),
     updateRemoteUserUID: z.optional(z.boolean()),
@@ -206,7 +208,7 @@ export function isDockerfileBased(config: Config): config is DockerfileDevcontai
     return "build" in config && config.build !== undefined && "dockerfile" in config.build;
 }
 
-export function extractWorkspaceMount(mnt: string) {
+export function extractMountTarget(mnt: string) {
     const matches = mnt.split(",");
 
     const targets: string[] = (() => {
@@ -220,4 +222,24 @@ export function extractWorkspaceMount(mnt: string) {
     })();
 
     return targets;
+}
+
+export function extractMountSource(mnt: string) {
+    const matches = mnt.split(",");
+
+    const targets: string[] = (() => {
+        const tgt: string[] = [];
+        for (const match of matches) {
+            if (match.startsWith("source")) {
+                tgt.push(match.replace("source=", ""));
+            }
+        }
+        return tgt;
+    })();
+
+    return targets;
+}
+
+export function extractWorkspaceMount(mnt: string) {
+    return extractMountTarget(mnt);
 }

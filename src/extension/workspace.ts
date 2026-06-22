@@ -15,7 +15,7 @@ export function getWorkspaceId(localWsp: string): string {
         .createHash("sha256")
         .update(localWsp)
         .digest("hex")
-        .slice(0, 8);
+        .slice(0, 16);
 }
 
 export function findDevcontainerJson(dir: string): string {
