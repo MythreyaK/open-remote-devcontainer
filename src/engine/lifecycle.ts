@@ -24,6 +24,16 @@ export interface ContainerInspectResult {
         Status: "created" | "running" | "paused" | "stopped" | "exited",
         Running: boolean,
     },
+    Mounts: {
+        Type: string,
+        Source: string,
+        Destination: string,
+        Driver: string,
+        Mode: string,
+        Options: string[],
+        RW: boolean,
+        Propagation: "shared" | "slave" | "private" | "unbindable" | "rshared" | "rslave" | "runbindable" | "rprivate",
+    }[],
 };
 
 export class ContainerState {

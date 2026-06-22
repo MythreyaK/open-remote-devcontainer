@@ -1,6 +1,9 @@
+import * as vscode from "vscode";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import * as crypto from "node:crypto";
+
+import { AUTHORITY_BASE, decodeRemoteAuthority } from "../remote/resolver";
 
 /**
  *
@@ -12,7 +15,7 @@ export function getWorkspaceId(localWsp: string): string {
         .createHash("sha256")
         .update(localWsp)
         .digest("hex")
-        .slice(0, 8);
+        .slice(0, 16);
 }
 
 export function findDevcontainerJson(dir: string): string {
@@ -28,4 +31,26 @@ export function findDevcontainerJson(dir: string): string {
     }
 
     throw new Error(`devcontainer.json not found. Searched: ${filePaths.join(", ")}`);
+}
+
+export function isRemoteSession() {
+    return vscode.env.remoteAuthority !== undefined;
+}
+
+export function getLocalWorkspaceFolder(): string {
+    if (isRemoteSession()) {
+        if (vscode.env.remoteAuthority?.startsWith(AUTHORITY_BASE)) {
+            return decodeRemoteAuthority(vscode.env.remoteAuthority);
+        }
+        else {
+            throw new Error("Could not determine remote authority for workspace detection");
+        }
+    }
+    else {
+        const wsf = vscode.workspace.workspaceFolders;
+        if (!wsf || wsf.length == 0) {
+            throw new Error("Open a workspace");
+        }
+        return wsf[0].uri.fsPath;
+    }
 }

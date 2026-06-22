@@ -14,5 +14,18 @@
         "EMPTY_DEFAULT": "${localEnv:NONEXISTENT:}",
         "WORKSPACE_MIX": "${localWorkspaceFolder}:${containerEnv:CONTAINER_ENV2}",
         "CUSTOM_LOCAL_ENV_CHECK": "${localEnv:CUSTOM_LOCAL_ENV:FAIL}",
-    }
+    },
+    "mounts": [
+        {
+            "type": "bind",
+            "source": "${localWorkspaceFolder}",
+            "target": "/workdir1"
+        },
+        {
+            "type": "bind",
+            "source": "${localWorkspaceFolder}",
+            "target": "/workdir2",
+            "options": "ro,z"
+        }
+    ]
 }

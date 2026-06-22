@@ -83,7 +83,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             .createHash("sha256")
             .update(this.workspacePath)
             .digest("hex")
-            .slice(0, 8);
+            .slice(0, 16);
 
         getLogSink().info(`Image name from workspace '${this.workspacePath}' : '${idHash}'`);
         return `codium-devcontainer-${idHash}`;
@@ -279,7 +279,8 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         return crypto
             .createHash("sha256")
             .update(items)
-            .digest("hex");
+            .digest("hex")
+            .slice(0, 16);
     }
 }
 

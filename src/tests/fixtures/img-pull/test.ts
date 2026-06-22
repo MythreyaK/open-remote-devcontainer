@@ -1,0 +1,105 @@
+import path from "node:path";
+import { describe, expect, test } from "vitest";
+
+import { run, runCmd } from "../../../common/cmd";
+import { ContainerState } from "../../../engine/lifecycle";
+import { ContainerConfig } from "../../../engine/container";
+import { parseDevcontainerFile } from "../../../parser/parser";
+import * as schema from "../../../parser/schema";
+
+import { init, setupFixture, jsonFormat, ENGINE } from "../../common";
+
+init();
+
+describe.skipIf(!ENGINE)("integration: lifecycle: img-pull", () => {
+    let cc: ContainerConfig;
+    let container: ContainerState;
+
+    const { localWsf, localWsfBasename, config } = setupFixture({ name: "image-pull", testDir: __dirname });
+
+    const localEnv = {
+        ...process.env,
+        CUSTOM_LOCAL_ENV: "CUSTOM_LOCAL_VAR",
+        LOCAL_ENV1: "LOCAL_VAL1",
+    };
+
+    let imageName: string;
+
+    test("create config", async () => {
+        if (!schema.isImageBased(config)) {
+            expect(schema.isImageBased(config)).toBe(true);
+            throw new Error("Expected image-based config");
+        }
+        imageName = config.image;
+
+        expect(imageName).toBe("ubuntu:22.04");
+    });
+
+    test("pull image and create container with missing local image", async () => {
+        // remove image first, if exists
+        await run([ENGINE!, "image", "rm", imageName], localWsf, localEnv);
+
+        const inspectResult = await run([ENGINE!, "inspect", imageName, ...jsonFormat], localWsf, localEnv);
+        expect(inspectResult.exit).not.eq(0);
+        expect(inspectResult.stdout).toBe("");
+
+        cc = ContainerConfig.create(localWsf, config, localEnv);
+        container = await ContainerState.create(localWsf, cc);
+        const cId = await container.getContainerId();
+
+        expect(cId.length).toBeGreaterThan(16);
+    }, 30 * 1000);
+
+    test("getConnectionToken returns correct token over multiple install (without force)", async () => {
+        const firstInstall = await container.installServer();
+        const token = await container.getConnectionToken();
+
+        for (let i = 0; i < 3; ++i) {
+            const installServer = await container.installServer();
+
+            const catResult = await run([
+                ENGINE!,
+                "exec",
+                await container.getContainerId(),
+                "bash",
+                "-c",
+                "cat ${HOME}/.vscode-oss-devcontainer/token",
+            ], localWsf, localEnv);
+
+            expect(catResult.exit).eq(0);
+            expect(catResult.stdout.trim()).eq(token);
+
+            const iterTok = await container.getConnectionToken();
+            expect(iterTok).eq(token);
+        }
+
+        const stopResult = await container.stopContainer();
+        expect(stopResult).eq(container.getContainerName());
+
+        for (let i = 0; i < 3; ++i) {
+            const installServer = await container.installServer();
+
+            const catResult = await run([
+                ENGINE!,
+                "exec",
+                await container.getContainerId(),
+                "bash",
+                "-c",
+                "cat ${HOME}/.vscode-oss-devcontainer/token",
+            ], localWsf, localEnv);
+
+            expect(catResult.exit).eq(0);
+            expect(catResult.stdout.trim()).eq(token);
+
+            const iterTok = await container.getConnectionToken();
+            expect(iterTok).eq(token);
+        }
+    }, 60 * 1000);
+
+    test("getConnectionToken dies on stopped container", async () => {
+        const installServer = await container.installServer();
+
+        await container.stopContainer();
+        await expect(container.getConnectionToken()).rejects.toThrow(Error);
+    }, 60 * 1000);
+});
