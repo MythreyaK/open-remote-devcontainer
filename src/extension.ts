@@ -19,18 +19,11 @@ export function activate(context: vscode.ExtensionContext) {
 
     const remoteResolver = new DevContainerResolver(context);
 
-    // TODO: multiple workspaces
-    const wsfs = vscode.workspace.workspaceFolders;
-    if (!wsfs || wsfs.length === 0) {
-        throw new Error("Open extension in a workspace");
-    };
-
-    const localWsf = wsfs[0].uri.fsPath;
     context.subscriptions.push(
         vscode.workspace.registerRemoteAuthorityResolver(AUTHORITY_BASE, remoteResolver),
         remoteResolver,
-        vscode.commands.registerCommand(getCmd("getVersion"), () => getContainerEngineVersion(localWsf)),
-        vscode.commands.registerCommand(getCmd("openRemote"), () => openRemote(localWsf, context)),
+        vscode.commands.registerCommand(getCmd("getVersion"), () => getContainerEngineVersion()),
+        vscode.commands.registerCommand(getCmd("openRemote"), () => openRemote(context)),
         logger,
     );
 }

@@ -2,17 +2,19 @@ import * as vscode from "vscode";
 
 import * as cmd from "../common/cmd";
 import { getContainerEngine } from "./settings";
-import { findDevcontainerJson } from "./workspace";
 import { ContainerConfig } from "../engine/container";
 import { parseDevcontainerFile } from "../parser/parser";
 import { encodeRemoteAuthority } from "../remote/resolver";
+import { findDevcontainerJson, getLocalWorkspaceFolder } from "./workspace";
 
-export async function getContainerEngineVersion(localWsf: string) {
+export async function getContainerEngineVersion() {
+    const localWsf = getLocalWorkspaceFolder();
     const { stdout } = await cmd.runCmd(getContainerEngine(), ["--version"], localWsf, {});
     vscode.window.showInformationMessage(`${getContainerEngine()} version: ${stdout}`);
 }
 
-export async function openRemote(localWsf: string, _: vscode.ExtensionContext) {
+export async function openRemote(_: vscode.ExtensionContext) {
+    const localWsf = getLocalWorkspaceFolder();
     const devcontainerJson = findDevcontainerJson(localWsf);
     const parsedConfig = parseDevcontainerFile(devcontainerJson);
     const cc = ContainerConfig.create(localWsf, parsedConfig);
