@@ -20,11 +20,15 @@
     "Other"
   ],
   "keywords": [
-    "container",
-    "devcontainer",
-    "remote",
     "docker",
-    "podman"
+    "podman",
+    "remote",
+    "container",
+    "containers",
+    "devcontainer",
+    "devcontainers",
+    "dev container",
+    "dev containers"
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
