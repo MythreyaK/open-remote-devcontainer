@@ -6,12 +6,12 @@ import { run } from "../common/cmd";
 import { parseEnv } from "../common/utils";
 import { getLogSink } from "../extension/log";
 import { ContainerConfig } from "./container";
+import { formatCmdErr } from "../common/spawn";
 import { getWorkspaceId } from "../extension/workspace";
 import { EngineError, InstallError, InternalError } from "../extension/error";
 
 import * as settings from "../extension/settings";
 import * as server from "../remote/installServer";
-import { CmdResult } from "../common/spawn";
 
 const DEVCONTAINER_SERVER_LISTEN_PORT = 65432;
 const UUID_TOKEN_LEN = 36;
@@ -441,8 +441,4 @@ function getInstallError(data: string) {
         // return `${errCode}${errMsg}`;
         return data;
     }
-}
-
-function formatCmdErr(res: CmdResult) {
-    return `Error: ${res.exit}: stdout: [${res.stdout.trim()}] stderr: [${res.stderr.trim()}]`;
 }

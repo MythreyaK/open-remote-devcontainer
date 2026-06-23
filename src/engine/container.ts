@@ -4,6 +4,7 @@ import * as crypto from "node:crypto";
 import * as schema from "../parser/schema";
 import { getLogSink } from "../extension/log";
 import { ConfigError } from "../extension/error";
+import { getHostUserInfo } from "../common/utils";
 
 export interface ExecOpts {
     tty?: boolean,
@@ -48,6 +49,17 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             .map(e => interpolateLocal(e, this.workspacePath, this.getRemoteMountDir(), this.localEnv));
     }
 
+    public async getStage2BuildCmd(this: ContainerConfig<schema.DockerfileDevcontainer>): Promise<string[]> {
+        const stage2Args = await this.getStage2BuildArgs();
+        return [
+            "build",
+            ...stage2Args,
+            "-t", this.getStage2ImageName(),
+            "-f", path.join(__dirname, "Dockerfile"),
+            this.workspacePath,
+        ].filter(Boolean);
+    }
+
     public getRunCreateCmd(imageName: string, containerName: string, extraArgs: string[] = []): string[] {
         // TODO: handle overrideCmd
         return [
@@ -77,6 +89,13 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     }
 
     public getImageName(this: ContainerConfig<schema.DockerfileDevcontainer>): string {
+        // TODO: resolve symlinks?
+        // const safeImgName = this.workspacePath.replaceAll('/[^a-z0-9.-]', '-');
+        return this._getImageName();
+    }
+
+    // useful for stage2 build
+    private _getImageName(): string {
         // TODO: resolve symlinks?
         // const safeImgName = this.workspacePath.replaceAll('/[^a-z0-9.-]', '-');
         const idHash = crypto
@@ -115,6 +134,25 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             return Object.entries(args).flatMap(([k, v]) => ["--build-arg", `${k}=${v}`]);
         }
         return [];
+    }
+
+    private async getStage2BuildArgs(): Promise<string[]> {
+        const imageName = (() => {
+            if (this.isImageBased()) return this.cfg.image;
+            else return this._getImageName();
+        })();
+
+        const userInfo = await getHostUserInfo();
+        return [
+            "--build-arg", `BASE_IMAGE=${imageName}`,
+            "--build-arg", `HOST_UID=${userInfo.uid}`,
+            "--build-arg", `HOST_GID=${userInfo.gid}`,
+            "--build-arg", `HOST_USERNAME=${userInfo.name}`,
+        ]
+    }
+
+    private getStage2ImageName(): string {
+        return `${this._getImageName()}-uid`;
     }
 
     private addAppPorts(): string[] {

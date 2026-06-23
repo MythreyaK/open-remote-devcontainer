@@ -1,3 +1,14 @@
+import { runCmd } from "../common/cmd";
+import { formatCmdErr } from "../common/spawn";
+import { SpawnError } from "../extension/error";
+import { getLocalWorkspaceFolder } from "../extension/workspace";
+
+export interface HostUserInfo {
+    uid: number,
+    gid: number,
+    name: string,
+};
+
 /**
  *
  * @param envStdout null-char (env -0) seperated list of env vars
@@ -15,4 +26,18 @@ export function parseEnv(envStdout: string) {
     }
     return parsesEnvs;
     /* eslint-enable @stylistic/quotes */
+}
+
+export async function getHostUserInfo(): Promise<HostUserInfo> {
+    const userName = await runCmd("bash", ["-c", "id -n -u $UID"], getLocalWorkspaceFolder(), {});
+    if (userName.exit === 0) {
+        return {
+            uid: process.getuid!(),
+            gid: process.getgid!(),
+            name: userName.stdout.trim()
+        }
+    }
+    else {
+        throw new SpawnError(`Could not query host user info (uid, gid, name): ${formatCmdErr(userName)}`);
+    }
 }
