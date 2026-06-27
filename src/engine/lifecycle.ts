@@ -7,7 +7,7 @@ import { parseEnv } from "../common/utils";
 import { getLogSink } from "../extension/log";
 import { ContainerConfig } from "./container";
 import { formatCmdErr } from "../common/spawn";
-import { getWorkspaceId } from "../extension/workspace";
+import { getWorkspaceId, NotificationLevel, showNotification } from "../extension/workspace";
 import { EngineError, InstallError, InternalError } from "../extension/error";
 
 import * as settings from "../extension/settings";
@@ -36,6 +36,15 @@ export interface ContainerInspectResult {
     }[],
 };
 
+export interface ImageInspectResult {
+    User: string | undefined
+};
+
+export interface ImageBuildResult {
+    name: string,
+    hash: string,
+}
+
 export class ContainerState {
     private readonly workspaceFolder: string;
     private readonly tempDir: string;
@@ -56,7 +65,7 @@ export class ContainerState {
     public static async create(workspaceFolder: string, cc: ContainerConfig): Promise<ContainerState> {
         const ret = new ContainerState(workspaceFolder, cc);
 
-        const containerExists = await ret.containerExists(ret.getContainerName());
+        const containerExists = await ret.tryContainerInspect(ret.getContainerName());
         let containerId: string | undefined;
 
         if (containerExists === undefined) {
@@ -98,54 +107,95 @@ export class ContainerState {
     }
 
     private async createContainer() {
-        let imageName: string | undefined;
+        const { name, hash } = await this.buildFinalImage();
+        return await this.runCreate(name, hash);
+    }
+
+    private async buildFinalImage(): Promise<ImageBuildResult> {
+        let stage1Image: string | undefined;
 
         if (this.cc.isDockerfileBased()) {
-            const buildRes = await this.build(this.cc.getBuildCmd());
-            if (buildRes.exit !== 0) {
-                throw new EngineError(`${settings.getContainerEngine()} build failed ${formatCmdErr(buildRes)}`);
-            }
-            else {
-                imageName = this.cc.getImageName();
-                getLogSink().info(`Image '${imageName}' (${buildRes.stdout}) built`);
-            }
+            const { name } = await this.buildUserImage();
+            stage1Image = name;
         }
         else if (this.cc.isImageBased()) {
-            imageName = this.cc.cfg.image;
+            stage1Image = this.cc.cfg.image;
+
+            // ensure image exists
+            const img = await this.tryInspectImage(stage1Image);
+
+            if (!img) {
+                // attempt to pull image
+                const imageHash = await (async () => {
+                    getLogSink().warn(`Image '${stage1Image}' does not exist, attempting to pull ...`);
+                    const pullRes = await run([
+                        ...settings.getEngineCmd(),
+                        "pull",
+                        stage1Image,
+                    ], this.workspaceFolder, {});
+
+                    if (pullRes.exit !== 0) {
+                        throw new EngineError(`Failed to pull image ${stage1Image}. Image '${stage1Image}' does not exist on host.`);
+                    }
+                    // pull was successful, image hash is whatever pull has
+                    return pullRes.stdout.trim();
+                })();
+                getLogSink().info(`Pulled image '${stage1Image}' (${imageHash})`);
+            }
         }
         else {
             throw new InternalError("ContainerConfig isn't dockerfile or image based");
         }
 
-        const imageHash = await (async () => {
-            const imageRes = await this.getImage(imageName);
-            if (imageRes.exit === 0) {
-                // image exists, just return that hash
-                return imageRes.stdout.trim();
-            }
-            else {
-                // attempt to pull the image
-                getLogSink().warn(`Image '${imageName}' does not exist, attempting to pull ...`);
-                const pullRes = await run([
-                    ...settings.getEngineCmd(),
-                    "pull",
-                    imageName,
-                ], this.workspaceFolder, {});
+        getLogSink().info(`Building stage2 image from ${stage1Image}`);
 
-                if (pullRes.exit !== 0) {
-                    throw new EngineError(`Failed to pull image ${imageName}. Image '${imageName}' does not exist on host.`);
-                }
+        return await this.buildStage2(stage1Image);
+    }
 
-                // pull was successful, image hash is whatever pull has
-                return pullRes.stdout.trim();
-            }
-        })();
+    private async buildStage2(stage1Image: string): Promise<ImageBuildResult> {
+        const imgUser = await run([
+            ...settings.getEngineCmd(),
+            "image",
+            "inspect",
+            stage1Image,
+            ...jsonFormat,
+        ], this.workspaceFolder, {});
 
-        if (!imageHash) {
-            throw new Error("Invalid image hash. This is a bug, please report it");
+        if (imgUser.exit !== 0) {
+            throw new EngineError(`Could not query ${stage1Image} User field. ${formatCmdErr(imgUser)}`);
         }
 
-        return await this.runCreate(imageName, imageHash);
+        const imageUser = (() => {
+            const ret = (JSON.parse(imgUser.stdout.trim()) as ImageInspectResult).User
+            if (!ret) return undefined;
+            else return ret;
+        })();
+
+        const remoteUser = this.cc.getResolvedRemoteUser(imageUser);
+
+        if (remoteUser === "root") {
+            const msg = "Warning: remote user not specified, using 'root'. This may cause permission issues.";
+            getLogSink().warn(msg);
+            showNotification(NotificationLevel.Warning, msg);
+        }
+
+        const ret = await run([
+            ...settings.getEngineCmd(),
+            ...(await this.cc.getStage2BuildCmd(imageUser)),
+        ], this.workspaceFolder, {});
+
+        if (ret.exit !== 0) {
+            const errMsg = Array.from(ret.stderr.trim().matchAll(/{{DEVCONTAINER_STAGE2 ERROR: ([\s\w]*)}}/g));
+            if (errMsg.length !== 1 || errMsg[0].length < 2) {
+                throw new Error(`Could not build stage2 image with unknown error: ${formatCmdErr(ret)}`);
+            }
+            else {
+                throw new EngineError(`Could not build state2 image: ${errMsg[0][1]}`);
+            }
+        }
+        else {
+            return getImageNameFromBuild(ret.stdout.trim());
+        }
     }
 
     public async isRunning(): Promise<boolean> {
@@ -195,14 +245,33 @@ export class ContainerState {
         );
 
         if (res.exit !== 0) {
-            throw new EngineError(`Could not inspect ${this.getContainerName()}: ${formatCmdErr(res)}`);
+            throw new EngineError(`Could not inspect container '${identifier}': ${formatCmdErr(res)}`);
         }
         else {
             return JSON.parse(res.stdout.trim()) as ContainerInspectResult;
         }
     }
 
-    public async containerExists(identifier: string): Promise<ContainerInspectResult | undefined> {
+    private async tryInspectImage(identifier: string): Promise<ImageInspectResult | undefined> {
+        const res = await run(
+            [
+                ...settings.getEngineCmd(),
+                "image",
+                "inspect",
+                identifier,
+                ...jsonFormat,
+            ], this.workspaceFolder, {},
+        );
+
+        if (res.exit !== 0) {
+            return undefined;
+        }
+        else {
+            return JSON.parse(res.stdout.trim()) as ImageInspectResult;
+        }
+    }
+
+    public async tryContainerInspect(identifier: string): Promise<ContainerInspectResult | undefined> {
         const res = await run(
             [
                 ...settings.getEngineCmd(),
@@ -227,7 +296,7 @@ export class ContainerState {
      * @returns Connection token that is used for authenticating with server.
      */
     public async getConnectionToken(): Promise<string> {
-        const checkExists = await this.containerExists(this.getContainerName());
+        const checkExists = await this.tryContainerInspect(this.getContainerName());
         if (checkExists !== undefined && checkExists.State.Running) {
             // TODO: token in tempdir?
             const token = await run([
@@ -294,7 +363,7 @@ export class ContainerState {
         else { throw new EngineError("Could not run exec to probe container environment"); }
     }
 
-    public getImage(name: string) {
+    public getImageHash(name: string) {
         return run(
             [
                 ...settings.getEngineCmd(),
@@ -306,9 +375,30 @@ export class ContainerState {
         );
     }
 
-    private build(args: string[]) {
-        // TODO: extend user's dockerfile? BASE_IMG?
-        return run([...settings.getEngineCmd(), ...args], this.workspaceFolder, {});
+    private async buildUserImage(): Promise<ImageBuildResult> {
+        if (!this.cc.isDockerfileBased()) throw new Error("Expected dockerfile-based config");
+
+        const ret = await run([
+            ...settings.getEngineCmd(),
+            ...this.cc.getBuildCmd()
+        ], this.workspaceFolder, {});
+
+        if (ret.exit !== 0) {
+            throw new EngineError(`Could not build state1 image ${formatCmdErr(ret)}`);
+        }
+        else {
+            const { name, hash } = getImageNameFromBuild(ret.stdout.trim());
+
+            // expect image name to be in the generated name output
+            if (!name!.includes(this.cc.getImageName())) {
+                throw new Error(`Expected image name to be in build tag output. This is a bug. Tag: '${name}' vs ${this.cc.getImageName()}`)
+            }
+
+            return {
+                name: name!,
+                hash: hash!,
+            };
+        }
     }
 
     public engineExec(cmdArgs: string[]) {
@@ -363,18 +453,6 @@ export class ContainerState {
         writeFileSync(installScriptPath, scriptData, { encoding: "utf-8" });
 
         const destFile = "/tmp/codium-devcontainer-installScript.sh";
-
-        // TODO_IMMEDIATE: move to dockerfile
-        const _res = await run(
-            [
-                ...settings.getEngineCmd(),
-                ...this.cc.getExecArgs(this.getContainerName(), this.remoteEnvProbe),
-                "bash",
-                "-c",
-                "apt update -y && apt install curl -y",
-            ], this.workspaceFolder, {},
-        );
-        void _res;
 
         // copy the script and run it
         const copyResult = await run(
@@ -442,3 +520,21 @@ function getInstallError(data: string) {
         return data;
     }
 }
+
+function getImageNameFromBuild(stdout: string): ImageBuildResult {
+    const items = stdout.split('\n');
+    const tagName = items.at(-2);
+    const imageHash = items.at(-1);
+    const imageName = tagName!.split(" ").at(-1);
+
+    // expect image name to be in the generated name output
+    if (!imageName) {
+        throw new Error(`Expected image name to be in build tag output. This is a bug. Tag: '${tagName}'`);
+    }
+
+    return {
+        name: imageName!,
+        hash: imageHash!,
+    };
+}
+

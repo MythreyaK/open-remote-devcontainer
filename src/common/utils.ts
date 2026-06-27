@@ -28,8 +28,8 @@ export function parseEnv(envStdout: string) {
     /* eslint-enable @stylistic/quotes */
 }
 
-export async function getHostUserInfo(): Promise<HostUserInfo> {
-    const userName = await runCmd("bash", ["-c", "id -n -u $UID"], getLocalWorkspaceFolder(), {});
+export async function getHostUserInfo(cwd: string = getLocalWorkspaceFolder()): Promise<HostUserInfo> {
+    const userName = await runCmd("bash", ["-c", "id -n -u $UID"], cwd, {});
     if (userName.exit === 0) {
         return {
             uid: process.getuid!(),

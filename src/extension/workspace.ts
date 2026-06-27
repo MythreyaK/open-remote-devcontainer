@@ -5,6 +5,12 @@ import * as crypto from "node:crypto";
 
 import { AUTHORITY_BASE, decodeRemoteAuthority } from "../remote/resolver";
 
+export enum NotificationLevel {
+    Info,
+    Warning,
+    Error,
+};
+
 /**
  *
  * @param localWsp : Full path to the local workspace folder, without resolving symlinks
@@ -52,5 +58,22 @@ export function getLocalWorkspaceFolder(): string {
             throw new Error("Open a workspace");
         }
         return wsf[0].uri.fsPath;
+    }
+}
+
+export function showNotification(level: NotificationLevel, msg: string) {
+    switch(level) {
+        case NotificationLevel.Info: {
+        vscode.window.showInformationMessage(msg);
+            break;
+        }
+        case NotificationLevel.Warning: {
+            vscode.window.showWarningMessage(msg);
+            break;
+        }
+        case NotificationLevel.Error: {
+            vscode.window.showErrorMessage(msg);
+            break;
+        }
     }
 }

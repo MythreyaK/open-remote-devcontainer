@@ -27,7 +27,7 @@ describe.skipIf(!ENGINE)("integration: lifecycle: img-basic", () => {
         cc = ContainerConfig.create(localWsf, config, localEnv);
 
         container = await ContainerState.create(localWsf, cc);
-    });
+    }, 60 * 1000);
 
     test("workspace mounts exists", async () => {
         const inspectResult = await run([ENGINE!, "inspect", container.getContainerName(), ...jsonFormat], localWsf, localEnv);
@@ -132,13 +132,13 @@ describe.skipIf(!ENGINE)("integration: lifecycle: img-basic", () => {
     });
 
     test("containerExists finds running container", async () => {
-        const info = await container.containerExists(container.getContainerName());
+        const info = await container.tryContainerInspect(container.getContainerName());
         expect(info).toBeDefined();
         expect(info!.Id).eq(await container.getContainerId());
     });
 
     test("containerExists returns undefined for nonexistent", async () => {
-        const info = await container.containerExists("does-not-exist-xyz-12345");
+        const info = await container.tryContainerInspect("does-not-exist-xyz-12345");
         expect(info).not.toBeDefined();
     });
 

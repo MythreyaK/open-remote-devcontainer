@@ -49,8 +49,8 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             .map(e => interpolateLocal(e, this.workspacePath, this.getRemoteMountDir(), this.localEnv));
     }
 
-    public async getStage2BuildCmd(this: ContainerConfig<schema.DockerfileDevcontainer>): Promise<string[]> {
-        const stage2Args = await this.getStage2BuildArgs();
+    public async getStage2BuildCmd(imgUser: string | undefined): Promise<string[]> {
+        const stage2Args = await this.getStage2BuildArgs(imgUser);
         return [
             "build",
             ...stage2Args,
@@ -128,6 +128,13 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         return [this.getShell(), "-il"];
     }
 
+    public getResolvedRemoteUser(imageUser: string | undefined) {
+        return this.cfg.remoteUser
+            ?? this.cfg.containerUser
+            ?? imageUser
+            ?? "root";
+    }
+
     private getBuildArgs(this: ContainerConfig<schema.DockerfileDevcontainer>): string[] {
         if (schema.isDockerfileBased(this.cfg)) {
             const args = this.cfg.build.args ?? [];
@@ -136,22 +143,25 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         return [];
     }
 
-    private async getStage2BuildArgs(): Promise<string[]> {
+    private async getStage2BuildArgs(imageUser: string | undefined): Promise<string[]> {
         const imageName = (() => {
             if (this.isImageBased()) return this.cfg.image;
             else return this._getImageName();
         })();
 
-        const userInfo = await getHostUserInfo();
+        // priority order
+        const username = this.getResolvedRemoteUser(imageUser);
+
+        const userInfo = await getHostUserInfo(this.workspacePath);
         return [
             "--build-arg", `BASE_IMAGE=${imageName}`,
             "--build-arg", `HOST_UID=${userInfo.uid}`,
             "--build-arg", `HOST_GID=${userInfo.gid}`,
-            "--build-arg", `HOST_USERNAME=${userInfo.name}`,
+            "--build-arg", `HOST_USERNAME=${username}`,
         ]
     }
 
-    private getStage2ImageName(): string {
+    public getStage2ImageName(): string {
         return `${this._getImageName()}-uid`;
     }
 
