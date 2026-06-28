@@ -42,14 +42,14 @@ export const TEST_CODIUM_INFO: server.ServerInfo = {
 
 export const init = () => {
     if (!ENGINE) { throw new Error("Expected engine to be defined. Did you forget to skip-if a test?"); }
+
+    const debugMode = process.env.DEBUG_TESTS;
+
     const spyCreateOutput = vi.spyOn(window, "createOutputChannel");
     spyCreateOutput.mockReturnValue({
-        // info: console.log,
-        // warn: console.log,
-        // error: console.log,
-        info: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
+        info: debugMode !== undefined ? console.log : vi.fn(),
+        warn: debugMode !== undefined ? console.log : vi.fn(),
+        error: debugMode !== undefined ? console.log : vi.fn(),
     } as any);
 
     const spySettings = vi.spyOn(workspace, "getConfiguration");

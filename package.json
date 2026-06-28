@@ -45,6 +45,10 @@
       {
         "command": "open-remote-devcontainer.openRemote",
         "title": "Remote - Devcontainer: Open workspace in container"
+      },
+      {
+        "command": "open-remote-devcontainer.showDevcontainerFile",
+        "title": "Remote - Devcontainer: Show devcontainer.json"
       }
     ],
     "configuration": {

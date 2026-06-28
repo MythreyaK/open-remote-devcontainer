@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import * as crypto from "node:crypto";
 
 import { AUTHORITY_BASE, decodeRemoteAuthority } from "../remote/resolver";
+import { getLogSink } from "./log";
 
 export enum NotificationLevel {
     Info,
@@ -28,10 +29,12 @@ export function findDevcontainerJson(dir: string): string {
     const filePaths = [
         path.join(dir, ".devcontainer", "devcontainer.json"),
         path.join(dir, ".devcontainer.json"),
+        // path.join(dir, ".config", "devcontainer.json"),
     ];
 
     for (const f of filePaths) {
         if (existsSync(f)) {
+            getLogSink().info(`Using devcontainer.json at ${f}`);
             return f;
         }
     }

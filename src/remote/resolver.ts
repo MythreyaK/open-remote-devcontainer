@@ -9,17 +9,23 @@ import { parseDevcontainerFile } from "../parser/parser";
 
 export const AUTHORITY_BASE: string = "devcontainer-remote";
 
+const ENCODE_SCHEME = "hex";
+
 export function encodeRemoteAuthority(localWsf: string) {
-    const encoded = Buffer.from(localWsf).toString("base64url");
+    const encoded = Buffer.from(localWsf).toString(ENCODE_SCHEME);
     return `${AUTHORITY_BASE}+${encoded}`;
 }
 
 export function decodeRemoteAuthority(authority: string) {
     const authorityPrefix = `${AUTHORITY_BASE}+`;
     if (authority.startsWith(authorityPrefix)) {
-        const [_, wsf] = authority.split(authorityPrefix);
-        getLogSink().info(`Trying to decode ${authority}: got '${_}' and '${wsf}'`);
-        return Buffer.from(wsf, "base64url").toString("utf-8");
+        const wsf = authority.slice(authorityPrefix.length, authority.length);
+        getLogSink().info(`Trying to decode '${authority}': got '${wsf}'`);
+
+        const decoded = Buffer.from(wsf, ENCODE_SCHEME).toString("utf-8");
+        getLogSink().info(`Decoded '${wsf}' = '${decoded}'`);
+
+        return decoded;
     }
     else { throw new Error(`Bad remote authority '${authority}'`); }
 }

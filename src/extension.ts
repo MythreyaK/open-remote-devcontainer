@@ -24,6 +24,7 @@ export function activate(context: vscode.ExtensionContext) {
         remoteResolver,
         vscode.commands.registerCommand(getCmd("getVersion"), () => getContainerEngineVersion()),
         vscode.commands.registerCommand(getCmd("openRemote"), () => openRemote(context)),
+        vscode.commands.registerCommand(getCmd("showDevcontainerFile"), () => { showDevcontainerFile(); }),
         logger,
     );
 }

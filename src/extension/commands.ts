@@ -29,3 +29,8 @@ export async function openRemote(_: vscode.ExtensionContext) {
         }),
     );
 }
+
+export function showDevcontainerFile() {
+    const file = findDevcontainerJson(getLocalWorkspaceFolder());
+    vscode.commands.executeCommand("vscode.open", vscode.Uri.file(file));
+}
