@@ -4,18 +4,18 @@ import { describe, expect, test, vi } from "vitest";
 import { spawn } from "../spawn";
 import { ContainerInspectResult } from "../../engine/lifecycle";
 
-function getEngine() {
-    return "podman";
-}
+import { jsonFormat, ENGINE } from "../../tests/common";
 
 function getcwd() {
     return __dirname;
 }
 
-const jsonFormat = ["--format", "{{json .}}"];
 const bashSleepCmd = ["bash", "-c", "trap 'exit 0' SIGINT SIGTERM; while true; do sleep 1; done"];
 
 describe("cmd spawn tests", () => {
+    if (!ENGINE) { throw new Error("Expected engine to be defined. Did you forget to skip-if a test?"); }
+    const engine = ENGINE;
+
     const spy = vi.spyOn(window, "createOutputChannel");
     spy.mockReturnValue({
         info: vi.fn(), // console.log,
@@ -26,30 +26,30 @@ describe("cmd spawn tests", () => {
     const log = window.createOutputChannel("Remote - Devcontainer (test)", { log: true });
 
     test("get engine version", async () => {
-        const out = await spawn(getEngine(), ["version", ...jsonFormat], getcwd(), {}, log);
+        const out = await spawn(engine, ["version", ...jsonFormat], getcwd(), {}, log);
         // console.log(out);
         expect(out.exit).eq(0);
     });
 
     test("create and remove container", async () => {
-        const create = await spawn(getEngine(), ["create", "hello-world"], getcwd(), {}, log);
+        const create = await spawn(engine, ["create", "hello-world"], getcwd(), {}, log);
         // console.log(create);
 
-        const remove = await spawn(getEngine(), ["rm", create.stdout.trim()], getcwd(), {}, log);
+        const remove = await spawn(engine, ["rm", create.stdout.trim()], getcwd(), {}, log);
         expect(create.exit).eq(0);
         expect(remove.exit).eq(0);
     });
 
     test("run and exec command", async () => {
-        const create = await spawn(getEngine(), ["run", "--name", "turtles", "-d", "ubuntu:24.04", ...bashSleepCmd], getcwd(), {}, log);
+        const create = await spawn(engine, ["run", "--name", "turtles", "-d", "ubuntu:24.04", ...bashSleepCmd], getcwd(), {}, log);
         const containerId = create.stdout.trim();
 
         try {
-            const exec = await spawn(getEngine(), ["exec", create.stdout.trim(), "cat", "/etc/os-release"], getcwd(), {}, log);
+            const exec = await spawn(engine, ["exec", create.stdout.trim(), "cat", "/etc/os-release"], getcwd(), {}, log);
             expect(exec.stdout.trim().includes("Ubuntu 24.04")).toBe(true);
             expect(exec.exit).eq(0);
 
-            const inspect = await spawn(getEngine(), ["inspect", containerId, ...jsonFormat], getcwd(), {}, log);
+            const inspect = await spawn(engine, ["inspect", containerId, ...jsonFormat], getcwd(), {}, log);
             expect(inspect.exit).eq(0);
             // console.log("DATA: ", inspect.stdout.trim());
 
@@ -59,10 +59,10 @@ describe("cmd spawn tests", () => {
             expect(inspectData.State.Running).eq(true);
         }
         finally {
-            const stop = await spawn(getEngine(), ["stop", "turtles"], getcwd(), {}, log);
+            const stop = await spawn(engine, ["stop", "turtles"], getcwd(), {}, log);
             expect(stop.exit).eq(0);
 
-            const rm = await spawn(getEngine(), ["rm", "turtles"], getcwd(), {}, log);
+            const rm = await spawn(engine, ["rm", "turtles"], getcwd(), {}, log);
             expect(rm.exit).eq(0);
         }
     });

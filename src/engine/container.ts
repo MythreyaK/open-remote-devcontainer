@@ -184,12 +184,12 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     }
 
     private addContainerUser(): string[] {
-        if (this.cfg.containerUser) { return ["-u", `${this.cfg.containerUser}:${this.cfg.containerUser}`]; }
+        if (this.cfg.containerUser) { return ["-u", this.cfg.containerUser]; }
         else { return []; /* uses container's default USER, empty items are filtered */ }
     }
 
     private addRemoteUser(): string[] {
-        if (this.cfg.remoteUser) { return ["-u", `${this.cfg.remoteUser}:${this.cfg.remoteUser}`]; }
+        if (this.cfg.remoteUser) { return ["-u", this.cfg.remoteUser]; }
         else { return this.addContainerUser(); }
     }
 

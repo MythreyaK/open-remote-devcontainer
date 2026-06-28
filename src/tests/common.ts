@@ -81,12 +81,12 @@ export function setupFixture(opts: { name: string, testDir: string }) {
     const config = parseDevcontainerFile(devcJson);
 
     afterAll(async () => {
-        console.log(`Stopping and removing container ${containerName}`);
+        console.info(`Stopping and removing container ${containerName}`);
         const proc1 = await runCmd(ENGINE, ["container", "stop", containerName], testDir, {});
         const proc2 = await runCmd(ENGINE, ["container", "rm", containerName], testDir, {});
 
-        if (proc1.exit !== 0) { console.log("Warning: Containers were not stopped cleanly. Maybe a bug?"); }
-        if (proc2.exit !== 0) { console.log("Warning: Containers were not removed cleanly. Maybe a bug?"); }
+        if (proc1.exit !== 0) { console.warn("Warning: Containers were not stopped cleanly. Maybe a bug?"); }
+        if (proc2.exit !== 0) { console.warn("Warning: Containers were not removed cleanly. Maybe a bug?"); }
 
         if (proc1.exit !== 0 || proc2.exit !== 0) { await runCmd(ENGINE, ["container", "rm", "--force", containerName], testDir, {}); }
     });

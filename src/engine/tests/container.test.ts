@@ -228,7 +228,7 @@ describe("ContainerConfig tests", () => {
             const createArgs = cc.getRunCreateCmd(imgCfg.image, "foobar").join(" ");
             expect(createArgs)
                 .includes("run -d ")
-                .includes("-u foo:foo ")
+                .includes("-u foo ")
                 .includes("-p 100 -p 123:456 -p 5040:5012 ")
                 .includes(`-v ${localWsf}:${localEnv.HOME}/projects/${localWsfBase} `)
                 .includes("--mount source=/tmp/dir/sub-folder,target=/workspace/dir,type=bind,consistency=cached ")

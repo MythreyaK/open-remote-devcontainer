@@ -14,17 +14,17 @@ describe("Parser tests", () => {
             };
 
             const p = parser.Mount_z.safeParse(jsondata);
-            expect(p.success);
+            expect(p.success).toBe(true);
 
             if (!p.success) {
                 throw new Error("Expected parse to work");
             }
 
             const o = p.data;
-            assert.strictEqual(o.type, "bind");
-            assert.strictEqual(o.source, "/home/username/dir");
-            assert.strictEqual(o.target, "/workspace/dir");
-            assert.strictEqual(o.options, "ro,z");
+            expect(o.type).eq("bind");
+            expect(o.source).eq("/home/username/dir");
+            expect(o.target).eq("/workspace/dir");
+            expect(o.options).eq("ro,z");
         }
         {
             const jsondata = {
@@ -39,10 +39,10 @@ describe("Parser tests", () => {
             }
 
             const o = p.data;
-            assert.strictEqual(o.type, "volume");
-            assert.strictEqual(o.source, undefined);
-            assert.strictEqual(o.target, "/workspace/dir");
-            assert.strictEqual(o.options, "ro");
+            expect(o.type).eq("volume");
+            expect(o.source).eq(undefined);
+            expect(o.target).eq("/workspace/dir");
+            expect(o.options).eq("ro");
         }
         {
             const jsondata = {
@@ -52,7 +52,7 @@ describe("Parser tests", () => {
             };
 
             const p = parser.Mount_z.safeParse(jsondata);
-            expect(!p.success);
+            expect(p.success).toBe(false);
         }
     });
 
