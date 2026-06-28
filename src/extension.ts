@@ -25,6 +25,7 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand(getCmd("getVersion"), () => getContainerEngineVersion()),
         vscode.commands.registerCommand(getCmd("openRemote"), () => openRemote(context)),
         vscode.commands.registerCommand(getCmd("showDevcontainerFile"), () => { showDevcontainerFile(); }),
+        vscode.commands.registerCommand(getCmd("openLocal"), () => { openLocal(); }),
         logger,
     );
 }

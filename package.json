@@ -47,6 +47,10 @@
         "title": "Remote - Devcontainer: Open workspace in container"
       },
       {
+        "command": "open-remote-devcontainer.openLocal",
+        "title": "Remote - Devcontainer: Reopen folder locally"
+      },
+      {
         "command": "open-remote-devcontainer.showDevcontainerFile",
         "title": "Remote - Devcontainer: Show devcontainer.json"
       }

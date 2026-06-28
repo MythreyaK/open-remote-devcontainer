@@ -30,6 +30,15 @@ export async function openRemote(_: vscode.ExtensionContext) {
     );
 }
 
+export async function openLocal() {
+    const localWsf = getLocalWorkspaceFolder();
+
+    await vscode.commands.executeCommand(
+        "vscode.openFolder",
+        vscode.Uri.file(localWsf),
+    );
+}
+
 export function showDevcontainerFile() {
     const file = findDevcontainerJson(getLocalWorkspaceFolder());
     vscode.commands.executeCommand("vscode.open", vscode.Uri.file(file));
