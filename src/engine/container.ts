@@ -76,8 +76,8 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             ...this.addCaps(),
             ...this.addSecurityOpts(),
             ...extraArgs,
-            this.cfg.privileged ? "--privileged" : "",
-            this.cfg.init ? "--init" : "",
+            ...(this.cfg.privileged ? ["--privileged"] : []),
+            ...(this.cfg.init ? ["--init"] : []),
             "--entrypoint",
             this.getShell(),
             imageName,
@@ -137,7 +137,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
 
     private getBuildArgs(this: ContainerConfig<schema.DockerfileDevcontainer>): string[] {
         if (schema.isDockerfileBased(this.cfg)) {
-            const args = this.cfg.build.args ?? [];
+            const args = this.cfg.build.args ?? {};
             return Object.entries(args).flatMap(([k, v]) => ["--build-arg", `${k}=${v}`]);
         }
         return [];

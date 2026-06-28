@@ -14,7 +14,7 @@ describe("Install script", () => {
             extensions: [],
             remoteEnvs: {},
             connectionToken: "0xf00ba4",
-            downloadTemplteUrl: "https://localhost/${CODIUM_OS_PLATFORM}-${CODIUM_ARCH}.tar.gz",
+            downloadTemplateUrl: "https://localhost/${CODIUM_OS_PLATFORM}-${CODIUM_ARCH}.tar.gz",
             codiumVersion: "1.2.345",
             forceReinstall: false,
         };
@@ -39,7 +39,7 @@ describe("Install script", () => {
             extensions: ["pub1.ext1", "pub2.ext1"],
             remoteEnvs: { ENV1: "VAL1", ENV2: "VAL2" },
             connectionToken: "0xf00ba4",
-            downloadTemplteUrl: "https://localhost/${CODIUM_OS_PLATFORM}-${CODIUM_ARCH}.tar.gz",
+            downloadTemplateUrl: "https://localhost/${CODIUM_OS_PLATFORM}-${CODIUM_ARCH}.tar.gz",
             codiumVersion: "1.2.345",
             forceReinstall: false,
         };

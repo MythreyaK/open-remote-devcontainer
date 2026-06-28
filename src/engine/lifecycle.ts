@@ -38,13 +38,10 @@ export interface ContainerInspectResult {
 };
 
 export interface ImageInspectResult {
+    Id: string,
+    Name: string,
     User: string | undefined,
 };
-
-export interface ImageBuildResult {
-    name: string,
-    hash: string,
-}
 
 export class ContainerState {
     private readonly workspaceFolder: string;
@@ -108,15 +105,15 @@ export class ContainerState {
     }
 
     private async createContainer() {
-        const { name, hash } = await this.buildFinalImage();
-        return await this.runCreate(name, hash);
+        const name = await this.buildFinalImage();
+        return await this.runCreate(name);
     }
 
-    private async buildFinalImage(): Promise<ImageBuildResult> {
+    private async buildFinalImage(): Promise<string> {
         let stage1Image: string | undefined;
 
         if (this.cc.isDockerfileBased()) {
-            const { name } = await this.buildUserImage();
+            const name = await this.buildUserImage();
             stage1Image = name;
         }
         else if (this.cc.isImageBased()) {
@@ -153,7 +150,7 @@ export class ContainerState {
         return await this.buildStage2(stage1Image);
     }
 
-    private async buildStage2(stage1Image: string): Promise<ImageBuildResult> {
+    private async buildStage2(stage1Image: string): Promise<string> {
         const imgUser = await run([
             ...settings.getEngineCmd(),
             "image",
@@ -186,16 +183,16 @@ export class ContainerState {
         ], this.workspaceFolder, {});
 
         if (ret.exit !== 0) {
-            const errMsg = Array.from(ret.stderr.trim().matchAll(/{{DEVCONTAINER_STAGE2 ERROR: ([\s\w]*)}}/g));
+            const errMsg = Array.from(ret.stderr.trim().matchAll(/{{DEVCONTAINER_STAGE2 ERROR: (.*?)}}/g));
             if (errMsg.length !== 1 || errMsg[0].length < 2) {
                 throw new Error(`Could not build stage2 image with unknown error: ${formatCmdErr(ret)}`);
             }
             else {
-                throw new EngineError(`Could not build state2 image: ${errMsg[0][1]}`);
+                throw new EngineError(`Could not build stage2 image: ${errMsg[0][1]}`);
             }
         }
         else {
-            return getImageNameFromBuild(ret.stdout.trim());
+            return this.cc.getStage2ImageName();
         }
     }
 
@@ -319,7 +316,7 @@ export class ContainerState {
         }
     }
 
-    private async runCreate(imageName: string, imageHash: string): Promise<string> {
+    private async runCreate(imageName: string): Promise<string> {
         // TODO: auto-assign free port and query
         const createRes = await run(
             [
@@ -340,7 +337,7 @@ export class ContainerState {
             );
         }
         else {
-            getLogSink().info(`Started container ${this.getContainerName()} from image ${imageName} (${imageHash})`);
+            getLogSink().info(`Started container ${this.getContainerName()} from image ${imageName}`);
         }
 
         return createRes.stdout.trim();
@@ -376,7 +373,7 @@ export class ContainerState {
         );
     }
 
-    private async buildUserImage(): Promise<ImageBuildResult> {
+    private async buildUserImage(): Promise<string> {
         if (!this.cc.isDockerfileBased()) { throw new Error("Expected dockerfile-based config"); }
 
         const ret = await run([
@@ -385,20 +382,16 @@ export class ContainerState {
         ], this.workspaceFolder, {});
 
         if (ret.exit !== 0) {
-            throw new EngineError(`Could not build state1 image ${formatCmdErr(ret)}`);
+            throw new EngineError(`Could not build stage1 image ${formatCmdErr(ret)}`);
         }
         else {
-            const { name, hash } = getImageNameFromBuild(ret.stdout.trim());
+            const output = ret.stdout.trim();
 
             // expect image name to be in the generated name output
-            if (!name.includes(this.cc.getImageName())) {
-                throw new Error(`Expected image name to be in build tag output. This is a bug. Tag: '${name}' vs ${this.cc.getImageName()}`);
+            if (!output.includes(this.cc.getImageName())) {
+                throw new Error(`Expected image name to be in build tag output. This is a bug. Tag: '${output}' vs ${this.cc.getImageName()}`);
             }
-
-            return {
-                name: name,
-                hash: hash,
-            };
+            return this.cc.getImageName();
         }
     }
 
@@ -414,7 +407,8 @@ export class ContainerState {
 
     public async installServer(forceReinstall: boolean = false) {
         if (!await this.isRunning()) {
-            if (!await this.startContainer() && !await this.isRunning()) {
+            await this.startContainer();
+            if (!await this.isRunning()) {
                 throw new Error("Failed to start container. Check logs");
             }
         }
@@ -443,7 +437,7 @@ export class ContainerState {
             port: DEVCONTAINER_SERVER_LISTEN_PORT,
             extensions: settings.getExtensionList(),
             remoteEnvs: this.cc.getResolvedRemoteEnv(this.remoteEnvProbe),
-            downloadTemplteUrl: prodJson.serverUrlTemplate,
+            downloadTemplateUrl: prodJson.serverUrlTemplate,
             codiumVersion: prodJson.version,
             connectionToken: token,
             forceReinstall: forceReinstall,
@@ -526,24 +520,4 @@ function getInstallError(data: string) {
         // return `${errCode}${errMsg}`;
         return data;
     }
-}
-
-function getImageNameFromBuild(stdout: string): ImageBuildResult {
-    const items = stdout.split("\n");
-    const tagName = items.at(-2);
-    const imageHash = items.at(-1);
-
-    if (tagName === undefined) { throw new Error(`Expected tagName in output '${stdout}'`); }
-    if (imageHash === undefined) { throw new Error(`Expected imageHash in output '${stdout}'`); }
-
-    const imageName = tagName.split(" ").at(-1);
-    // expect image name to be in the generated name output
-    if (!imageName) {
-        throw new Error(`Expected image name to be in build tag output. This is a bug. Tag: '${tagName}'`);
-    }
-
-    return {
-        name: imageName,
-        hash: imageHash,
-    };
 }

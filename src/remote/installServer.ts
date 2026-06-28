@@ -30,7 +30,7 @@ export interface ScriptInstallInfo {
     extensions: string[],
     remoteEnvs: Record<string, string>,
     connectionToken: string,
-    downloadTemplteUrl: string,
+    downloadTemplateUrl: string,
     codiumVersion: string,
     forceReinstall: boolean,
 }
@@ -61,7 +61,7 @@ export function updateScript(script: string, info: ScriptInstallInfo, debug: boo
     scriptCopy = scriptCopy
         .replace("CODIUM_INJECT_INSTALL_EXTENSIONS", extensArgs)
         .replace("CODIUM_INJECT_SERVER_LISTEN_PORT", info.port.toString())
-        .replace("CODIUM_INJECT_DOWNLOAD_URL", info.downloadTemplteUrl)
+        .replace("CODIUM_INJECT_DOWNLOAD_URL", info.downloadTemplateUrl)
         .replace("CODIUM_INJECT_CODIUM_INSTALL_VERSION", info.codiumVersion)
         .replace("CODIUM_INJECT_TOKEN_VALUE", info.connectionToken)
         .replace("CODIUM_INJECT_FORCE_REINSTALL_SERVER", info.forceReinstall ? "true" : "false")
