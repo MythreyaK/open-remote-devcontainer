@@ -6,7 +6,7 @@ export function getConfig<T>(key: string): T | undefined {
 }
 
 export function getContainerEngine(): string {
-    return getConfig<string>("engine") || "docker";
+    return getConfig<string>("engine") ?? "docker";
 }
 
 /**

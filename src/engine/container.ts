@@ -4,6 +4,7 @@ import * as crypto from "node:crypto";
 import * as schema from "../parser/schema";
 import { getLogSink } from "../extension/log";
 import { ConfigError } from "../extension/error";
+import { getHostUserInfo } from "../common/utils";
 
 export interface ExecOpts {
     tty?: boolean,
@@ -48,6 +49,17 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             .map(e => interpolateLocal(e, this.workspacePath, this.getRemoteMountDir(), this.localEnv));
     }
 
+    public async getStage2BuildCmd(imgUser: string | undefined): Promise<string[]> {
+        const stage2Args = await this.getStage2BuildArgs(imgUser);
+        return [
+            "build",
+            ...stage2Args,
+            "-t", this.getStage2ImageName(),
+            "-f", path.join(__dirname, "Dockerfile"),
+            this.workspacePath,
+        ].filter(Boolean);
+    }
+
     public getRunCreateCmd(imageName: string, containerName: string, extraArgs: string[] = []): string[] {
         // TODO: handle overrideCmd
         return [
@@ -64,8 +76,8 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             ...this.addCaps(),
             ...this.addSecurityOpts(),
             ...extraArgs,
-            this.cfg.privileged ? "--privileged" : "",
-            this.cfg.init ? "--init" : "",
+            ...(this.cfg.privileged ? ["--privileged"] : []),
+            ...(this.cfg.init ? ["--init"] : []),
             "--entrypoint",
             this.getShell(),
             imageName,
@@ -77,6 +89,13 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     }
 
     public getImageName(this: ContainerConfig<schema.DockerfileDevcontainer>): string {
+        // TODO: resolve symlinks?
+        // const safeImgName = this.workspacePath.replaceAll('/[^a-z0-9.-]', '-');
+        return this._getImageName();
+    }
+
+    // useful for stage2 build
+    private _getImageName(): string {
         // TODO: resolve symlinks?
         // const safeImgName = this.workspacePath.replaceAll('/[^a-z0-9.-]', '-');
         const idHash = crypto
@@ -109,12 +128,41 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         return [this.getShell(), "-il"];
     }
 
+    public getResolvedRemoteUser(imageUser: string | undefined) {
+        return this.cfg.remoteUser
+          ?? this.cfg.containerUser
+          ?? imageUser
+          ?? "root";
+    }
+
     private getBuildArgs(this: ContainerConfig<schema.DockerfileDevcontainer>): string[] {
         if (schema.isDockerfileBased(this.cfg)) {
-            const args = this.cfg.build.args ?? [];
+            const args = this.cfg.build.args ?? {};
             return Object.entries(args).flatMap(([k, v]) => ["--build-arg", `${k}=${v}`]);
         }
         return [];
+    }
+
+    private async getStage2BuildArgs(imageUser: string | undefined): Promise<string[]> {
+        const imageName = (() => {
+            if (this.isImageBased()) { return this.cfg.image; }
+            else { return this._getImageName(); }
+        })();
+
+        // priority order
+        const username = this.getResolvedRemoteUser(imageUser);
+
+        const userInfo = await getHostUserInfo(this.workspacePath);
+        return [
+            "--build-arg", `BASE_IMAGE=${imageName}`,
+            "--build-arg", `HOST_UID=${userInfo.uid}`,
+            "--build-arg", `HOST_GID=${userInfo.gid}`,
+            "--build-arg", `HOST_USERNAME=${username}`,
+        ];
+    }
+
+    public getStage2ImageName(): string {
+        return `${this._getImageName()}-uid`;
     }
 
     private addAppPorts(): string[] {
@@ -136,12 +184,12 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     }
 
     private addContainerUser(): string[] {
-        if (this.cfg.containerUser) { return ["-u", `${this.cfg.containerUser}:${this.cfg.containerUser}`]; }
+        if (this.cfg.containerUser) { return ["-u", this.cfg.containerUser]; }
         else { return []; /* uses container's default USER, empty items are filtered */ }
     }
 
     private addRemoteUser(): string[] {
-        if (this.cfg.remoteUser) { return ["-u", `${this.cfg.remoteUser}:${this.cfg.remoteUser}`]; }
+        if (this.cfg.remoteUser) { return ["-u", this.cfg.remoteUser]; }
         else { return this.addContainerUser(); }
     }
 
@@ -181,7 +229,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         if (this.cfg.mounts) {
             for (const mount of this.cfg.mounts) {
                 if (typeof mount === "string") {
-                    ret.push("-v", mount);
+                    ret.push("--mount", mount);
                 }
                 else if (mount.type === "bind") {
                     if (!mount.source) {

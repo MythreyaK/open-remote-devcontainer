@@ -26,6 +26,7 @@ export default tseslint.config(
             "@typescript-eslint/restrict-template-expressions": ["error", {
                 allowNumber: true,
             }],
+            "@stylistic/max-statements-per-line": ["error", { max: 2 }],
 
             curly: "warn",
             eqeqeq: "warn",
@@ -37,7 +38,7 @@ export default tseslint.config(
         },
     },
     {
-        files: ["**/*.test.ts"],
+        files: ["**/tests/common.ts", "**/test.ts", "**/*.test.ts"],
         rules: {
             "@typescript-eslint/no-unsafe-argument": "warn",
             "@typescript-eslint/no-explicit-any": "warn",

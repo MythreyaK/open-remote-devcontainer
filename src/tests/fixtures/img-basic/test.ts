@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { setTimeout } from "node:timers/promises";
 
-import { ContainerState } from "../../../engine/lifecycle";
+import { ContainerInspectResult, ContainerState } from "../../../engine/lifecycle";
 import { ContainerConfig } from "../../../engine/container";
 import { parseEnv } from "../../../common/utils";
 
@@ -11,6 +11,9 @@ import { run } from "../../../common/cmd";
 init();
 
 describe.skipIf(!ENGINE)("integration: lifecycle: img-basic", () => {
+    if (!ENGINE) { throw new Error("Expected engine to be defined. Did you forget to skip-if a test?"); }
+    const engine = ENGINE;
+
     let cc: ContainerConfig;
     let container: ContainerState;
 
@@ -27,20 +30,20 @@ describe.skipIf(!ENGINE)("integration: lifecycle: img-basic", () => {
         cc = ContainerConfig.create(localWsf, config, localEnv);
 
         container = await ContainerState.create(localWsf, cc);
-    });
+    }, 60 * 1000);
 
     test("workspace mounts exists", async () => {
-        const inspectResult = await run([ENGINE!, "inspect", container.getContainerName(), ...jsonFormat], localWsf, localEnv);
+        const inspectResult = await run([engine, "inspect", container.getContainerName(), ...jsonFormat], localWsf, localEnv);
         expect(inspectResult.exit).eq(0);
 
-        const mounts = JSON.parse(inspectResult.stdout.trim())["Mounts"];
+        const mounts = (JSON.parse(inspectResult.stdout.trim()) as ContainerInspectResult)["Mounts"];
 
         const mountsFound: number = (() => {
             let found = 0;
             for (const mount of mounts) {
-                const [source, dest, rw] = [mount["Source"], mount["Destination"], mount["RW"]];
-                found += (source == localWsf && dest === "/workdir1") ? 1 : 0;
-                found += (source == localWsf && dest === "/workdir2" && rw === false) ? 1 : 0;
+                const [source, dest, rw] = [mount.Source, mount.Destination, mount.RW];
+                found += (source === localWsf && dest === "/workdir1") ? 1 : 0;
+                found += (source === localWsf && dest === "/workdir2" && !rw) ? 1 : 0;
             }
             return found;
         })();
@@ -132,13 +135,13 @@ describe.skipIf(!ENGINE)("integration: lifecycle: img-basic", () => {
     });
 
     test("containerExists finds running container", async () => {
-        const info = await container.containerExists(container.getContainerName());
+        const info = await container.tryContainerInspect(container.getContainerName());
         expect(info).toBeDefined();
-        expect(info!.Id).eq(await container.getContainerId());
+        expect(info!.Id).eq(await container.getContainerId()); /* eslint-disable-line @typescript-eslint/no-non-null-assertion */
     });
 
     test("containerExists returns undefined for nonexistent", async () => {
-        const info = await container.containerExists("does-not-exist-xyz-12345");
+        const info = await container.tryContainerInspect("does-not-exist-xyz-12345");
         expect(info).not.toBeDefined();
     });
 

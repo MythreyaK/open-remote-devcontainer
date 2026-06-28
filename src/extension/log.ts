@@ -1,5 +1,4 @@
 import { window, LogOutputChannel } from "vscode";
-import { InternalError } from "./error";
 
 let log: LogOutputChannel | undefined;
 
@@ -11,7 +10,7 @@ export function initLog(name: string) {
 export function getLogSink(): LogOutputChannel {
     if (!log) {
         window.showErrorMessage("Devcontainers: Logging is not initialized. This is a bug, please report it.");
-        throw new InternalError("Logging is not initialized: Call `initLog` first");
+        throw new Error("Logging is not initialized: Call `initLog` first. This is a bug.");
     };
     return log;
 }

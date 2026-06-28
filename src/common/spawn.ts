@@ -90,3 +90,7 @@ export function spawn(
     });
 }
 /* eslint-enable @typescript-eslint/no-confusing-void-expression */
+
+export function formatCmdErr(res: CmdResult): string {
+    return `Error: ${res.exit}: stdout: [${res.stdout.trim()}] stderr: [${res.stderr.trim()}]`;
+}
