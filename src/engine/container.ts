@@ -130,9 +130,9 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
 
     public getResolvedRemoteUser(imageUser: string | undefined) {
         return this.cfg.remoteUser
-            ?? this.cfg.containerUser
-            ?? imageUser
-            ?? "root";
+          ?? this.cfg.containerUser
+          ?? imageUser
+          ?? "root";
     }
 
     private getBuildArgs(this: ContainerConfig<schema.DockerfileDevcontainer>): string[] {
@@ -145,8 +145,8 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
 
     private async getStage2BuildArgs(imageUser: string | undefined): Promise<string[]> {
         const imageName = (() => {
-            if (this.isImageBased()) return this.cfg.image;
-            else return this._getImageName();
+            if (this.isImageBased()) { return this.cfg.image; }
+            else { return this._getImageName(); }
         })();
 
         // priority order
@@ -158,7 +158,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             "--build-arg", `HOST_UID=${userInfo.uid}`,
             "--build-arg", `HOST_GID=${userInfo.gid}`,
             "--build-arg", `HOST_USERNAME=${username}`,
-        ]
+        ];
     }
 
     public getStage2ImageName(): string {
@@ -229,7 +229,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         if (this.cfg.mounts) {
             for (const mount of this.cfg.mounts) {
                 if (typeof mount === "string") {
-                    ret.push("-v", mount);
+                    ret.push("--mount", mount);
                 }
                 else if (mount.type === "bind") {
                     if (!mount.source) {

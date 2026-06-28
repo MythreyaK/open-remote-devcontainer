@@ -155,8 +155,8 @@ describe("Parser tests", () => {
         {
             const jsonbase = { name: "foo", image: "ubuntu", workspaceFolder: "/foo" };
             const jsondatas = [
-                { ...jsonbase, workspaceMount: "source=/foo,target=/bar,target" },
-                { ...jsonbase, workspaceMount: 'source="/dir1/foo,target",target=/dir2/bar,type=bind' },
+                { ...jsonbase, workspaceMount: "source=/foo,target=/bar,target=/fooo" },
+                { ...jsonbase, workspaceMount: 'source="/dir1/foo,target=bar",target=/dir2/bar,type=bind' },
                 // { ...jsonbase, "workspaceMount": 'source=/dir1/foo,target=/dir3/bar/target,consistency=cached,foo=bar' },
                 { ...jsonbase, workspaceMount: "source=/home/用户/target=项目,target=/workspace,target=проект,type=bind" },
             ];

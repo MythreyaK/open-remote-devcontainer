@@ -41,6 +41,7 @@ export const TEST_CODIUM_INFO: server.ServerInfo = {
 };
 
 export const init = () => {
+    if (!ENGINE) { throw new Error("Expected engine to be defined. Did you forget to skip-if a test?"); }
     const spyCreateOutput = vi.spyOn(window, "createOutputChannel");
     spyCreateOutput.mockReturnValue({
         // info: console.log,
@@ -68,6 +69,7 @@ export const init = () => {
 };
 
 export function setupFixture(opts: { name: string, testDir: string }) {
+    if (!ENGINE) { throw new Error("Expected engine to be defined. Did you forget to skip-if a test?"); }
     const testDir = opts.testDir;
 
     if (!existsSync(testDir)) {
@@ -80,13 +82,13 @@ export function setupFixture(opts: { name: string, testDir: string }) {
 
     afterAll(async () => {
         console.log(`Stopping and removing container ${containerName}`);
-        const proc1 = await runCmd(ENGINE!, ["container", "stop", containerName], testDir, {});
-        const proc2 = await runCmd(ENGINE!, ["container", "rm", containerName], testDir, {});
+        const proc1 = await runCmd(ENGINE, ["container", "stop", containerName], testDir, {});
+        const proc2 = await runCmd(ENGINE, ["container", "rm", containerName], testDir, {});
 
         if (proc1.exit !== 0) { console.log("Warning: Containers were not stopped cleanly. Maybe a bug?"); }
         if (proc2.exit !== 0) { console.log("Warning: Containers were not removed cleanly. Maybe a bug?"); }
 
-        if (proc1.exit !== 0 || proc2.exit !== 0) { await runCmd(ENGINE!, ["container", "rm", "--force", containerName], testDir, {}); }
+        if (proc1.exit !== 0 || proc2.exit !== 0) { await runCmd(ENGINE, ["container", "rm", "--force", containerName], testDir, {}); }
     });
 
     return { localWsf: testDir, localWsfBasename: path.parse(testDir).base, config: config };

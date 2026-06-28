@@ -12,6 +12,9 @@ import { init, setupFixture, jsonFormat, ENGINE } from "../../common";
 init();
 
 describe.skipIf(!ENGINE)("integration: lifecycle: img-pull", () => {
+    if (!ENGINE) { throw new Error("Expected engine to be defined. Did you forget to skip-if a test?"); }
+    const engine = ENGINE;
+
     let cc: ContainerConfig;
     let container: ContainerState;
 
@@ -25,7 +28,7 @@ describe.skipIf(!ENGINE)("integration: lifecycle: img-pull", () => {
 
     let imageName: string;
 
-    test("create config", async () => {
+    test("create config", () => {
         if (!schema.isImageBased(config)) {
             expect(schema.isImageBased(config)).toBe(true);
             throw new Error("Expected image-based config");
@@ -37,9 +40,9 @@ describe.skipIf(!ENGINE)("integration: lifecycle: img-pull", () => {
 
     test("pull image and create container with missing local image", async () => {
         // remove image first, if exists
-        await run([ENGINE!, "image", "rm", imageName], localWsf, localEnv);
+        await run([engine, "image", "rm", imageName], localWsf, localEnv);
 
-        const inspectResult = await run([ENGINE!, "inspect", imageName, ...jsonFormat], localWsf, localEnv);
+        const inspectResult = await run([engine, "inspect", imageName, ...jsonFormat], localWsf, localEnv);
         expect(inspectResult.exit).not.eq(0);
         expect(inspectResult.stdout).toBe("");
 
@@ -58,7 +61,7 @@ describe.skipIf(!ENGINE)("integration: lifecycle: img-pull", () => {
             const installServer = await container.installServer();
 
             const catResult = await run([
-                ENGINE!,
+                engine,
                 "exec",
                 await container.getContainerId(),
                 "bash",
@@ -80,7 +83,7 @@ describe.skipIf(!ENGINE)("integration: lifecycle: img-pull", () => {
             const installServer = await container.installServer();
 
             const catResult = await run([
-                ENGINE!,
+                engine,
                 "exec",
                 await container.getContainerId(),
                 "bash",

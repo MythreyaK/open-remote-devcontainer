@@ -2,6 +2,7 @@ import { window, workspace } from "vscode";
 import { describe, expect, test, vi } from "vitest";
 
 import { spawn } from "../spawn";
+import { ContainerInspectResult } from "../../engine/lifecycle";
 
 function getEngine() {
     return "podman";
@@ -52,7 +53,7 @@ describe("cmd spawn tests", () => {
             expect(inspect.exit).eq(0);
             // console.log("DATA: ", inspect.stdout.trim());
 
-            const inspectData = JSON.parse(inspect.stdout.trim());
+            const inspectData = JSON.parse(inspect.stdout.trim()) as ContainerInspectResult;
             expect(inspectData.Id).eq(containerId);
             expect(inspectData.Name).eq("turtles");
             expect(inspectData.State.Running).eq(true);

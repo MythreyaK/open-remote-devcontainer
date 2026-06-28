@@ -20,6 +20,7 @@ const jsonFormat = ["--format", "{{json .}}"];
 
 export interface ContainerInspectResult {
     Id: string,
+    Name: string,
     State: {
         Status: "created" | "running" | "paused" | "stopped" | "exited",
         Running: boolean,
@@ -37,7 +38,7 @@ export interface ContainerInspectResult {
 };
 
 export interface ImageInspectResult {
-    User: string | undefined
+    User: string | undefined,
 };
 
 export interface ImageBuildResult {
@@ -166,9 +167,9 @@ export class ContainerState {
         }
 
         const imageUser = (() => {
-            const ret = (JSON.parse(imgUser.stdout.trim()) as ImageInspectResult).User
-            if (!ret) return undefined;
-            else return ret;
+            const ret = (JSON.parse(imgUser.stdout.trim()) as ImageInspectResult).User;
+            if (!ret) { return undefined; }
+            else { return ret; }
         })();
 
         const remoteUser = this.cc.getResolvedRemoteUser(imageUser);
@@ -376,11 +377,11 @@ export class ContainerState {
     }
 
     private async buildUserImage(): Promise<ImageBuildResult> {
-        if (!this.cc.isDockerfileBased()) throw new Error("Expected dockerfile-based config");
+        if (!this.cc.isDockerfileBased()) { throw new Error("Expected dockerfile-based config"); }
 
         const ret = await run([
             ...settings.getEngineCmd(),
-            ...this.cc.getBuildCmd()
+            ...this.cc.getBuildCmd(),
         ], this.workspaceFolder, {});
 
         if (ret.exit !== 0) {
@@ -390,13 +391,13 @@ export class ContainerState {
             const { name, hash } = getImageNameFromBuild(ret.stdout.trim());
 
             // expect image name to be in the generated name output
-            if (!name!.includes(this.cc.getImageName())) {
-                throw new Error(`Expected image name to be in build tag output. This is a bug. Tag: '${name}' vs ${this.cc.getImageName()}`)
+            if (!name.includes(this.cc.getImageName())) {
+                throw new Error(`Expected image name to be in build tag output. This is a bug. Tag: '${name}' vs ${this.cc.getImageName()}`);
             }
 
             return {
-                name: name!,
-                hash: hash!,
+                name: name,
+                hash: hash,
             };
         }
     }
@@ -500,7 +501,13 @@ export class ContainerState {
         }
         else {
             const allParts = portCmdRes.stdout.trim().split(":");
-            return allParts.at(-1);
+            const port = allParts.at(-1);
+            if (port === undefined) {
+                throw new Error(`Could not extract port from '${portCmdRes.stdout}'. This is a bug.`);
+            }
+            else {
+                return port;
+            }
         }
     }
 }
@@ -522,19 +529,21 @@ function getInstallError(data: string) {
 }
 
 function getImageNameFromBuild(stdout: string): ImageBuildResult {
-    const items = stdout.split('\n');
+    const items = stdout.split("\n");
     const tagName = items.at(-2);
     const imageHash = items.at(-1);
-    const imageName = tagName!.split(" ").at(-1);
 
+    if (tagName === undefined) { throw new Error(`Expected tagName in output '${stdout}'`); }
+    if (imageHash === undefined) { throw new Error(`Expected imageHash in output '${stdout}'`); }
+
+    const imageName = tagName.split(" ").at(-1);
     // expect image name to be in the generated name output
     if (!imageName) {
         throw new Error(`Expected image name to be in build tag output. This is a bug. Tag: '${tagName}'`);
     }
 
     return {
-        name: imageName!,
-        hash: imageHash!,
+        name: imageName,
+        hash: imageHash,
     };
 }
-

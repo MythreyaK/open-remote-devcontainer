@@ -214,7 +214,7 @@ export function extractMountTarget(mnt: string) {
     const targets: string[] = (() => {
         const tgt: string[] = [];
         for (const match of matches) {
-            if (match.startsWith("target")) {
+            if (match.startsWith("target=")) {
                 tgt.push(match.replace("target=", ""));
             }
         }
@@ -230,7 +230,7 @@ export function extractMountSource(mnt: string) {
     const targets: string[] = (() => {
         const tgt: string[] = [];
         for (const match of matches) {
-            if (match.startsWith("source")) {
+            if (match.startsWith("source=")) {
                 tgt.push(match.replace("source=", ""));
             }
         }

@@ -54,7 +54,7 @@ export function getLocalWorkspaceFolder(): string {
     }
     else {
         const wsf = vscode.workspace.workspaceFolders;
-        if (!wsf || wsf.length == 0) {
+        if (!wsf || wsf.length === 0) {
             throw new Error("Open a workspace");
         }
         return wsf[0].uri.fsPath;
@@ -62,9 +62,9 @@ export function getLocalWorkspaceFolder(): string {
 }
 
 export function showNotification(level: NotificationLevel, msg: string) {
-    switch(level) {
+    switch (level) {
         case NotificationLevel.Info: {
-        vscode.window.showInformationMessage(msg);
+            vscode.window.showInformationMessage(msg);
             break;
         }
         case NotificationLevel.Warning: {

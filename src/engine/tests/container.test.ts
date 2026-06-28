@@ -209,6 +209,14 @@ describe("ContainerConfig tests", () => {
             context: "${localWorkspaceFolder}",
             args: { ARG1: "VAL1", ARG2: "${localWorkspaceFolderBasename}", HOMEDIR: "${localWorkspaceFolder}" },
         },
+        mounts: [
+            {
+                type: "bind",
+                source: "/a",
+                target: "/b",
+            },
+            "source=/c,target=/d,type=bind",
+        ],
     };
 
     test("create container cmd", () => {
@@ -228,6 +236,21 @@ describe("ContainerConfig tests", () => {
                 .includes("--device /dev/kfd --pid host ")
                 .includes("--cap-add CAP_BPF --cap-add CAP_CHOWN ")
                 .includes("--security-opt seccomp=unconfined --security-opt no-new-privileges=true ");
+        }
+    });
+
+    test("string mounts use '--mount' flag", () => {
+        const cc = ContainerConfig.create(localWsf, dockerfileCfg, localEnv);
+        expect(cc.isImageBased()).toBe(false);
+        expect(cc.isDockerfileBased()).toBe(true);
+
+        if (cc.isDockerfileBased()) {
+            const buildArgs = cc.getRunCreateCmd(imgCfg.image, "foobar").join(" ");
+            expect(buildArgs)
+                .includes("run ")
+                .includes(" --mount source=/c,target=/d,type=bind ")
+                .includes(" -v /a:/b ")
+                .includes(localWsf);
         }
     });
 
