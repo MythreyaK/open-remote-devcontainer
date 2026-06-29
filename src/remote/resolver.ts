@@ -2,10 +2,11 @@ import * as vscode from "vscode";
 import path from "node:path";
 
 import { getLogSink } from "../extension/log";
-import { ContainerState } from "../engine/lifecycle";
+import { BuildOpts, ContainerState } from "../engine/lifecycle";
 import { findDevcontainerJson } from "../extension/workspace";
 import { ContainerConfig } from "../engine/container";
 import { parseDevcontainerFile } from "../parser/parser";
+import { BuildOptIntent } from "../common/globalState";
 
 export const AUTHORITY_BASE: string = "devcontainer-remote";
 
@@ -55,6 +56,8 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
     }
 
     private async createWindowTask(progress: vscode.Progress<{ message?: string, increment?: number }>, _2: vscode.CancellationToken): Promise<vscode.ResolverResult> {
+        const buildOpt = BuildOptIntent.get(this.extensionCtx) ?? BuildOpts.Default;
+
         progress.report({ message: "Parsing config...", increment: 5 });
 
         const devcontainerJson = findDevcontainerJson(this.localWsf);
@@ -63,7 +66,7 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
         const containerConfig = ContainerConfig.create(this.localWsf, parsedConfig);
 
         progress.report({ message: "Building image and starting container...", increment: 50 });
-        this.containerState = await ContainerState.create(this.localWsf, containerConfig);
+        this.containerState = await ContainerState.create(this.localWsf, containerConfig, buildOpt);
 
         const containerId = await this.containerState.getContainerId();
         const localWsfBasename = path.parse(this.localWsf).base;

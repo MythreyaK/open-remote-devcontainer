@@ -43,39 +43,36 @@ export interface ImageInspectResult {
     User: string | undefined,
 };
 
-export interface BuildOpts {
-    rebuild?: boolean,
-    noCache?: boolean,
+export enum BuildOpts {
+    Default = "default",
+    Rebuild = "rebuild",
+    RebuildNoCache = "rebuildNoCache",
 };
-
-type _BuildOpts = Required<BuildOpts>;
 
 export class ContainerState {
     private readonly workspaceFolder: string;
     private readonly cc: ContainerConfig;
     private readonly tempDir: string;
-    private readonly buildOpts: _BuildOpts;
+    private readonly buildOpts: BuildOpts;
 
     private remoteEnvProbe: Record<string, string> = {};
     // private imageId: string;
 
-    private constructor(workspaceFolder: string, cc: ContainerConfig, opts: BuildOpts = { rebuild: false, noCache: false }) {
+    private constructor(workspaceFolder: string, cc: ContainerConfig, opts: BuildOpts = BuildOpts.Default) {
         this.workspaceFolder = path.resolve(workspaceFolder);
         this.cc = cc;
-        this.buildOpts = {
-            rebuild: opts.rebuild ?? false,
-            noCache: opts.noCache ?? false,
-        };
+        this.buildOpts = opts;
 
         this.tempDir = path.join(tmpdir(), `codium-devcontainer-${getWorkspaceId(this.workspaceFolder)}`);
         mkdirSync(this.tempDir, { recursive: true });
         getLogSink().info(`Created / using temp dir at ${this.tempDir}`);
     }
 
-    public static async create(workspaceFolder: string, cc: ContainerConfig, opts: BuildOpts = { rebuild: false, noCache: false }): Promise<ContainerState> {
+    public static async create(workspaceFolder: string, cc: ContainerConfig, opts: BuildOpts = BuildOpts.Default): Promise<ContainerState> {
         const ret = new ContainerState(workspaceFolder, cc, opts);
 
-        if (opts.rebuild) {
+        if (opts !== BuildOpts.Default) {
+            getLogSink().info(`'${opts}' requested  ...`);
             await ret.tryStopContainer();
             await ret.removeContainer();
         }
@@ -83,7 +80,7 @@ export class ContainerState {
         const containerExists = await ret.tryContainerInspect(ret.getContainerName());
         let containerId: string | undefined;
 
-        if (opts.rebuild === true && containerExists !== undefined) {
+        if (opts !== BuildOpts.Default && containerExists !== undefined) {
             throw new EngineError(`Failed to stop and remove container ${containerExists.Id}`);
         }
 
@@ -143,7 +140,7 @@ export class ContainerState {
             // ensure image exists
             const img = await this.tryInspectImage(stage1Image);
 
-            if (!img || this.buildOpts.noCache) {
+            if (!img || this.buildOpts !== BuildOpts.Default) {
                 // attempt to pull image
                 const imageHash = await (async () => {
                     getLogSink().warn(`Image '${stage1Image}' does not exist or noCache specified, attempting to pull ...`);
@@ -200,7 +197,7 @@ export class ContainerState {
 
         const ret = await run([
             ...settings.getEngineCmd(),
-            ...(await this.cc.getStage2BuildCmd(imageUser, { noCache: this.buildOpts.noCache })),
+            ...(await this.cc.getStage2BuildCmd(imageUser, { noCache: this.buildOpts === BuildOpts.RebuildNoCache })),
         ], this.workspaceFolder, {});
 
         if (ret.exit !== 0) {
@@ -425,7 +422,7 @@ export class ContainerState {
 
         const ret = await run([
             ...settings.getEngineCmd(),
-            ...this.cc.getBuildCmd({ noCache: this.buildOpts.noCache }),
+            ...this.cc.getBuildCmd({ noCache: this.buildOpts === BuildOpts.RebuildNoCache }),
         ], this.workspaceFolder, {});
 
         if (ret.exit !== 0) {

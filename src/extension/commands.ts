@@ -6,6 +6,8 @@ import { ContainerConfig } from "../engine/container";
 import { parseDevcontainerFile } from "../parser/parser";
 import { encodeRemoteAuthority } from "../remote/resolver";
 import { findDevcontainerJson, getLocalWorkspaceFolder } from "./workspace";
+import { BuildOpts } from "../engine/lifecycle";
+import { BuildOptIntent } from "../common/globalState";
 
 export async function getContainerEngineVersion() {
     const localWsf = getLocalWorkspaceFolder();
@@ -13,11 +15,13 @@ export async function getContainerEngineVersion() {
     vscode.window.showInformationMessage(`${getContainerEngine()} version: ${stdout}`);
 }
 
-export async function openRemote(_: vscode.ExtensionContext) {
+export async function openRemote(ctx: vscode.ExtensionContext, opts: BuildOpts = BuildOpts.Default) {
     const localWsf = getLocalWorkspaceFolder();
     const devcontainerJson = findDevcontainerJson(localWsf);
     const parsedConfig = parseDevcontainerFile(devcontainerJson);
     const cc = ContainerConfig.create(localWsf, parsedConfig);
+
+    BuildOptIntent.set(ctx, opts);
 
     const remoteWsf = cc.getRemoteMountDir();
     await vscode.commands.executeCommand(
