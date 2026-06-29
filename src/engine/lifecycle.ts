@@ -76,7 +76,7 @@ export class ContainerState {
         const ret = new ContainerState(workspaceFolder, cc, opts);
 
         if (opts.rebuild) {
-            await ret.stopContainer();
+            await ret.tryStopContainer();
             await ret.removeContainer();
         }
 
@@ -237,13 +237,23 @@ export class ContainerState {
         }
     }
 
-    public async stopContainer() {
+    public async tryStopContainer() {
         const ret = await run([
             ...settings.getEngineCmd(),
             "stop",
             this.getContainerName(),
         ], this.workspaceFolder, {});
         return ret;
+    }
+
+    public async stopContainer() {
+        const ret = await this.tryStopContainer();
+
+        if (ret.exit !== 0) {
+            throw new EngineError(`Could not stop container: ${formatCmdErr(ret)}`);
+        }
+
+        return ret.stdout.trim();
     }
 
     public async removeContainer() {
