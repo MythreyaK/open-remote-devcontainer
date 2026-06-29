@@ -36,10 +36,11 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     }
 
     // TODO: handle cacheFrom
-    public getBuildCmd(this: ContainerConfig<schema.DockerfileDevcontainer>): string[] {
+    public getBuildCmd(this: ContainerConfig<schema.DockerfileDevcontainer>, opts: { noCache: boolean } = { noCache: false }): string[] {
         return [
             "build",
             ...this.getBuildArgs(),
+            ...(opts.noCache ? ["--no-cache"] : []),
             "-t", this.getImageName(),
             "-f", this.cfg.build.dockerfile,
             ...(this.cfg.build.target ? ["--target", this.cfg.build.target] : []),
@@ -49,11 +50,12 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             .map(e => interpolateLocal(e, this.workspacePath, this.getRemoteMountDir(), this.localEnv));
     }
 
-    public async getStage2BuildCmd(imgUser: string | undefined): Promise<string[]> {
+    public async getStage2BuildCmd(imgUser: string | undefined, opts: { noCache: boolean } = { noCache: false }): Promise<string[]> {
         const stage2Args = await this.getStage2BuildArgs(imgUser);
         return [
             "build",
             ...stage2Args,
+            ...(opts.noCache ? ["--no-cache"] : []),
             "-t", this.getStage2ImageName(),
             "-f", path.join(__dirname, "Dockerfile"),
             this.workspacePath,

@@ -43,28 +43,50 @@ export interface ImageInspectResult {
     User: string | undefined,
 };
 
+export interface BuildOpts {
+    rebuild?: boolean,
+    noCache?: boolean,
+};
+
+type _BuildOpts = Required<BuildOpts>;
+
 export class ContainerState {
     private readonly workspaceFolder: string;
-    private readonly tempDir: string;
     private readonly cc: ContainerConfig;
+    private readonly tempDir: string;
+    private readonly buildOpts: _BuildOpts;
 
     private remoteEnvProbe: Record<string, string> = {};
     // private imageId: string;
 
-    private constructor(workspaceFolder: string, cc: ContainerConfig) {
+    private constructor(workspaceFolder: string, cc: ContainerConfig, opts: BuildOpts = { rebuild: false, noCache: false }) {
         this.workspaceFolder = path.resolve(workspaceFolder);
+        this.cc = cc;
+        this.buildOpts = {
+            rebuild: opts.rebuild ?? false,
+            noCache: opts.noCache ?? false,
+        };
+
         this.tempDir = path.join(tmpdir(), `codium-devcontainer-${getWorkspaceId(this.workspaceFolder)}`);
         mkdirSync(this.tempDir, { recursive: true });
-
         getLogSink().info(`Created / using temp dir at ${this.tempDir}`);
-        this.cc = cc;
     }
 
-    public static async create(workspaceFolder: string, cc: ContainerConfig): Promise<ContainerState> {
-        const ret = new ContainerState(workspaceFolder, cc);
+    public static async create(workspaceFolder: string, cc: ContainerConfig, opts: BuildOpts = { rebuild: false, noCache: false }): Promise<ContainerState> {
+        const ret = new ContainerState(workspaceFolder, cc, opts);
+
+        if (opts.rebuild) {
+            await ret.stopContainer();
+            await ret.removeContainer();
+        }
 
         const containerExists = await ret.tryContainerInspect(ret.getContainerName());
         let containerId: string | undefined;
+
+        if (opts.rebuild === true && containerExists !== undefined) {
+            getLogSink().error("Failed to force-remove container!");
+            throw new EngineError(`Failed to stop and remove container ${containerExists.Id}`);
+        }
 
         if (containerExists === undefined) {
             containerId = await ret.createContainer();
@@ -179,7 +201,7 @@ export class ContainerState {
 
         const ret = await run([
             ...settings.getEngineCmd(),
-            ...(await this.cc.getStage2BuildCmd(imageUser)),
+            ...(await this.cc.getStage2BuildCmd(imageUser, { noCache: this.buildOpts.noCache })),
         ], this.workspaceFolder, {});
 
         if (ret.exit !== 0) {
@@ -222,13 +244,29 @@ export class ContainerState {
             "stop",
             this.getContainerName(),
         ], this.workspaceFolder, {});
+        return ret;
+    }
 
+    public async removeContainer() {
+        const ret = await this.tryRemoveContainer();
         if (ret.exit !== 0) {
-            throw new EngineError(`Failed to stop container: ${formatCmdErr(ret)}`);
+            getLogSink().error(`Could not remove container ${ret.exit}: ${ret.stderr.trim()}, forcing ...`);
+            const fRet = await this.tryRemoveContainer({ force: true });
+            return fRet.stdout.trim();
         }
         else {
             return ret.stdout.trim();
         }
+    }
+
+    public async tryRemoveContainer(opts: { force: boolean } = { force: false }) {
+        const ret = await run([
+            ...settings.getEngineCmd(),
+            "rm",
+            ...(opts.force ? ["--force"] : []),
+            this.getContainerName(),
+        ], this.workspaceFolder, {});
+        return ret;
     }
 
     private async inspectContainer(identifier: string): Promise<ContainerInspectResult> {
@@ -378,7 +416,7 @@ export class ContainerState {
 
         const ret = await run([
             ...settings.getEngineCmd(),
-            ...this.cc.getBuildCmd(),
+            ...this.cc.getBuildCmd({ noCache: this.buildOpts.noCache }),
         ], this.workspaceFolder, {});
 
         if (ret.exit !== 0) {
