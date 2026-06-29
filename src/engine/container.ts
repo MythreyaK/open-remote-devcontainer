@@ -39,8 +39,8 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     public getBuildCmd(this: ContainerConfig<schema.DockerfileDevcontainer>, opts: { noCache: boolean } = { noCache: false }): string[] {
         return [
             "build",
+            ...(opts.noCache ? ["--pull", "--no-cache"] : []),
             ...this.getBuildArgs(),
-            ...(opts.noCache ? ["--no-cache"] : []),
             "-t", this.getImageName(),
             "-f", this.cfg.build.dockerfile,
             ...(this.cfg.build.target ? ["--target", this.cfg.build.target] : []),
@@ -54,8 +54,8 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         const stage2Args = await this.getStage2BuildArgs(imgUser);
         return [
             "build",
+            ...(opts.noCache ? ["--pull", "--no-cache"] : []),
             ...stage2Args,
-            ...(opts.noCache ? ["--no-cache"] : []),
             "-t", this.getStage2ImageName(),
             "-f", path.join(__dirname, "Dockerfile"),
             this.workspacePath,

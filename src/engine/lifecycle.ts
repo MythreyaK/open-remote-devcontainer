@@ -84,7 +84,6 @@ export class ContainerState {
         let containerId: string | undefined;
 
         if (opts.rebuild === true && containerExists !== undefined) {
-            getLogSink().error("Failed to force-remove container!");
             throw new EngineError(`Failed to stop and remove container ${containerExists.Id}`);
         }
 
@@ -144,10 +143,10 @@ export class ContainerState {
             // ensure image exists
             const img = await this.tryInspectImage(stage1Image);
 
-            if (!img) {
+            if (!img || this.buildOpts.noCache) {
                 // attempt to pull image
                 const imageHash = await (async () => {
-                    getLogSink().warn(`Image '${stage1Image}' does not exist, attempting to pull ...`);
+                    getLogSink().warn(`Image '${stage1Image}' does not exist or noCache specified, attempting to pull ...`);
                     const pullRes = await run([
                         ...settings.getEngineCmd(),
                         "pull",

@@ -266,10 +266,40 @@ describe("ContainerConfig tests", () => {
                 .includes(`--build-arg ARG1=VAL1 --build-arg ARG2=${localWsfBase} --build-arg HOMEDIR=${localWsf}`)
                 .includes("-f dockerfile")
                 .includes(localWsf);
+
+            expect(buildArgs).not.includes(" --pull ");
+            expect(buildArgs).not.includes(" --no-cache ");
         }
     });
 
-    test("exec in container args", () => {
+    test("build image cmd (noCache)", async () => {
+        const localWsf = __dirname;
+        const localWsfBase = path.parse(__dirname).base;
+        const cc = ContainerConfig.create(localWsf, dockerfileCfg, localEnv);
+        expect(cc.isImageBased()).toBe(false);
+        expect(cc.isDockerfileBased()).toBe(true);
 
+        if (cc.isDockerfileBased()) {
+            const stage1 = cc.getBuildCmd({ noCache: true }).join(" ");
+            expect(stage1)
+                .includes("build ")
+                .includes(`--build-arg ARG1=VAL1 --build-arg ARG2=${localWsfBase} --build-arg HOMEDIR=${localWsf}`)
+                .includes(" --pull ")
+                .includes(" --no-cache ")
+                .includes("-f dockerfile")
+                .includes(localWsf);
+
+            const stage2 = (await cc.getStage2BuildCmd("root", { noCache: true })).join(" ");
+            expect(stage2)
+                .includes("build ")
+                .includes(" --pull ")
+                .includes(" --no-cache ")
+                .includes("Dockerfile ")
+                .includes(localWsf);
+        }
     });
+
+    // test("exec in container args", () => {
+    //     // TODO
+    // });
 });
