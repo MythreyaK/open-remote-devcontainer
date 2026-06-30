@@ -40,6 +40,7 @@ export function transientIntentStore<T>(key: string, timeout: number = 10) {
             getLogSink().info(`Calling IntentStore ${key}.get()`);
 
             const retrieved = getLocalWsfGlobalState<DataStore<T>>(ctx, key);
+            getLogSink().info(`Calling IntentStore ${key}.get() => ${JSON.stringify(retrieved)}`);
             setLocalWsfGlobalState(ctx, key, undefined);
 
             if (retrieved && retrieved.expires > Date.now()) {

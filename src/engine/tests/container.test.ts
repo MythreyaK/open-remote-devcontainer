@@ -1,5 +1,5 @@
 import path from "node:path";
-import { window } from "vscode";
+import { ExtensionContext, Uri, window } from "vscode";
 import { describe, expect, test, vi } from "vitest";
 
 import * as schema from "../../parser/schema";
@@ -19,7 +19,7 @@ describe("ContainerConfig tests", () => {
         error: vi.fn(), // console.log,
     } as any);
 
-    initLog("Remote - Devcontainer (tests)");
+    initLog("Remote - Devcontainer (tests)", "/tmp/container-test.ts");
 
     test("test workspace mounts (default)", () => {
         {

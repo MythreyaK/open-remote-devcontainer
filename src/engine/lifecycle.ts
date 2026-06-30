@@ -351,7 +351,7 @@ export class ContainerState {
 
             if (token.exit !== 0 || token.stdout.trim().length !== UUID_TOKEN_LEN) {
                 // TODO: reinstall server? force-restart with new token?
-                throw new InstallError(`Could not query token in container [stdout:${token.stdout}] [stderr:${token.stderr}]`);
+                throw new InstallError(`Could not query token in container [stdout:${token.stdout.trim()}] [stderr:${token.stderr.trim()}]`);
             }
             return token.stdout.trim();
         }
@@ -517,7 +517,7 @@ export class ContainerState {
         );
 
         if (installExecResult.exit !== 0) {
-            const err = getInstallError(installExecResult.stdout);
+            const err = getInstallError(installExecResult.stdout.trim());
             throw new InstallError(`Install script at ${this.getContainerName()}:${destFile} failed with code ${installExecResult.exit}: Error: ${err}`);
         }
 

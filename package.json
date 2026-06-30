@@ -40,19 +40,38 @@
     "commands": [
       {
         "command": "open-remote-devcontainer.getVersion",
-        "title": "Remote - Devcontainer: Get engine version"
+        "title": "Get engine version",
+        "category": "Remote - Devcontainer"
       },
       {
         "command": "open-remote-devcontainer.openRemote",
-        "title": "Remote - Devcontainer: Open workspace in container"
+        "title": "Open workspace in container",
+        "category": "Remote - Devcontainer"
+      },
+      {
+        "command": "open-remote-devcontainer.rebuildOpenRemote",
+        "title": "Rebuild and reopen in container",
+        "category": "Remote - Devcontainer"
+      },
+      {
+        "command": "open-remote-devcontainer.rebuildNoCacheOpenRemote",
+        "title": "Rebuild without cache and reopen in container",
+        "category": "Remote - Devcontainer"
       },
       {
         "command": "open-remote-devcontainer.openLocal",
-        "title": "Remote - Devcontainer: Reopen folder locally"
+        "title": "Reopen folder locally",
+        "category": "Remote - Devcontainer"
       },
       {
         "command": "open-remote-devcontainer.showDevcontainerFile",
-        "title": "Remote - Devcontainer: Show devcontainer.json"
+        "title": "Show devcontainer.json",
+        "category": "Remote - Devcontainer"
+      },
+      {
+        "command": "open-remote-devcontainer.showLog",
+        "title": "Show log file",
+        "category": "Remote - Devcontainer"
       }
     ],
     "configuration": {

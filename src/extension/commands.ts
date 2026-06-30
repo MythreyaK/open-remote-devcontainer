@@ -8,6 +8,7 @@ import { encodeRemoteAuthority } from "../remote/resolver";
 import { findDevcontainerJson, getLocalWorkspaceFolder } from "./workspace";
 import { BuildOpts } from "../engine/lifecycle";
 import { BuildOptIntent } from "../common/globalState";
+import { getLogfilePath } from "./log";
 
 export async function getContainerEngineVersion() {
     const localWsf = getLocalWorkspaceFolder();
@@ -46,4 +47,9 @@ export async function openLocal() {
 export function showDevcontainerFile() {
     const file = findDevcontainerJson(getLocalWorkspaceFolder());
     vscode.commands.executeCommand("vscode.open", vscode.Uri.file(file));
+}
+
+export function showLogFile() {
+    const path = getLogfilePath();
+    vscode.commands.executeCommand("vscode.open", vscode.Uri.file(path));
 }
