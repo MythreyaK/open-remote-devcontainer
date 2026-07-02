@@ -12,6 +12,7 @@ import { EngineError, InstallError, InternalError } from "../extension/error";
 
 import * as settings from "../extension/settings";
 import * as server from "../remote/installServer";
+import { getContainerEngine } from "../extension/settings";
 
 const DEVCONTAINER_SERVER_LISTEN_PORT = 65432;
 const UUID_TOKEN_LEN = 36;
@@ -182,9 +183,9 @@ export class ContainerState {
         }
 
         const imageUser = (() => {
-            const ret = (JSON.parse(imgUser.stdout.trim()) as ImageInspectResult).User;
-            if (!ret) { return undefined; }
-            else { return ret; }
+            const parsed = fixDockerImageInspect(imgUser.stdout.trim());
+            if (!parsed.User) { return undefined; }
+            else { return parsed.User; }
         })();
 
         const remoteUser = this.cc.getResolvedRemoteUser(imageUser);
@@ -309,7 +310,7 @@ export class ContainerState {
             return undefined;
         }
         else {
-            return JSON.parse(res.stdout.trim()) as ImageInspectResult;
+            return fixDockerImageInspect(res.stdout.trim());
         }
     }
 
@@ -564,4 +565,19 @@ function getInstallError(data: string) {
         // return `${errCode}${errMsg}`;
         return data;
     }
+}
+
+function fixDockerImageInspect(json: string): ImageInspectResult {
+    interface DockerImageInspectResult {
+        Config: {
+            User: string,
+        },
+    }
+
+    const data = JSON.parse(json.trim()) as unknown;
+    const parsed = data as ImageInspectResult;
+    if (getContainerEngine() === "docker") {
+        parsed.User = (data as DockerImageInspectResult).Config.User;
+    }
+    return parsed;
 }
