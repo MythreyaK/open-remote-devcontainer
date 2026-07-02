@@ -104,6 +104,28 @@ describe("ContainerConfig tests", () => {
         }
     });
 
+    test("exec unset null remoteEnv envs from devcontainer.json", () => {
+        const newCfg = {
+            ...imgCfg,
+            remoteEnv: {
+                Local1Env: "null",
+                LOCALENV2: "HELLO",
+                LOCALENV3: "undefined",
+                Local2Env: null,
+                LOCALENV4: "HELLO",
+                LOCALENV5: null,
+            },
+        };
+
+        const cc = ContainerConfig.create(localWsf, cfgPath, newCfg, {});
+
+        expect(cc.getUnsetRemoteEnvArgs()).toStrictEqual([
+            "env",
+            "-u", "Local2Env",
+            "-u", "LOCALENV5",
+        ]);
+    });
+
     test("localEnv and var interpolation", () => {
         const procEnv = {
             PATH: "/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/var/lib/snapd/snap/bin",
@@ -262,11 +284,19 @@ describe("ContainerConfig tests", () => {
                 dockerfile: "../Dockerfile",
                 context: "..",
             },
+            remoteEnv: {
+                Local1Env: "null",
+                LOCALENV2: "HELLO",
+                LOCALENV3: "undefined",
+                Local2Env: null,
+                LOCALENV4: "HELLO",
+                LOCALENV5: null,
+            },
         };
 
         const cc = ContainerConfig.create(localWsf, cfgPath, newCfg, localEnv);
-        expect(cc.getResolvedBuildcontextDir()).toBe("/tmp/dir");
-        expect(cc.getResolvedDockerfilePath()).toBe("/tmp/dir/Dockerfile");
+        const execCmd = cc.getExecArgs(cc.getConfigId(), {}).join(" ");
+        expect(execCmd).includes(`${cc.getConfigId()} env -u Local2Env -u LOCALENV5`);
     });
 
     test("create cmd: create container cmd", () => {

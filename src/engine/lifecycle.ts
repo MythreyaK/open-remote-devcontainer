@@ -481,7 +481,6 @@ export class ContainerState {
         const info: server.ScriptInstallInfo = {
             port: DEVCONTAINER_SERVER_LISTEN_PORT,
             extensions: settings.getExtensionList(),
-            remoteEnvs: this.cc.getResolvedRemoteEnv(this.remoteEnvProbe),
             downloadTemplateUrl: prodJson.serverUrlTemplate,
             codiumVersion: prodJson.version,
             connectionToken: token,

@@ -121,8 +121,10 @@ export const DockerfileContainer_z = z.pipe(_DockerfileContainer_ZodBase, z.tran
 }));
 
 // key=value values can be null
-const _envPairsNullable = z.record(z.string(), z.nullable(z.string()));
+const _envPairsNullable_z = z.record(z.string(), z.nullable(z.string()));
 const _envPairs = z.record(z.string(), z.string());
+
+export type RemoteEnv = z.infer<typeof _envPairsNullable_z>;
 
 export const DevcontainerCommon_z = z.object({
     name: z.optional(minString),
@@ -137,7 +139,7 @@ export const DevcontainerCommon_z = z.object({
     privileged: z.optional(z.boolean()),
     capAdd: z.optional(z.array(minString)),
     securityOpt: z.optional(z.array(minString)),
-    remoteEnv: z.optional(_envPairsNullable),
+    remoteEnv: z.optional(_envPairsNullable_z),
     containerEnv: z.optional(_envPairs),
     remoteUser: z.optional(minString),
     containerUser: z.optional(minString),

@@ -112,13 +112,14 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         return `codium-devcontainer-${idHash}`;
     }
 
-    public getExecArgs(containerId: string, containerEnvs: NodeJS.ProcessEnv, opts: ExecOpts = { tty: false, withRemoteEnv: true }): string[] {
+    public getExecArgs(containerId: string, remoteEnvProbe: NodeJS.ProcessEnv, opts: ExecOpts = { tty: false, withRemoteEnv: true }): string[] {
         return [
             "exec",
             ...this.addRemoteUser(),
-            ...(opts.withRemoteEnv ? this.addRemoteEnv(containerEnvs) : []),
+            ...(opts.withRemoteEnv ? this.addRemoteEnv(remoteEnvProbe) : []),
             (opts.tty ? "-t" : ""),
             containerId,
+            ...(opts.withRemoteEnv ? this.getUnsetRemoteEnvArgs() : []),
         ].filter(Boolean);
     }
 
@@ -278,7 +279,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         return ret;
     }
 
-    public getResolvedRemoteEnv(containerEnvsProbe: NodeJS.ProcessEnv): Record<string, string> {
+    public getResolvedRemoteEnv(remoteEnvsProbe: NodeJS.ProcessEnv): Record<string, string> {
         const ret: Record<string, string> = {};
 
         for (const [k, v] of Object.entries(this.cfg.remoteEnv ?? {})) {
@@ -287,16 +288,30 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
                 /* ret.push("--env", k); */
             }
             else {
-                ret[k] = interpolateContainer(v, this.workspacePath, this.getRemoteMountDir(), this.localEnv, containerEnvsProbe);
+                ret[k] = interpolateContainer(v, this.workspacePath, this.getRemoteMountDir(), this.localEnv, remoteEnvsProbe);
             }
         }
         return ret;
     }
 
-    private addRemoteEnv(containerEnvsProbe: NodeJS.ProcessEnv): string[] {
+    /**
+     *
+     * @returns env -u ENV1 -u ENV2 for all ENVs that have undefined / null values
+     *          To be used with docker exec <container> env -u ENV ... <cmd>
+     */
+    public getUnsetRemoteEnvArgs(): string[] {
+        const unsetEnvs = Object.entries(this.cfg.remoteEnv ?? {})
+            .filter(([_, v]) => v === null)
+            .flatMap(([k, _]) => ["-u", k]);
+
+        if (unsetEnvs.length > 0) { return ["env", ...unsetEnvs]; }
+        else { return []; }
+    }
+
+    private addRemoteEnv(remoteEnvsProbe: NodeJS.ProcessEnv): string[] {
         const ret: string[] = [];
 
-        for (const [k, v] of Object.entries(this.getResolvedRemoteEnv(containerEnvsProbe))) {
+        for (const [k, v] of Object.entries(this.getResolvedRemoteEnv(remoteEnvsProbe))) {
             ret.push("--env", `${k}=${v}`);
         }
         return ret;

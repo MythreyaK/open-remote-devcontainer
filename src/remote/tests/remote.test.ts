@@ -124,7 +124,6 @@ describe("Install script", () => {
         const info: install.ScriptInstallInfo = {
             port: 6543,
             extensions: [],
-            remoteEnvs: {},
             connectionToken: "0xf00ba4",
             downloadTemplateUrl: "https://localhost/${CODIUM_OS_PLATFORM}-${CODIUM_ARCH}.tar.gz",
             codiumVersion: "1.2.345",
@@ -149,7 +148,6 @@ describe("Install script", () => {
         const info: install.ScriptInstallInfo = {
             port: 6543,
             extensions: ["pub1.ext1", "pub2.ext1"],
-            remoteEnvs: { ENV1: "VAL1", ENV2: "VAL2" },
             connectionToken: "0xf00ba4",
             downloadTemplateUrl: "https://localhost/${CODIUM_OS_PLATFORM}-${CODIUM_ARCH}.tar.gz",
             codiumVersion: "1.2.345",
@@ -159,7 +157,6 @@ describe("Install script", () => {
         const script = await fs.readFile(install.INSTALL_SCRIPT_LOCATION, { encoding: "utf-8" });
         const updatedScript = install.updateScript(script, info, true);
 
-        expect(countSubstring(updatedScript, "export")).eq(2);
         expect(updatedScript.includes("0xf00ba4")).toBe(true);
         expect(updatedScript.includes("--install-extension pub1.ext1 --install-extension pub2.ext1")).toBe(true);
         expect(updatedScript.includes('CODIUM_FORCE_REINSTALL_SERVER="false"')).toBe(true);
