@@ -63,7 +63,7 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
         const devcontainerJson = findDevcontainerJson(this.localWsf);
         const parsedConfig = parseDevcontainerFile(devcontainerJson);
 
-        const containerConfig = ContainerConfig.create(this.localWsf, parsedConfig);
+        const containerConfig = ContainerConfig.create(this.localWsf, devcontainerJson, parsedConfig);
 
         progress.report({ message: "Building image and starting container...", increment: 50 });
         this.containerState = await ContainerState.create(this.localWsf, containerConfig, buildOpt);

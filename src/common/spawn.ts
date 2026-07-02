@@ -9,7 +9,7 @@ export interface CmdResult {
     stderr: string,
 };
 
-let cmdCount: number = 1;
+let cmdCount: number = 0;
 
 /* eslint-disable @typescript-eslint/no-confusing-void-expression */
 export function spawn(

@@ -1,10 +1,9 @@
 import path from "node:path";
 import { describe, expect, test } from "vitest";
 
-import { run, runCmd } from "../../../common/cmd";
+import { run } from "../../../common/cmd";
 import { ContainerState } from "../../../engine/lifecycle";
 import { ContainerConfig } from "../../../engine/container";
-import { parseDevcontainerFile } from "../../../parser/parser";
 import * as schema from "../../../parser/schema";
 
 import { init, setupFixture, jsonFormat, ENGINE } from "../../common";
@@ -19,6 +18,7 @@ describe.skipIf(!ENGINE)("integration: lifecycle: img-pull", () => {
     let container: ContainerState;
 
     const { localWsf, localWsfBasename, config } = setupFixture({ name: "image-pull", testDir: __dirname });
+    const devcPath = path.join(localWsf, ".devcontainer/devcontainer.json");
 
     const localEnv = {
         ...process.env,
@@ -46,7 +46,7 @@ describe.skipIf(!ENGINE)("integration: lifecycle: img-pull", () => {
         expect(inspectResult.exit).not.eq(0);
         expect(inspectResult.stdout).toBe("");
 
-        cc = ContainerConfig.create(localWsf, config, localEnv);
+        cc = ContainerConfig.create(localWsf, devcPath, config, localEnv);
         container = await ContainerState.create(localWsf, cc);
         const cId = await container.getContainerId();
 

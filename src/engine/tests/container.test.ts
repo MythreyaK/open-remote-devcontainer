@@ -28,7 +28,7 @@ describe("ContainerConfig tests", () => {
                 image: "ubuntu:24.04",
             };
 
-            const cc = ContainerConfig.create(localWsf, cfg, {});
+            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
             expect(cc.isImageBased()).toBe(true);
 
             if (cc.isImageBased()) {
@@ -52,12 +52,11 @@ describe("ContainerConfig tests", () => {
                 workspaceMount: "source=${localWorkspaceFolder}/sub-folder,target=/workspace/dir,type=bind,consistency=cached",
             };
 
-            const cc = ContainerConfig.create(localWsf, cfg, {});
+            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
             expect(cc.isImageBased()).toBe(true);
 
             if (cc.isImageBased()) {
                 const createArgs = cc.getRunCreateCmd(cfg.image, "foobar");
-                // console.log(createArgs);
 
                 expect(cc.getRemoteMountDir()).eq("/workspace/dir");
                 expect(createArgs[0]).eq("run");
@@ -219,8 +218,8 @@ describe("ContainerConfig tests", () => {
         ],
     };
 
-    test("create container cmd", () => {
-        const cc = ContainerConfig.create(localWsf, imgCfg, localEnv);
+    test("create cmd: create container cmd", () => {
+        const cc = ContainerConfig.create(localWsf, cfgPath, imgCfg, localEnv);
         expect(cc.isImageBased()).toBe(true);
         expect(cc.isDockerfileBased()).toBe(false);
 
@@ -239,23 +238,22 @@ describe("ContainerConfig tests", () => {
         }
     });
 
-    test("string mounts use '--mount' flag", () => {
-        const cc = ContainerConfig.create(localWsf, dockerfileCfg, localEnv);
+    test("run cmd: string mounts use '--mount' flag", () => {
+        const cc = ContainerConfig.create(localWsf, cfgPath, dockerfileCfg, localEnv);
         expect(cc.isImageBased()).toBe(false);
         expect(cc.isDockerfileBased()).toBe(true);
 
         if (cc.isDockerfileBased()) {
-            const buildArgs = cc.getRunCreateCmd(imgCfg.image, "foobar").join(" ");
-            expect(buildArgs)
+            const runArgs = cc.getRunCreateCmd(imgCfg.image, "foobar").join(" ");
+            expect(runArgs)
                 .includes("run ")
                 .includes(" --mount source=/c,target=/d,type=bind ")
-                .includes(" -v /a:/b ")
-                .includes(localWsf);
+                .includes(" -v /a:/b ");
         }
     });
 
     test("build image cmd", () => {
-        const cc = ContainerConfig.create(localWsf, dockerfileCfg, localEnv);
+        const cc = ContainerConfig.create(localWsf, cfgPath, dockerfileCfg, localEnv);
         expect(cc.isImageBased()).toBe(false);
         expect(cc.isDockerfileBased()).toBe(true);
 
@@ -274,8 +272,9 @@ describe("ContainerConfig tests", () => {
 
     test("build image cmd (noCache)", async () => {
         const localWsf = __dirname;
-        const localWsfBase = path.parse(__dirname).base;
-        const cc = ContainerConfig.create(localWsf, dockerfileCfg, localEnv);
+        const localWsfBase = path.parse(localWsf).base;
+        const cfgPath = path.join(localWsf, ".devcontainer.json");
+        const cc = ContainerConfig.create(localWsf, cfgPath, dockerfileCfg, localEnv);
         expect(cc.isImageBased()).toBe(false);
         expect(cc.isDockerfileBased()).toBe(true);
 

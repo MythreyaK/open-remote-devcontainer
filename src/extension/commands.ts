@@ -30,7 +30,7 @@ export async function openRemote(ctx: vscode.ExtensionContext, opts: BuildOpts =
     const localWsf = getLocalWorkspaceFolder();
     const devcontainerJson = findDevcontainerJson(localWsf);
     const parsedConfig = parseDevcontainerFile(devcontainerJson);
-    const cc = ContainerConfig.create(localWsf, parsedConfig);
+    const cc = ContainerConfig.create(localWsf, devcontainerJson, parsedConfig);
 
     await vscode.commands.executeCommand(
         "vscode.openFolder",

@@ -14,17 +14,19 @@ export interface ExecOpts {
 export class ContainerConfig<T extends schema.Config = schema.Config> {
     public readonly cfg: T;
     public readonly workspacePath: string;
+    private readonly cfgPath: string;
     private readonly localEnv: NodeJS.ProcessEnv;
 
-    private constructor(cfg: T, workspacePath: string, localEnv: NodeJS.ProcessEnv) {
+    private constructor(workspacePath: string, cfgPath: string, cfg: T, localEnv: NodeJS.ProcessEnv) {
         this.cfg = cfg;
-        this.workspacePath = path.resolve(workspacePath);
+        this.workspacePath = workspacePath;
+        this.cfgPath = cfgPath;
         this.localEnv = localEnv;
         // normalize mount
     }
 
-    static create<T extends schema.Config>(workspacePath: string, cfg: T, localEnv: NodeJS.ProcessEnv = process.env): ContainerConfig<T> {
-        return new ContainerConfig(cfg, workspacePath, localEnv);
+    static create<T extends schema.Config>(workspacePath: string, cfgPath: string, cfg: T, localEnv: NodeJS.ProcessEnv = process.env): ContainerConfig<T> {
+        return new ContainerConfig(workspacePath, cfgPath, cfg, localEnv);
     }
 
     public isImageBased(): this is ContainerConfig<schema.ImageDevcontainer> {
