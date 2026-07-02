@@ -39,7 +39,7 @@ export function updateScript(script: string, info: ScriptInstallInfo, debug: boo
     let scriptCopy = script;
 
     if (debug) {
-        scriptCopy = script.replace("#_CODIUM_INJECT_DEBUG_SET_X", "set -x");
+        scriptCopy = script.replaceAll("#_CODIUM_INJECT_DEBUG_SET_X", "set -x");
     }
 
     const extensArgs = info.extensions
@@ -59,13 +59,13 @@ export function updateScript(script: string, info: ScriptInstallInfo, debug: boo
     })();
 
     scriptCopy = scriptCopy
-        .replace("CODIUM_INJECT_INSTALL_EXTENSIONS", extensArgs)
-        .replace("CODIUM_INJECT_SERVER_LISTEN_PORT", info.port.toString())
-        .replace("CODIUM_INJECT_DOWNLOAD_URL", info.downloadTemplateUrl)
-        .replace("CODIUM_INJECT_CODIUM_INSTALL_VERSION", info.codiumVersion)
-        .replace("CODIUM_INJECT_TOKEN_VALUE", info.connectionToken)
-        .replace("CODIUM_INJECT_FORCE_REINSTALL_SERVER", info.forceReinstall ? "true" : "false")
-        .replace("#_CODIUM_INJECT_SERVER_LAUNCH_ENVS", remoteEnvs);
+        .replaceAll("CODIUM_INJECT_INSTALL_EXTENSIONS", extensArgs)
+        .replaceAll("CODIUM_INJECT_SERVER_LISTEN_PORT", info.port.toString())
+        .replaceAll("CODIUM_INJECT_DOWNLOAD_URL", info.downloadTemplateUrl)
+        .replaceAll("CODIUM_INJECT_CODIUM_INSTALL_VERSION", info.codiumVersion)
+        .replaceAll("CODIUM_INJECT_TOKEN_VALUE", info.connectionToken)
+        .replaceAll("CODIUM_INJECT_FORCE_REINSTALL_SERVER", info.forceReinstall ? "true" : "false")
+        .replaceAll("#_CODIUM_INJECT_SERVER_LAUNCH_ENVS", remoteEnvs);
 
     return scriptCopy;
 }
