@@ -44,10 +44,10 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             ...(opts.noCache ? ["--pull", "--no-cache"] : []),
             ...this.getBuildArgs(),
             "-t", this.getImageName(),
-            "-f", this.cfg.build.dockerfile,
+            "-f", this.getResolvedDockerfilePath(),
             ...(this.cfg.build.target ? ["--target", this.cfg.build.target] : []),
             ...(this.cfg.build.options ? this.cfg.build.options : []),
-            this.cfg.build.context ?? this.workspacePath,
+            this.getResolvedBuildcontextDir(),
         ].filter(Boolean)
             .map(e => interpolateLocal(e, this.workspacePath, this.getRemoteMountDir(), this.localEnv));
     }
@@ -137,6 +137,18 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
           ?? this.cfg.containerUser
           ?? imageUser
           ?? "root";
+    }
+
+    public getResolvedBuildcontextDir(this: ContainerConfig<schema.DockerfileDevcontainer>): string {
+        const cfgDir = path.dirname(this.cfgPath);
+        const ret = interpolateLocal(this.cfg.build.context ?? ".", this.workspacePath, this.getRemoteMountDir(), this.localEnv);
+        return path.resolve(cfgDir, ret);
+    }
+
+    public getResolvedDockerfilePath(this: ContainerConfig<schema.DockerfileDevcontainer>): string {
+        const cfgDir = path.dirname(this.cfgPath);
+        const ret = interpolateLocal(this.cfg.build.dockerfile, this.workspacePath, this.getRemoteMountDir(), this.localEnv);
+        return path.resolve(cfgDir, ret);
     }
 
     private getBuildArgs(this: ContainerConfig<schema.DockerfileDevcontainer>): string[] {
