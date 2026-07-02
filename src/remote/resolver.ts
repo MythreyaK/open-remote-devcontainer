@@ -7,6 +7,7 @@ import { findDevcontainerJson } from "../extension/workspace";
 import { ContainerConfig } from "../engine/container";
 import { parseDevcontainerFile } from "../parser/parser";
 import { BuildOptIntent } from "../common/globalState";
+import { getExtensionList } from "../extension/settings";
 
 export const AUTHORITY_BASE: string = "devcontainer-remote";
 
@@ -88,7 +89,10 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
         progress.report({ message: "Created container...", increment: 75 });
         progress.report({ message: "Installing server...", increment: 85 });
 
-        const { host, port } = await this.containerState.installServer();
+        const { host, port } = await this.containerState.installServer([
+            ...getExtensionList(),
+            ...parsedConfig.customizations?.vscode?.extensions ?? [],
+        ]);
         progress.report({ message: "Server install complete, opening remote...", increment: 85 });
 
         const ctkn = await this.containerState.getConnectionToken();

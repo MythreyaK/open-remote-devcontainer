@@ -450,7 +450,7 @@ export class ContainerState {
         );
     }
 
-    public async installServer(forceReinstall: boolean = false) {
+    public async installServer(extensionList: string[] = [], forceReinstall: boolean = false) {
         if (!await this.isRunning()) {
             await this.startContainer();
             if (!await this.isRunning()) {
@@ -480,7 +480,7 @@ export class ContainerState {
 
         const info: server.ScriptInstallInfo = {
             port: DEVCONTAINER_SERVER_LISTEN_PORT,
-            extensions: settings.getExtensionList(),
+            extensions: extensionList,
             downloadTemplateUrl: prodJson.serverUrlTemplate,
             codiumVersion: prodJson.version,
             connectionToken: token,

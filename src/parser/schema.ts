@@ -126,6 +126,14 @@ const _envPairs = z.record(z.string(), z.string());
 
 export type RemoteEnv = z.infer<typeof _envPairsNullable_z>;
 
+export const customizations_z = z.object({
+    vscode: z.optional(z.object({
+        extensions: z.optional(z.array(z.string())),
+    })),
+});
+
+export type Customizations = z.infer<typeof customizations_z>;
+
 export const DevcontainerCommon_z = z.object({
     name: z.optional(minString),
     // features : Features,
@@ -150,6 +158,7 @@ export const DevcontainerCommon_z = z.object({
     postStartCommand: z.optional(_cmd),
     postAttachCommand: z.optional(_cmd),
     userEnvProbe: z.optional(EnvProbe),
+    customizations: z.optional(customizations_z),
 });
 
 export const DevcontainerConfig = allOf(DevcontainerCommon_z, NonComposeBase_z);
