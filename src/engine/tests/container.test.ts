@@ -13,13 +13,6 @@ describe("ContainerConfig tests", () => {
     const remoteWsfBase = path.parse("/workspace/dir").base;
     const cfgPath = "/tmp/dir/.devcontainer/devcontainer.json";
 
-    const spy = vi.spyOn(window, "createOutputChannel");
-    spy.mockReturnValue({
-        info: vi.fn(), // console.log,
-        warn: vi.fn(), // console.log,
-        error: vi.fn(), // console.log,
-    } as any);
-
     initLog("Remote - Devcontainer (tests)");
 
     const sanityCheck = (_lsf: string, _cfg: string) => {

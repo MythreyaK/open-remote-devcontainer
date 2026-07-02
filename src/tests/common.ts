@@ -40,9 +40,7 @@ export const TEST_CODIUM_INFO: server.ServerInfo = {
     serverUrlTemplate: "https://github.com/VSCodium/vscodium/releases/download/1.121.03429/vscodium-reh-${os}-${arch}-1.121.03429.tar.gz",
 };
 
-export const init = () => {
-    if (!ENGINE) { throw new Error("Expected engine to be defined. Did you forget to skip-if a test?"); }
-
+export const initMocks = () => {
     const debugMode = process.env.DEBUG_TESTS;
 
     const spyCreateOutput = vi.spyOn(window, "createOutputChannel");
@@ -66,6 +64,12 @@ export const init = () => {
     spyProdsJson.mockResolvedValue(TEST_CODIUM_INFO);
 
     initLog("Remote - Devcontainer (tests)");
+};
+
+export const init = () => {
+    if (!ENGINE) { throw new Error("Expected engine to be defined. Did you forget to skip-if a test?"); }
+
+    initMocks();
 };
 
 export function setupFixture(opts: { name: string, testDir: string }) {

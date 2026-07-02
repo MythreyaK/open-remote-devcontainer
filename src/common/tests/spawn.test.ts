@@ -1,10 +1,11 @@
-import { window, workspace } from "vscode";
+import { window } from "vscode";
 import { describe, expect, test, vi } from "vitest";
 
 import { spawn } from "../spawn";
+import { getLogSink } from "../../extension/log";
 import { ContainerInspectResult } from "../../engine/lifecycle";
 
-import { jsonFormat, ENGINE } from "../../tests/common";
+import { jsonFormat, initMocks, ENGINE } from "../../tests/common";
 
 function getcwd() {
     return __dirname;
@@ -12,18 +13,13 @@ function getcwd() {
 
 const bashSleepCmd = ["bash", "-c", "trap 'exit 0' SIGINT SIGTERM; while true; do sleep 1; done"];
 
-describe("cmd spawn tests", () => {
-    if (!ENGINE) { throw new Error("Expected engine to be defined. Did you forget to skip-if a test?"); }
-    const engine = ENGINE;
+initMocks();
 
-    const spy = vi.spyOn(window, "createOutputChannel");
-    spy.mockReturnValue({
-        info: vi.fn(), // console.log,
-        warn: vi.fn(), // console.log,
-        error: vi.fn(), // console.log,
-    } as any);
+describe.skipIf(!ENGINE)("cmd spawn tests", () => {
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const engine = ENGINE!;
 
-    const log = window.createOutputChannel("Remote - Devcontainer (test)", { log: true });
+    const log = getLogSink();
 
     test("get engine version", async () => {
         const out = await spawn(engine, ["version", ...jsonFormat], getcwd(), {}, log);

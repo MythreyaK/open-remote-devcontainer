@@ -4,9 +4,9 @@ import * as fs from "node:fs/promises";
 import * as install from "../installServer";
 import * as resolver from "../resolver";
 
-import { init } from "../../tests/common";
+import { initMocks } from "../../tests/common";
 
-init();
+initMocks();
 
 function countSubstring(from: string, item: string) {
     return from.split(item).length - 1;
@@ -144,7 +144,7 @@ describe("Install script", () => {
         // await fs.writeFile("out.sh", updatedScript, { encoding: 'utf-8', mode: 0o700 });
     });
 
-    test("string replacement tests / env + ext", async () => {
+    test("string replacement tests / with extensions", async () => {
         const info: install.ScriptInstallInfo = {
             port: 6543,
             extensions: ["pub1.ext1", "pub2.ext1"],
