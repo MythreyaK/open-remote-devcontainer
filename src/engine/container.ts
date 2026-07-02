@@ -170,6 +170,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
 
         const userInfo = await getHostUserInfo(this.workspacePath);
         return [
+            "--build-arg", `UPDATE_REMOTE_UID=${this.cfg.updateRemoteUserUID ?? "true"}`,
             "--build-arg", `BASE_IMAGE=${imageName}`,
             "--build-arg", `HOST_UID=${userInfo.uid}`,
             "--build-arg", `HOST_GID=${userInfo.gid}`,
@@ -327,6 +328,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             this.cfg.initializeCommand ?? "",
             this.cfg.onCreateCommand ?? "",
             this.cfg.updateContentCommand ?? "",
+            this.cfg.updateRemoteUserUID ?? "",
             this.cfg.postCreateCommand ?? "",
             this.cfg.postStartCommand ?? "",
             this.cfg.postAttachCommand ?? "",

@@ -4,6 +4,7 @@ FROM ${BASE_IMAGE}
 ARG HOST_UID=1000
 ARG HOST_GID=1000
 ARG HOST_USERNAME=user
+ARG UPDATE_REMOTE_UID=true
 
 SHELL [ "/bin/sh", "-c" ]
 
@@ -17,6 +18,10 @@ elif [ "$OS_ID" = "ubuntu" ]; then              \
     apt update -y && apt install -y curl;       \
 elif [ "$OS_ID" = "fedora" ]; then              \
     dnf install -y curl;                        \
+fi;                                             \
+if [ "$UPDATE_REMOTE_UID" = "false" ]; then     \
+    echo "{{DEVCONTAINER_STAGE2 INFO: UPDATE_REMOTE_UID was false}}"; \
+    exit 0;                                     \
 fi;                                             \
 #                                               \
 if [ "${HOST_USERNAME}" = "root" ]; then                                                                    \
@@ -65,7 +70,7 @@ if getent passwd "${HOST_USERNAME}" > /dev/null; then                           
         chown -R "${HOST_UID}:${HOST_GID}" "${USER_HOMEDIR}";                                               \
     fi;                                                                                                     \
 else                                                                                                        \
-    echo "{{DEVCONTAINER_STAGE2 ERROR: User '${HOST_USERNAME}' does not exist in container}}" 1>&2;           \
+    echo "{{DEVCONTAINER_STAGE2 ERROR: User '${HOST_USERNAME}' does not exist in container}}" 1>&2;         \
     exit 1;                                                                                                 \
 fi;                                                                                                         \
 id "${HOST_USERNAME}";                                                                                      \
