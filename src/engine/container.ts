@@ -363,6 +363,33 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             .digest("hex")
             .slice(0, 16);
     }
+
+    public getOnCreateCmd(): Record<string, string[]> {
+        return ContainerConfig.normalizeLifecycleCmd(this.cfg.onCreateCommand);
+    }
+
+    static normalizeLifecycleCmd(args: schema.Cmd | undefined): Record<string, string[]> {
+        if (!args || (Array.isArray(args) && args.length === 0)) { return {}; }
+
+        if (typeof args === "string") {
+            return { string: ["/bin/sh", "-c", args] };
+        }
+        else if (Array.isArray(args)) {
+            return { array: args };
+        }
+        else {
+            const entries = Object.entries(args);
+            const mapped = entries.map(([k, v]) =>
+                // get a [key, transformed(value)] so that we
+                // can pair them back again in the end with fromEntries
+                [
+                    k,
+                    Object.values(this.normalizeLifecycleCmd(v))[0],
+                ],
+            );
+            return Object.fromEntries(mapped) as Record<string, string[]>;
+        }
+    }
 }
 
 export function interpolateLocal(val: string, localWorkspace: string, remoteWorkspace: string, localEnv: NodeJS.ProcessEnv) {

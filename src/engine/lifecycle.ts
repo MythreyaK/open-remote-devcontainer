@@ -87,9 +87,13 @@ export class ContainerState {
 
         if (containerExists === undefined) {
             containerId = await ret.createContainer();
+
             if (!await ret.isRunning()) {
                 throw new Error(`Could not start container ${ret.getContainerName()}`);
             }
+
+            ret.remoteEnvProbe = await ret.getContainerEnv();
+            await ret.runOnCreateCmd();
         }
         else if (!containerExists.State.Running) {
             containerId = await ret.startContainer();
@@ -104,6 +108,36 @@ export class ContainerState {
 
         ret.remoteEnvProbe = await ret.getContainerEnv();
         return ret;
+    }
+
+    private async runOnCreateCmd() {
+        const cname = this.getContainerName();
+        const cmds = Object.entries(this.cc.getOnCreateCmd());
+
+        const results = await Promise.allSettled(
+            cmds
+                .map(([name, cmd]) => {
+                    getLogSink().info(`OnCreate[${cname}]: Executing '${name}' cmd [${cmd.join(", ")}]`);
+
+                    return run([
+                        ...settings.getEngineCmd(),
+                        ...this.cc.getExecArgs(cname, this.remoteEnvProbe),
+                        ...cmd,
+                    ], this.workspaceFolder, {});
+                }));
+
+        for (let i = 0; i < results.length; ++i) {
+            const cmdName = cmds[i][0];
+            const res = results[i];
+
+            if (res.status === "fulfilled") {
+                const val = res.value;
+                getLogSink().info(`OnCreate[${cname}]: OK: '${cmdName}' returned ${val.exit}: ${formatCmdErr(val)}`);
+            }
+            else {
+                getLogSink().error(`OnCreate[${cname}]: ERROR: '${cmdName}' failed to execute: ${res.reason}`);
+            }
+        }
     }
 
     public getConfig(): ContainerConfig {

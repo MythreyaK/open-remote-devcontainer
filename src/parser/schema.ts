@@ -53,6 +53,8 @@ const _cmd = oneOf([
     ),
 ]);
 
+export type Cmd = z.infer<typeof _cmd>;
+
 export const BuildOptions = z.object({
     target: z.optional(minString),
     args: z.optional(z.record(minString, z.string())),

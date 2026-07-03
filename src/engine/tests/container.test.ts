@@ -490,6 +490,89 @@ describe("ContainerConfig tests", () => {
     });
 });
 
+describe("normalizeLifecycleCmd", () => {
+    test("undefined returns empty record", () => {
+        expect(ContainerConfig.normalizeLifecycleCmd(undefined)).toStrictEqual({});
+    });
+
+    test("string wraps in /bin/sh -c", () => {
+        expect(ContainerConfig.normalizeLifecycleCmd("echo hello")).toStrictEqual({
+            string: ["/bin/sh", "-c", "echo hello"],
+        });
+    });
+
+    test("array passes through", () => {
+        expect(ContainerConfig.normalizeLifecycleCmd(["echo", "hello"])).toStrictEqual({
+            array: ["echo", "hello"],
+        });
+    });
+
+    test("record with string values wraps each in /bin/sh -c", () => {
+        const result = ContainerConfig.normalizeLifecycleCmd({
+            install: "npm install",
+            build: "npm run build",
+        });
+        expect(result).toStrictEqual({
+            install: ["/bin/sh", "-c", "npm install"],
+            build: ["/bin/sh", "-c", "npm run build"],
+        });
+    });
+
+    test("record with array values passes through", () => {
+        const result = ContainerConfig.normalizeLifecycleCmd({
+            install: ["npm", "install"],
+            migrate: ["pg_migrate", "--up"],
+        });
+        expect(result).toStrictEqual({
+            install: ["npm", "install"],
+            migrate: ["pg_migrate", "--up"],
+        });
+    });
+
+    test("record with mixed string and array values", () => {
+        const result = ContainerConfig.normalizeLifecycleCmd({
+            install: "npm install",
+            migrate: ["pg_migrate", "--up"],
+        });
+        expect(result).toStrictEqual({
+            install: ["/bin/sh", "-c", "npm install"],
+            migrate: ["pg_migrate", "--up"],
+        });
+    });
+
+    test("empty string returns empty record", () => {
+        expect(ContainerConfig.normalizeLifecycleCmd("")).toStrictEqual({});
+    });
+
+    test("empty array returns empty record", () => {
+        expect(ContainerConfig.normalizeLifecycleCmd([])).toStrictEqual({});
+    });
+
+    test("single-entry record", () => {
+        const result = ContainerConfig.normalizeLifecycleCmd({
+            only: "echo done",
+        });
+        expect(result).toStrictEqual({
+            only: ["/bin/sh", "-c", "echo done"],
+        });
+    });
+
+    test("record with string, array, and multi-word string values", () => {
+        const result = ContainerConfig.normalizeLifecycleCmd({
+            install: "npm install && npm run build",
+            migrate: ["pg_migrate", "--up", "--verbose"],
+            lint: "eslint .",
+            test: ["vitest", "run"],
+        });
+        expect(result).toStrictEqual({
+            install: ["/bin/sh", "-c", "npm install && npm run build"],
+            migrate: ["pg_migrate", "--up", "--verbose"],
+            lint: ["/bin/sh", "-c", "eslint ."],
+            test: ["vitest", "run"],
+        });
+    });
+});
+
 describe("context and dockerfile resolution", () => {
     const spy = vi.spyOn(window, "createOutputChannel");
     spy.mockReturnValue({
