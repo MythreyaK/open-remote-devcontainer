@@ -179,4 +179,84 @@ describe("Parser tests", () => {
             expect(o.success).toBe(false);
         }
     });
+
+    test("unknown fields are silently ignored", () => {
+        const cfg = {
+            image: "ubuntu",
+            features: { "ghcr.io/devcontainers/features/node:1": {} },
+            customizations: { vscode: { extensions: ["ms-python.python"] } },
+        };
+        const result = parser.ConfigSchema.safeParse(cfg);
+        expect(result.success).toBe(true);
+    });
+
+    test("remoteEnv accepts null values for unsetting", () => {
+        const cfg = {
+            image: "ubuntu",
+            remoteEnv: { SET_THIS: "value", UNSET_THIS: null },
+        };
+        const result = parser.ConfigSchema.safeParse(cfg);
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.remoteEnv).toStrictEqual({ SET_THIS: "value", UNSET_THIS: null });
+        }
+    });
+
+    test("remoteEnv rejects non-string non-null values", () => {
+        const cfg = {
+            image: "ubuntu",
+            remoteEnv: { BAD: 123 },
+        };
+        const result = parser.ConfigSchema.safeParse(cfg);
+        expect(result.success).toBe(false);
+    });
+
+    test("lifecycle command fields accept string, array, and record forms", () => {
+        const lifecycleFields = [
+            "initializeCommand",
+            "onCreateCommand",
+            "updateContentCommand",
+            "postCreateCommand",
+            "postStartCommand",
+            "postAttachCommand",
+        ] as const;
+
+        for (const field of lifecycleFields) {
+            const asString = { image: "ubuntu", [field]: "echo hello" };
+            const asArray = { image: "ubuntu", [field]: ["echo", "hello"] };
+            const asRecord = { image: "ubuntu", [field]: { cmd1: "echo hello", cmd2: ["a", "b"] } };
+
+            expect(parser.ConfigSchema.safeParse(asString).success, `${field} as string`).toBe(true);
+            expect(parser.ConfigSchema.safeParse(asArray).success, `${field} as array`).toBe(true);
+            expect(parser.ConfigSchema.safeParse(asRecord).success, `${field} as record`).toBe(true);
+        }
+    });
+
+    test("customizations.vscode.extensions is parsed", () => {
+        const cfg = {
+            image: "ubuntu",
+            customizations: {
+                vscode: {
+                    extensions: ["llvm-vs-code-extensions.vscode-clangd", "jeanp413.open-remote-ssh"],
+                },
+            },
+        };
+        const result = parser.ConfigSchema.safeParse(cfg);
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.customizations?.vscode?.extensions).toStrictEqual([
+                "llvm-vs-code-extensions.vscode-clangd",
+                "jeanp413.open-remote-ssh",
+            ]);
+        }
+    });
+
+    test("customizations without extensions is valid", () => {
+        const cfg = {
+            image: "ubuntu",
+            customizations: { vscode: {} },
+        };
+        const result = parser.ConfigSchema.safeParse(cfg);
+        expect(result.success).toBe(true);
+    });
 });

@@ -376,9 +376,118 @@ describe("ContainerConfig tests", () => {
         }
     });
 
-    // test("exec in container args", () => {
-    //     // TODO
-    // });
+    test("exec args: withRemoteEnv=true injects --env and env -u", () => {
+        const cfg: schema.ImageDevcontainer = {
+            image: "ubuntu",
+            remoteEnv: { EDITOR: "vim", UNSET_ME: null, KEEP: "yes" },
+            remoteUser: "dev",
+        };
+        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+        const args = cc.getExecArgs("cid123", { PATH: "/usr/bin" }).join(" ");
+
+        expect(args)
+            .includes("--env EDITOR=vim")
+            .includes("--env KEEP=yes")
+            .includes("env -u UNSET_ME")
+            .includes("-u dev");
+
+        expect(args).not.includes("UNSET_ME=");
+    });
+
+    test("exec args: withRemoteEnv=false skips all remoteEnv injection", () => {
+        const cfg: schema.ImageDevcontainer = {
+            image: "ubuntu",
+            remoteEnv: { EDITOR: "vim", UNSET_ME: null },
+            remoteUser: "dev",
+        };
+        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+        const args = cc.getExecArgs("cid123", {}, { tty: false, withRemoteEnv: false }).join(" ");
+
+        expect(args)
+            .includes("-u dev")
+            .includes("cid123");
+
+        expect(args).not.includes("--env");
+        expect(args).not.includes("env -u");
+    });
+
+    test("getResolvedRemoteEnv excludes null values", () => {
+        const cfg: schema.ImageDevcontainer = {
+            image: "ubuntu",
+            remoteEnv: { KEEP: "yes", DROP: null, ALSO_KEEP: "yep" },
+        };
+        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+        const resolved = cc.getResolvedRemoteEnv({});
+
+        expect("KEEP" in resolved).toBe(true);
+        expect("ALSO_KEEP" in resolved).toBe(true);
+        expect("DROP" in resolved).toBe(false);
+    });
+
+    test("getUnsetRemoteEnvArgs returns empty when no nulls", () => {
+        const cfg: schema.ImageDevcontainer = {
+            image: "ubuntu",
+            remoteEnv: { A: "1", B: "2" },
+        };
+        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+        expect(cc.getUnsetRemoteEnvArgs()).toStrictEqual([]);
+    });
+
+    test("getUnsetRemoteEnvArgs returns empty when no remoteEnv", () => {
+        const cfg: schema.ImageDevcontainer = { image: "ubuntu" };
+        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+        expect(cc.getUnsetRemoteEnvArgs()).toStrictEqual([]);
+    });
+
+    test("getResolvedRemoteUser priority chain", () => {
+        const base: schema.ImageDevcontainer = { image: "ubuntu" };
+        const cc1 = ContainerConfig.create(localWsf, cfgPath, base, {});
+        expect(cc1.getResolvedRemoteUser("imguser")).toBe("imguser");
+        expect(cc1.getResolvedRemoteUser(undefined)).toBe("root");
+
+        const withRemote: schema.ImageDevcontainer = { image: "ubuntu", remoteUser: "alice" };
+        const cc2 = ContainerConfig.create(localWsf, cfgPath, withRemote, {});
+        expect(cc2.getResolvedRemoteUser("imguser")).toBe("alice");
+        expect(cc2.getResolvedRemoteUser(undefined)).toBe("alice");
+
+        const withContainer: schema.ImageDevcontainer = { image: "ubuntu", containerUser: "bob" };
+        const cc3 = ContainerConfig.create(localWsf, cfgPath, withContainer, {});
+        expect(cc3.getResolvedRemoteUser("imguser")).toBe("bob");
+        expect(cc3.getResolvedRemoteUser(undefined)).toBe("bob");
+
+        const withBoth: schema.ImageDevcontainer = { image: "ubuntu", containerUser: "bob", remoteUser: "alice" };
+        const cc4 = ContainerConfig.create(localWsf, cfgPath, withBoth, {});
+        expect(cc4.getResolvedRemoteUser("imguser")).toBe("alice");
+    });
+
+    test("getConfigId is stable when non-id fields change", () => {
+        const base: schema.ImageDevcontainer = { image: "ubuntu", remoteUser: "dev" };
+        const cc1 = ContainerConfig.create(localWsf, cfgPath, base, {});
+
+        const withImage: schema.ImageDevcontainer = { ...base, image: "debian:12" };
+        const withPull: schema.ImageDevcontainer = { ...base, pull: true };
+        const withAppPort: schema.ImageDevcontainer = { ...base, appPort: [8080] };
+        const withInit: schema.ImageDevcontainer = { ...base, init: true };
+        const withPrivileged: schema.ImageDevcontainer = { ...base, privileged: true };
+        const withCaps: schema.ImageDevcontainer = { ...base, capAdd: ["SYS_PTRACE"] };
+        const withSecurityOpt: schema.ImageDevcontainer = { ...base, securityOpt: ["seccomp=unconfined"] };
+        const withUserEnvProbe: schema.ImageDevcontainer = { ...base, userEnvProbe: "loginShell" };
+
+        for (const cfg of [withImage, withPull, withAppPort, withInit, withPrivileged, withCaps, withSecurityOpt, withUserEnvProbe]) {
+            expect(ContainerConfig.create(localWsf, cfgPath, cfg, {}).getConfigId()).eq(cc1.getConfigId());
+        }
+    });
+
+    test("volume mount without source produces no undefined in args", () => {
+        const cfg: schema.ImageDevcontainer = {
+            image: "ubuntu",
+            mounts: [{ type: "volume" as const, target: "/data" }],
+        };
+        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+        const args = cc.getRunCreateCmd("ubuntu", "test").join(" ");
+        expect(args).includes("-v /data");
+        expect(args).not.includes("undefined");
+    });
 });
 
 describe("context and dockerfile resolution", () => {
