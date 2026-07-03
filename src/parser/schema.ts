@@ -161,11 +161,40 @@ export const DevcontainerCommon_z = z.object({
     customizations: z.optional(customizations_z),
 });
 
+const _rawcheckbase_z = z.unknown().check((c) => {
+    const val = c.value as Record<string, unknown>;
+
+    // check if both build and image are specified
+    if (("build" in val || "dockerFile" in val) && "image" in val) {
+        c.issues.push({
+            code: "custom",
+            input: c.value,
+            message: "One of 'image' or 'dockerfile' must be specified, not both.",
+        });
+    }
+});
+
+// ------------ container spec ------------
 export const DevcontainerConfig = allOf(DevcontainerCommon_z, NonComposeBase_z);
 export type DevcontainerCommon = z.infer<typeof DevcontainerConfig>;
+// this transforms so build always exists
+export type DockerfileDevcontainer = z.infer<typeof DockerfileBuild_ZodBase> & z.infer<typeof DevcontainerConfig>;
 
-const ConfigSchemaBase = allOf(oneOf([ImageContainer_z, DockerfileContainer_z]), DevcontainerConfig);
-export const ConfigSchema = ConfigSchemaBase.check((c) => {
+// ------------ image spec ------------
+export type ImageDevcontainer = z.infer<typeof ImageContainer_z> & z.infer<typeof DevcontainerConfig>;
+
+// ------------ full schema spec ------------
+const ConfigSchemaBase = z.pipe(
+    _rawcheckbase_z,
+    allOf(oneOf([ImageContainer_z, DockerfileContainer_z]), DevcontainerConfig),
+);
+
+export const ConfigSchema = ConfigSchemaBase.check(postparseCheck);
+export type Config = z.infer<typeof ConfigSchema>;
+
+// ------------ parsing utils ------------
+
+function postparseCheck(c: z.core.ParsePayload<z.infer<typeof ConfigSchemaBase>>) {
     const val = c.value;
     /* eslint-disable @typescript-eslint/no-unnecessary-condition */
     const hasMount = (val.workspaceMount !== undefined)
@@ -202,14 +231,7 @@ export const ConfigSchema = ConfigSchemaBase.check((c) => {
             });
         }
     }
-});
-
-export type Config = z.infer<typeof ConfigSchema>;
-
-export type ImageDevcontainer = z.infer<typeof ImageContainer_z> & z.infer<typeof DevcontainerConfig>;
-
-// this transforms so build always exists
-export type DockerfileDevcontainer = z.infer<typeof DockerfileBuild_ZodBase> & z.infer<typeof DevcontainerConfig>;
+}
 
 export function isImageBased(config: Config): config is ImageDevcontainer {
     return "image" in config;

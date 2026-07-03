@@ -180,6 +180,28 @@ describe("Parser tests", () => {
         }
     });
 
+    test("both image and build/dockerFile must not be present", () => {
+        const jsondata1 = {
+            name: "devc",
+            image: "ubuntu:24.04",
+            build: {
+                dockerfile: "dockerfile",
+            },
+        };
+
+        const jsondata2 = {
+            name: "devc",
+            image: "ubuntu:24.04",
+            dockerFile: "dockerfile",
+        };
+
+        const o1 = parser.ConfigSchema.safeParse(jsondata1);
+        expect(o1.success).toBe(false);
+
+        const o2 = parser.ConfigSchema.safeParse(jsondata2);
+        expect(o2.success).toBe(false);
+    });
+
     test("unknown fields are silently ignored", () => {
         const cfg = {
             image: "ubuntu",
