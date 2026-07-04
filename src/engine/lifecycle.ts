@@ -5,7 +5,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { run } from "../common/cmd";
 import { parseEnv } from "../common/utils";
 import { getLogSink } from "../extension/log";
-import { ContainerConfig } from "./container";
+import { ContainerConfig, LifecycleCmd } from "./container";
 import { formatCmdErr } from "../common/spawn";
 import { getWorkspaceId, NotificationLevel, showNotification } from "../extension/workspace";
 import { EngineError, InstallError, InternalError } from "../extension/error";
@@ -70,10 +70,12 @@ export class ContainerState {
     }
 
     public static async create(workspaceFolder: string, cc: ContainerConfig, opts: BuildOpts = BuildOpts.Default): Promise<ContainerState> {
+        // mmm more spaghetti ... TODO: could use some cleanup
         const ret = new ContainerState(workspaceFolder, cc, opts);
+        await ret.runInitializeCmd();
 
         if (opts !== BuildOpts.Default) {
-            getLogSink().info(`'${opts}' requested  ...`);
+            getLogSink().info(`'${opts}' requested ...`);
             await ret.tryStopContainer();
             await ret.removeContainer();
         }
@@ -85,6 +87,7 @@ export class ContainerState {
             throw new EngineError(`Failed to stop and remove container ${containerExists.Id}`);
         }
 
+        let lifecycleCmds = true;
         if (containerExists === undefined) {
             containerId = await ret.createContainer();
 
@@ -93,10 +96,14 @@ export class ContainerState {
             }
 
             ret.remoteEnvProbe = await ret.getContainerEnv();
-            await ret.runOnCreateCmd();
+            lifecycleCmds &&= await ret.runLifecycleCmd(LifecycleCmd.onCreate)
+              && await ret.runLifecycleCmd(LifecycleCmd.updateContent)
+              && await ret.runLifecycleCmd(LifecycleCmd.postCreate)
+              && await ret.runLifecycleCmd(LifecycleCmd.postStart);
         }
         else if (!containerExists.State.Running) {
             containerId = await ret.startContainer();
+            lifecycleCmds &&= await ret.runLifecycleCmd(LifecycleCmd.postStart);
         }
         else {
             containerId = containerExists.Id;
@@ -110,14 +117,31 @@ export class ContainerState {
         return ret;
     }
 
-    private async runOnCreateCmd() {
+    private async runInitializeCmd() {
+        const cmd = this.cc.getInitializeCmd();
+        if (!cmd) { return; }
+
+        getLogSink().info(`InitializeCmd[host]: Executing cmd [${cmd.join(", ")}]`);
+        const res = await run([
+            ...cmd,
+        ], this.workspaceFolder, {});
+
+        if (res.exit === 0) {
+            getLogSink().info(`InitializeCmd[host]: OK: ${formatCmdErr(res)}`);
+        }
+        else {
+            getLogSink().info(`InitializeCmd[host]: ERROR: ${formatCmdErr(res)}`);
+        }
+    }
+
+    private async runLifecycleCmd(cmdType: LifecycleCmd) {
         const cname = this.getContainerName();
-        const cmds = Object.entries(this.cc.getOnCreateCmd());
+        const cmds = Object.entries(this.cc.getLifecycleCmd(cmdType));
 
         const results = await Promise.allSettled(
             cmds
                 .map(([name, cmd]) => {
-                    getLogSink().info(`OnCreate[${cname}]: Executing '${name}' cmd [${cmd.join(", ")}]`);
+                    getLogSink().info(`LifecycleCmd: ${cmdType}[${cname}]: Executing '${name}' cmd [${cmd.join(", ")}]`);
 
                     return run([
                         ...settings.getEngineCmd(),
@@ -126,18 +150,23 @@ export class ContainerState {
                     ], this.workspaceFolder, {});
                 }));
 
+        let allOk = true;
         for (let i = 0; i < results.length; ++i) {
             const cmdName = cmds[i][0];
             const res = results[i];
 
             if (res.status === "fulfilled") {
                 const val = res.value;
-                getLogSink().info(`OnCreate[${cname}]: OK: '${cmdName}' returned ${val.exit}: ${formatCmdErr(val)}`);
+                allOk &&= (val.exit === 0);
+                getLogSink().info(`LifecycleCmd: ${cmdType}[${cname}]: OK: '${cmdName}' returned ${val.exit}`);
             }
             else {
-                getLogSink().error(`OnCreate[${cname}]: ERROR: '${cmdName}' failed to execute: ${res.reason}`);
+                allOk &&= false;
+                getLogSink().error(`LifecycleCmd: ${cmdType}[${cname}]: ERROR: '${cmdName}' failed to execute: ${res.reason}`);
             }
         }
+        getLogSink().info(`LifecycleCmd: ${cmdType}[${cname}] status: allOk=${allOk}`);
+        return allOk;
     }
 
     public getConfig(): ContainerConfig {
@@ -614,3 +643,15 @@ function fixDockerImageInspect(json: string): ImageInspectResult {
     }
     return parsed;
 }
+
+// export function queryByWorkspaceId(workspace: string): {
+
+// }
+
+// export function rebuildNeeded(workspace: string): boolean {
+//     const workspaceLabel = ContainerConfig.getWorkspaceIdLabel(workspace);
+
+//     // query by workspace label
+//     const container =
+//     return true;
+// }

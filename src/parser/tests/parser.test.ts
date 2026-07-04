@@ -233,7 +233,7 @@ describe("Parser tests", () => {
         expect(result.success).toBe(false);
     });
 
-    test("lifecycle command fields accept string, array, and record forms", () => {
+    test("lifecycle command forms", () => {
         const lifecycleFields = [
             "initializeCommand",
             "onCreateCommand",
@@ -248,9 +248,16 @@ describe("Parser tests", () => {
             const asArray = { image: "ubuntu", [field]: ["echo", "hello"] };
             const asRecord = { image: "ubuntu", [field]: { cmd1: "echo hello", cmd2: ["a", "b"] } };
 
-            expect(parser.ConfigSchema.safeParse(asString).success, `${field} as string`).toBe(true);
-            expect(parser.ConfigSchema.safeParse(asArray).success, `${field} as array`).toBe(true);
-            expect(parser.ConfigSchema.safeParse(asRecord).success, `${field} as record`).toBe(true);
+            if (field === "initializeCommand") {
+                expect(parser.ConfigSchema.safeParse(asRecord).success, `${field} as record`).toBe(false);
+                expect(parser.ConfigSchema.safeParse(asString).success, `${field} as string`).toBe(true);
+                expect(parser.ConfigSchema.safeParse(asArray).success, `${field} as array`).toBe(true);
+            }
+            else {
+                expect(parser.ConfigSchema.safeParse(asString).success, `${field} as string`).toBe(true);
+                expect(parser.ConfigSchema.safeParse(asArray).success, `${field} as array`).toBe(true);
+                expect(parser.ConfigSchema.safeParse(asRecord).success, `${field} as record`).toBe(true);
+            }
         }
     });
 

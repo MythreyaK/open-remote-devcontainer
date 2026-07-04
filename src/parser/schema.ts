@@ -153,7 +153,7 @@ export const DevcontainerCommon_z = z.object({
     containerEnv: z.optional(_envPairs),
     remoteUser: z.optional(minString),
     containerUser: z.optional(minString),
-    initializeCommand: z.optional(_cmd),
+    initializeCommand: z.optional(oneOf([z.string(), z.array(z.string())])),
     onCreateCommand: z.optional(_cmd),
     updateContentCommand: z.optional(_cmd),
     postCreateCommand: z.optional(_cmd),

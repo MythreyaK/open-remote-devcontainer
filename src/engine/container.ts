@@ -11,6 +11,14 @@ export interface ExecOpts {
     withRemoteEnv?: boolean,
 };
 
+export enum LifecycleCmd {
+    onCreate = "onCreate",
+    updateContent = "updateContent",
+    postCreate = "postCreate",
+    postStart = "postStart",
+    postAttach = "postAttachCommand",
+}
+
 export class ContainerConfig<T extends schema.Config = schema.Config> {
     public readonly cfg: T;
     public readonly workspacePath: string;
@@ -386,8 +394,29 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             .slice(0, 16);
     }
 
-    public getOnCreateCmd(): Record<string, string[]> {
-        return ContainerConfig.normalizeLifecycleCmd(this.cfg.onCreateCommand);
+    public getInitializeCmd(): string[] | undefined {
+        const cmd = this.cfg.initializeCommand;
+        if (!cmd || cmd.length === 0) { return undefined; }
+        else {
+            if (typeof cmd === "string") { return ["/bin/sh", "-c", cmd]; }
+            else if (Array.isArray(cmd)) { return cmd; }
+        }
+
+        return undefined;
+    }
+
+    public getLifecycleCmd(cmdType: LifecycleCmd): Record<string, string[]> {
+        const cmd = (() => {
+            switch (cmdType) {
+                case LifecycleCmd.onCreate: return this.cfg.onCreateCommand;
+                case LifecycleCmd.updateContent: return this.cfg.updateContentCommand;
+                case LifecycleCmd.postCreate: return this.cfg.postCreateCommand;
+                case LifecycleCmd.postStart: return this.cfg.postStartCommand;
+                case LifecycleCmd.postAttach: return this.cfg.postAttachCommand;
+            }
+        })();
+
+        return ContainerConfig.normalizeLifecycleCmd(cmd);
     }
 
     static normalizeLifecycleCmd(args: schema.Cmd | undefined): Record<string, string[]> {
