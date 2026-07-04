@@ -3,14 +3,22 @@ import path from "node:path";
 import { existsSync } from "node:fs";
 import * as crypto from "node:crypto";
 
-import { AUTHORITY_BASE, decodeRemoteAuthority } from "../remote/resolver";
 import { getLogSink } from "./log";
+import { ConfigError } from "./error";
+import { AUTHORITY_BASE, decodeRemoteAuthority } from "../remote/resolver";
+import * as cmds from "../extension/commands";
 
 export enum NotificationLevel {
     Info,
     Warning,
     Error,
 };
+
+export const ConfigPaths = (dir: string) => [
+    path.join(dir, ".devcontainer.json"),
+    path.join(dir, ".devcontainer", "devcontainer.json"),
+    // path.join(dir, ".config", ".devcontainer", "devcontainer.json"),
+];
 
 /**
  *
@@ -26,12 +34,7 @@ export function getWorkspaceId(localWsp: string): string {
 }
 
 export function findDevcontainerJson(dir: string): string {
-    const filePaths = [
-        path.join(dir, ".devcontainer", "devcontainer.json"),
-        path.join(dir, ".devcontainer.json"),
-        // path.join(dir, ".config", "devcontainer.json"),
-    ];
-
+    const filePaths = ConfigPaths(dir);
     for (const f of filePaths) {
         if (existsSync(f)) {
             getLogSink().info(`Using devcontainer.json at ${f}`);
@@ -39,7 +42,7 @@ export function findDevcontainerJson(dir: string): string {
         }
     }
 
-    throw new Error(`devcontainer.json not found. Searched: ${filePaths.join(", ")}`);
+    throw new ConfigError(`devcontainer.json not found. Searched: ${filePaths.join(", ")}`);
 }
 
 export function isRemoteSession() {

@@ -1,6 +1,10 @@
+import path from "node:path";
 import * as vscode from "vscode";
+
 import * as consts from "node:constants";
-import { close, openSync, writeSync } from "node:fs";
+import { close, mkdirSync, openSync, writeSync } from "node:fs";
+import { EXTENSION_ID, EXTENSION_PRETTY_NAME } from "../common/constants";
+import { getLocalWorkspaceFolder, getWorkspaceId } from "./workspace";
 
 let log: vscode.LogOutputChannel | undefined;
 let logFile: string | undefined;
@@ -8,13 +12,8 @@ let logFile: string | undefined;
 const LOG_FLAGS = consts.O_NOFOLLOW | consts.O_CREAT | consts.O_RDWR;
 const LOG_MODE = consts.S_IRUSR | consts.S_IWUSR;
 
-export function initLog(name: string) {
+export function _initLog(name: string) {
     log = vscode.window.createOutputChannel(name, { log: true });
-}
-
-export function initLogfile(logpath: string) {
-    logFile = logpath;
-    log = new TeeLogOutputChannel(logpath, getLogSink());
 }
 
 export function getLogfileInfo(ctx: vscode.ExtensionContext, logSlug: string) {
@@ -22,7 +21,27 @@ export function getLogfileInfo(ctx: vscode.ExtensionContext, logSlug: string) {
     return [ctx.logUri.fsPath, logfileName];
 }
 
-// mmmm nobody touch-a my spaghett
+export function initLogs(ctx: vscode.ExtensionContext) {
+    // mmmm spaghetti
+    _initLog(EXTENSION_PRETTY_NAME);
+
+    try {
+        const logSlug = getWorkspaceId(getLocalWorkspaceFolder());
+        const [dir, name] = getLogfileInfo(ctx, logSlug);
+
+        mkdirSync(dir, { recursive: true });
+        logFile = path.join(dir, name);
+        log = new TeeLogOutputChannel(logFile, getLogSink());
+    }
+    catch (e) {
+        getLogSink().error(`Could not switch to TeeLog. Not in a workspace? Error: ${JSON.stringify(e)}`);
+    }
+
+    const logger = getLogSink();
+    logger.info(`Activating ${EXTENSION_PRETTY_NAME} (${EXTENSION_ID})`);
+    return logger;
+}
+
 // TODO: better log wrap
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-deprecated */
 export class TeeLogOutputChannel implements vscode.LogOutputChannel {
@@ -38,7 +57,6 @@ export class TeeLogOutputChannel implements vscode.LogOutputChannel {
         this.logLevel = this.base.logLevel;
         this.onDidChangeLogLevel = this.base.onDidChangeLogLevel;
         this.logfile = openSync(logPath, LOG_FLAGS, LOG_MODE);
-        console.log(`Opened log file: ${logPath}, ${this.logfile}`);
     }
 
     trace(message: string, ...args: any[]): void {
@@ -81,7 +99,6 @@ export class TeeLogOutputChannel implements vscode.LogOutputChannel {
     }
 
     clear(): void {
-        console.log(`Attempting to write to ${this.logfile}`);
         writeSync(this.logfile, "", 0);
         this.base.clear();
     }
@@ -104,8 +121,8 @@ export class TeeLogOutputChannel implements vscode.LogOutputChannel {
 // Must be disposed
 export function getLogSink(): vscode.LogOutputChannel {
     if (!log) {
-        vscode.window.showErrorMessage("Devcontainers: Logging is not initialized. This is a bug, please report it.");
-        throw new Error("Logging is not initialized: Call `initLog` first. This is a bug.");
+        vscode.window.showErrorMessage("Devcontainers: Logging is not initialized. This is a bug, please report it!");
+        throw new Error("InternalError: Logging is not initialized: Call `initLog` first. This is a bug, please report it!");
     };
     return log;
 }

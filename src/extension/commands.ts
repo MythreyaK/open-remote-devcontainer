@@ -9,6 +9,11 @@ import { findDevcontainerJson, getLocalWorkspaceFolder, isRemoteSession } from "
 import { BuildOpts } from "../engine/lifecycle";
 import { BuildOptIntent } from "../common/globalState";
 import { getLogfilePath } from "./log";
+import { EXTENSION_ID } from "../common/constants";
+
+export function getCmd(suffix: string) {
+    return `${EXTENSION_ID}.${suffix}`;
+}
 
 export async function getContainerEngineVersion() {
     const localWsf = getLocalWorkspaceFolder();

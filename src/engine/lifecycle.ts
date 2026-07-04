@@ -411,8 +411,8 @@ export class ContainerState {
         if (createRes.exit !== 0) {
             throw new EngineError(
                 `Failed to start ${this.getContainerName()}:\n`
-                + `stdout: ${createRes.stdout}\n`
-                + `stderr: ${createRes.stderr}\n`,
+                + `stdout: ${createRes.stdout.trim()}\n`
+                + `stderr: ${createRes.stderr.trim()}\n`,
             );
         }
         else {

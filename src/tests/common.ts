@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 
 import { runCmd } from "../common/cmd";
-import { initLog } from "../extension/log";
+import { _initLog } from "../extension/log";
 import { ContainerState } from "../engine/lifecycle";
 import { findDevcontainerJson } from "../extension/workspace";
 import { parseDevcontainerFile } from "../parser/parser";
@@ -63,7 +63,7 @@ export const initMocks = () => {
     const spyProdsJson = vi.spyOn(server, "getProductJson");
     spyProdsJson.mockResolvedValue(TEST_CODIUM_INFO);
 
-    initLog("Remote - Devcontainer (tests)");
+    _initLog("Remote - Devcontainer (tests)");
 };
 
 export const init = () => {

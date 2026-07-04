@@ -23,13 +23,11 @@ describe.skipIf(!ENGINE)("cmd spawn tests", () => {
 
     test("get engine version", async () => {
         const out = await spawn(engine, ["version", ...jsonFormat], getcwd(), {}, log);
-        // console.log(out);
         expect(out.exit).eq(0);
     });
 
     test("create and remove container", async () => {
         const create = await spawn(engine, ["create", "hello-world"], getcwd(), {}, log);
-        // console.log(create);
 
         const remove = await spawn(engine, ["rm", create.stdout.trim()], getcwd(), {}, log);
         expect(create.exit).eq(0);
@@ -47,7 +45,6 @@ describe.skipIf(!ENGINE)("cmd spawn tests", () => {
 
             const inspect = await spawn(engine, ["inspect", containerId, ...jsonFormat], getcwd(), {}, log);
             expect(inspect.exit).eq(0);
-            // console.log("DATA: ", inspect.stdout.trim());
 
             const inspectData = JSON.parse(inspect.stdout.trim()) as ContainerInspectResult;
             expect(inspectData.Id).eq(containerId);

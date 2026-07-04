@@ -3,8 +3,12 @@ import { ExtensionContext, Uri, window } from "vscode";
 import { describe, expect, test, vi } from "vitest";
 
 import * as schema from "../../parser/schema";
-import { initLog } from "../../extension/log";
+import { getLogSink } from "../../extension/log";
 import { ContainerConfig, interpolateVars, interpolateLocal, interpolateContainer } from "../container";
+
+import { initMocks } from "../../tests/common";
+
+initMocks();
 
 describe("ContainerConfig tests", () => {
     const localWsf = "/tmp/dir";
@@ -12,8 +16,6 @@ describe("ContainerConfig tests", () => {
     const remoteWsf = "/workspace/dir";
     const remoteWsfBase = path.parse("/workspace/dir").base;
     const cfgPath = "/tmp/dir/.devcontainer/devcontainer.json";
-
-    initLog("Remote - Devcontainer (tests)");
 
     const sanityCheck = (_lsf: string, _cfg: string) => {
         const resolvedWsf = path.resolve(_lsf);
@@ -605,14 +607,13 @@ describe("normalizeLifecycleCmd", () => {
 });
 
 describe("context and dockerfile resolution", () => {
+    const debugMode = process.env.DEBUG_TESTS;
     const spy = vi.spyOn(window, "createOutputChannel");
     spy.mockReturnValue({
-        info: vi.fn(), // console.log,
-        warn: vi.fn(), // console.log,
-        error: vi.fn(), // console.log,
+        info: debugMode !== undefined ? console.log : vi.fn(),
+        warn: debugMode !== undefined ? console.log : vi.fn(),
+        error: debugMode !== undefined ? console.log : vi.fn(),
     } as any);
-
-    initLog("Remote - Devcontainer (tests)");
 
     const sanityCheck = (_lsf: string, _cfg: string) => {
         const resolvedWsf = path.resolve(_lsf);
