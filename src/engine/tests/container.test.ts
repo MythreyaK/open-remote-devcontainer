@@ -461,20 +461,51 @@ describe("ContainerConfig tests", () => {
     });
 
     test("getConfigId is stable when non-id fields change", () => {
+        // TODO: handle other fields as well
         const base: schema.ImageDevcontainer = { image: "ubuntu", remoteUser: "dev" };
         const cc1 = ContainerConfig.create(localWsf, cfgPath, base, {});
 
-        const withImage: schema.ImageDevcontainer = { ...base, image: "debian:12" };
         const withPull: schema.ImageDevcontainer = { ...base, pull: true };
-        const withAppPort: schema.ImageDevcontainer = { ...base, appPort: [8080] };
-        const withInit: schema.ImageDevcontainer = { ...base, init: true };
-        const withPrivileged: schema.ImageDevcontainer = { ...base, privileged: true };
-        const withCaps: schema.ImageDevcontainer = { ...base, capAdd: ["SYS_PTRACE"] };
-        const withSecurityOpt: schema.ImageDevcontainer = { ...base, securityOpt: ["seccomp=unconfined"] };
         const withUserEnvProbe: schema.ImageDevcontainer = { ...base, userEnvProbe: "loginShell" };
 
-        for (const cfg of [withImage, withPull, withAppPort, withInit, withPrivileged, withCaps, withSecurityOpt, withUserEnvProbe]) {
+        for (const cfg of [withPull, withUserEnvProbe]) {
             expect(ContainerConfig.create(localWsf, cfgPath, cfg, {}).getConfigId()).eq(cc1.getConfigId());
+        }
+    });
+
+    test("getConfigId changes when id-relevant fields change", () => {
+        // TODO: handle other fields as well
+        const base: schema.ImageDevcontainer = { image: "ubuntu", remoteUser: "dev" };
+        const baseId = ContainerConfig.create(localWsf, cfgPath, base, {}).getConfigId();
+
+        const variants: schema.ImageDevcontainer[] = [
+            { ...base, image: "debian:12" },
+            { ...base, name: "different" },
+            { ...base, runArgs: ["--privileged"] },
+            { ...base, appPort: [8080] },
+            { ...base, init: true },
+            { ...base, privileged: true },
+            { ...base, capAdd: ["SYS_PTRACE"] },
+            { ...base, securityOpt: ["seccomp=unconfined"] },
+            { ...base, overrideCommand: true },
+            { ...base, initializeCommand: "echo init" },
+            { ...base, onCreateCommand: "echo create" },
+            { ...base, updateContentCommand: "echo update" },
+            { ...base, postCreateCommand: "echo post" },
+            { ...base, postStartCommand: "echo start" },
+            { ...base, postAttachCommand: "echo attach" },
+            { ...base, workspaceFolder: "/custom", workspaceMount: "source=/a,target=/custom" },
+            { ...base, mounts: [{ type: "bind" as const, source: "/a", target: "/b" }] },
+            { ...base, containerEnv: { FOO: "bar" } },
+            { ...base, containerUser: "nobody" },
+            { ...base, updateRemoteUserUID: true },
+            { ...base, remoteEnv: { BAZ: "qux" } },
+            { ...base, remoteUser: "alice" },
+        ];
+
+        for (const cfg of variants) {
+            const id = ContainerConfig.create(localWsf, cfgPath, cfg, {}).getConfigId();
+            expect(id, `expected configId to change for ${JSON.stringify(cfg)}`).not.eq(baseId);
         }
     });
 

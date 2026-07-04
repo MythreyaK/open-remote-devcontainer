@@ -338,23 +338,45 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     // reference: https://containers.dev/implementors/json_reference/
     public getConfigId(): string {
         const items = JSON.stringify([
+            // image / build
+            "image" in this.cfg ? this.cfg.image : "",
+            "build" in this.cfg ? this.cfg.build : "",
+
+            // container creation
             this.cfg.name ?? "",
             this.cfg.runArgs ?? "",
-            this.cfg.initializeCommand ?? "",
-            this.cfg.onCreateCommand ?? "",
-            this.cfg.updateContentCommand ?? "",
-            this.cfg.updateRemoteUserUID ?? "",
-            this.cfg.postCreateCommand ?? "",
-            this.cfg.postStartCommand ?? "",
-            this.cfg.postAttachCommand ?? "",
             this.cfg.workspaceFolder ?? "",
             this.cfg.workspaceMount ?? "",
             this.cfg.mounts ?? "",
             this.cfg.containerEnv ?? "",
-            this.cfg.remoteEnv ?? "",
             this.cfg.containerUser ?? "",
+            this.cfg.updateRemoteUserUID ?? "",
+            this.cfg.overrideCommand ?? "",
+            this.cfg.init ?? "",
+            this.cfg.privileged ?? "",
+            this.cfg.capAdd ?? "",
+            this.cfg.securityOpt ?? "",
+            this.cfg.appPort ?? "",
+
+            // lifecycle
+            this.cfg.initializeCommand ?? "",
+            this.cfg.onCreateCommand ?? "",
+            this.cfg.updateContentCommand ?? "",
+            this.cfg.postCreateCommand ?? "",
+            this.cfg.postStartCommand ?? "",
+            this.cfg.postAttachCommand ?? "",
+
+            // session (reconnect-only, but still part of config identity)
+            this.cfg.remoteEnv ?? "",
             this.cfg.remoteUser ?? "",
-            // this.cfg.customizatios
+
+            // not yet supported
+            // this.cfg.features ?? "",
+            // this.cfg.overrideFeatureInstallOrder ?? "",
+            // this.cfg.hostRequirements ?? "",
+            // this.cfg.waitFor ?? "",
+            // this.cfg.portsAttributes ?? "",
+            // this.cfg.otherPortsAttributes ?? "",
         ]);
 
         return crypto
