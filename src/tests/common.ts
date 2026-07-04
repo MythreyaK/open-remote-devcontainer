@@ -6,9 +6,9 @@ import path from "node:path";
 
 import { runCmd } from "../common/cmd";
 import { _initLog } from "../extension/log";
-import { ContainerState } from "../engine/lifecycle";
 import { findDevcontainerJson } from "../extension/workspace";
 import { parseDevcontainerFile } from "../parser/parser";
+import { ContainerConfig } from "../engine/container";
 import * as server from "../remote/installServer";
 
 let cached: string | undefined;
@@ -80,7 +80,7 @@ export function setupFixture(opts: { name: string, testDir: string }) {
         throw new Error(`Test directory ${testDir} does not exist`);
     }
 
-    const containerName: string = ContainerState.getContainerName(testDir);
+    const containerName: string = ContainerConfig.getContainerName(testDir);
     const devcJson = findDevcontainerJson(testDir);
     const config = parseDevcontainerFile(devcJson);
 

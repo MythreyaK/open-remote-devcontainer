@@ -178,12 +178,8 @@ export class ContainerState {
         return ret.Id;
     }
 
-    public static getContainerName(wsf: string): string {
-        return `codium-devc-${getWorkspaceId(wsf)}`;
-    }
-
     public getContainerName(): string {
-        return `codium-devc-${getWorkspaceId(this.workspaceFolder)}`;
+        return this.cc.getContainerName();
     }
 
     private async createContainer() {

@@ -5,6 +5,7 @@ import * as schema from "../parser/schema";
 import { getLogSink } from "../extension/log";
 import { ConfigError } from "../extension/error";
 import { getHostUserInfo } from "../common/utils";
+import { getWorkspaceId } from "../extension/workspace";
 
 export interface ExecOpts {
     tty?: boolean,
@@ -21,13 +22,13 @@ export enum LifecycleCmd {
 
 export class ContainerConfig<T extends schema.Config = schema.Config> {
     public readonly cfg: T;
-    public readonly workspacePath: string;
+    public readonly workspaceFolder: string;
     private readonly cfgPath: string;
     private readonly localEnv: NodeJS.ProcessEnv;
 
-    private constructor(workspacePath: string, cfgPath: string, cfg: T, localEnv: NodeJS.ProcessEnv) {
+    private constructor(workspaceFolder: string, cfgPath: string, cfg: T, localEnv: NodeJS.ProcessEnv) {
         this.cfg = cfg;
-        this.workspacePath = workspacePath;
+        this.workspaceFolder = workspaceFolder;
         this.cfgPath = cfgPath;
         this.localEnv = localEnv;
         // normalize mount
@@ -57,7 +58,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             ...(this.cfg.build.options ? this.cfg.build.options : []),
             this.getResolvedBuildcontextDir(),
         ].filter(Boolean)
-            .map(e => interpolateLocal(e, this.workspacePath, this.getRemoteMountDir(), this.localEnv));
+            .map(e => interpolateLocal(e, this.workspaceFolder, this.getRemoteMountDir(), this.localEnv));
     }
 
     public async getStage2BuildCmd(imgUser: string | undefined, opts: { noCache: boolean } = { noCache: false }): Promise<string[]> {
@@ -68,7 +69,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             ...stage2Args,
             "-t", this.getStage2ImageName(),
             "-f", path.join(__dirname, "Dockerfile"),
-            this.workspacePath,
+            this.workspaceFolder,
         ].filter(Boolean);
     }
 
@@ -97,7 +98,15 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             "-c",
             'trap "echo Got signal, exiting...; exit 0" SIGINT SIGTERM; while sleep 60 & wait $! ; do : ; done',
         ].filter(Boolean)
-            .map(e => interpolateLocal(e, this.workspacePath, this.getRemoteMountDir(), this.localEnv));
+            .map(e => interpolateLocal(e, this.workspaceFolder, this.getRemoteMountDir(), this.localEnv));
+    }
+
+    public static getContainerName(wsf: string): string {
+        return `codium-devc-${getWorkspaceId(wsf)}`;
+    }
+
+    public getContainerName(): string {
+        return `codium-devc-${getWorkspaceId(this.workspaceFolder)}`;
     }
 
     public getImageName(this: ContainerConfig<schema.DockerfileDevcontainer>): string {
@@ -112,11 +121,11 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         // const safeImgName = this.workspacePath.replaceAll('/[^a-z0-9.-]', '-');
         const idHash = crypto
             .createHash("sha256")
-            .update(this.workspacePath)
+            .update(this.workspaceFolder)
             .digest("hex")
             .slice(0, 16);
 
-        getLogSink().info(`Image name from workspace '${this.workspacePath}' : '${idHash}'`);
+        getLogSink().info(`Image name from workspace '${this.workspaceFolder}' : '${idHash}'`);
         return `codium-devcontainer-${idHash}`;
     }
 
@@ -150,13 +159,13 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
 
     public getResolvedBuildcontextDir(this: ContainerConfig<schema.DockerfileDevcontainer>): string {
         const cfgDir = path.dirname(this.cfgPath);
-        const ret = interpolateLocal(this.cfg.build.context ?? ".", this.workspacePath, this.getRemoteMountDir(), this.localEnv);
+        const ret = interpolateLocal(this.cfg.build.context ?? ".", this.workspaceFolder, this.getRemoteMountDir(), this.localEnv);
         return path.resolve(cfgDir, ret);
     }
 
     public getResolvedDockerfilePath(this: ContainerConfig<schema.DockerfileDevcontainer>): string {
         const cfgDir = path.dirname(this.cfgPath);
-        const ret = interpolateLocal(this.cfg.build.dockerfile, this.workspacePath, this.getRemoteMountDir(), this.localEnv);
+        const ret = interpolateLocal(this.cfg.build.dockerfile, this.workspaceFolder, this.getRemoteMountDir(), this.localEnv);
         return path.resolve(cfgDir, ret);
     }
 
@@ -177,7 +186,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         // priority order
         const username = this.getResolvedRemoteUser(imageUser);
 
-        const userInfo = await getHostUserInfo(this.workspacePath);
+        const userInfo = await getHostUserInfo(this.workspaceFolder);
         return [
             "--build-arg", `UPDATE_REMOTE_UID=${this.cfg.updateRemoteUserUID ?? "true"}`,
             "--build-arg", `BASE_IMAGE=${imageName}`,
@@ -239,14 +248,14 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             return schema.extractWorkspaceMount(this.cfg.workspaceMount)[0];
         }
         else {
-            const basename = path.parse(this.workspacePath).base;
+            const basename = path.parse(this.workspaceFolder).base;
             return `/workspace/${basename}`;
         }
     }
 
     private addWorkspaceMount(): string[] {
         if (this.cfg.workspaceMount) { return ["--mount", this.cfg.workspaceMount]; }
-        else { return ["-v", `${this.workspacePath}:${this.getRemoteMountDir()}`]; }
+        else { return ["-v", `${this.workspaceFolder}:${this.getRemoteMountDir()}`]; }
     }
 
     private addMounts(): string[] {
@@ -296,7 +305,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
                 /* ret.push("--env", k); */
             }
             else {
-                ret[k] = interpolateContainer(v, this.workspacePath, this.getRemoteMountDir(), this.localEnv, remoteEnvsProbe);
+                ret[k] = interpolateContainer(v, this.workspaceFolder, this.getRemoteMountDir(), this.localEnv, remoteEnvsProbe);
             }
         }
         return ret;
