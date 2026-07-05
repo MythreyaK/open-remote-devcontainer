@@ -4,6 +4,7 @@ import { describe, expect, test, vi } from "vitest";
 
 import * as schema from "../../parser/schema";
 import { getLogSink } from "../../extension/log";
+import { getWorkspaceId } from "../../extension/workspace";
 import { ContainerConfig, interpolateVars, interpolateLocal, interpolateContainer } from "../container";
 import { getHostUserInfo, HostUserInfo } from "../../common/utils";
 
@@ -535,6 +536,33 @@ describe("ContainerConfig tests", async () => {
         const args = cc.getRunCreateCmd("ubuntu", "test").join(" ");
         expect(args).includes("-v /data");
         expect(args).not.includes("undefined");
+    });
+
+    test("getRunCreateCmd includes configId and workspaceId labels", () => {
+        const cfg: schema.ImageDevcontainer = { image: "ubuntu" };
+        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+        const args = cc.getRunCreateCmd("ubuntu", "test-container");
+
+        const labelIndices = args.reduce<number[]>((acc, v, i) => v === "--label" ? [...acc, i + 1] : acc, []);
+        expect(labelIndices.length).toBe(2);
+
+        expect(args[labelIndices[0]]).includes(`configId=${cc.getConfigId()}`);
+        expect(args[labelIndices[1]]).includes(`workspaceId=${getWorkspaceId(localWsf)}`);
+    });
+
+    test("getStage2BuildCmd includes configId and workspaceId labels", () => {
+        const cfgPath = path.join(localWsf, ".devcontainer.json");
+        const cfg: schema.DockerfileDevcontainer = {
+            build: { dockerfile: "Dockerfile" },
+        };
+        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+        const args = cc.getStage2BuildCmd(hostUserInfo, "root");
+
+        const labelIndices = args.reduce<number[]>((acc, v, i) => v === "--label" ? [...acc, i + 1] : acc, []);
+        expect(labelIndices.length).toBe(2);
+
+        expect(args[labelIndices[0]]).includes(`configId=${cc.getConfigId()}`);
+        expect(args[labelIndices[1]]).includes(`workspaceId=${getWorkspaceId(localWsf)}`);
     });
 });
 

@@ -5,6 +5,7 @@ import * as schema from "../parser/schema";
 import { getLogSink } from "../extension/log";
 import { ConfigError } from "../extension/error";
 import { HostUserInfo } from "../common/utils";
+import { EXTENSION_ID } from "../common/constants";
 import { getWorkspaceId } from "../extension/workspace";
 
 export interface ExecOpts {
@@ -66,6 +67,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             "build",
             ...(opts.noCache ? ["--pull", "--no-cache"] : []),
             ...this.getStage2BuildArgs(hostUserInfo, imgUser),
+            ...this.addLabels(),
             "-t", this.getStage2ImageName(),
             "-f", path.join(__dirname, "Dockerfile"),
             this.workspaceFolder,
@@ -87,6 +89,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             ...this.addRunArgs(),
             ...this.addCaps(),
             ...this.addSecurityOpts(),
+            ...this.addLabels(),
             ...extraArgs,
             ...(this.cfg.privileged ? ["--privileged"] : []),
             ...(this.cfg.init ? ["--init"] : []),
@@ -100,12 +103,27 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             .map(e => interpolateLocal(e, this.workspaceFolder, this.getRemoteMountDir(), this.localEnv));
     }
 
+    public getConfigLabel(): string {
+        return `${EXTENSION_ID}.configId=${this.getConfigId()}`;
+    }
+
+    static getWorkspaceIdLabel(workspace: string): string {
+        return `${EXTENSION_ID}.workspaceId=${getWorkspaceId(workspace)}`;
+    }
+
     public static getContainerName(wsf: string): string {
-        return `codium-devc-${getWorkspaceId(wsf)}`;
+        return `codium-devcontainer-${getWorkspaceId(wsf)}`;
     }
 
     public getContainerName(): string {
-        return `codium-devc-${getWorkspaceId(this.workspaceFolder)}`;
+        return `codium-devcontainer-${getWorkspaceId(this.workspaceFolder)}`;
+    }
+
+    public addLabels(): string[] {
+        return [
+            "--label", this.getConfigLabel(),
+            "--label", ContainerConfig.getWorkspaceIdLabel(this.workspaceFolder),
+        ];
     }
 
     public getImageName(this: ContainerConfig<schema.DockerfileDevcontainer>): string {
