@@ -62,7 +62,7 @@ export const BuildOptions = z.object({
         minString,
         z.array(minString),
     ])),
-    options: z.optional(z.array(z.string())),
+    options: z._default(z.optional(z.array(z.string())), []),
 });
 
 export const NonComposeBase_z = z.object({
@@ -71,9 +71,9 @@ export const NonComposeBase_z = z.object({
         z.number(),
         z.array(_stringOrNumber),
     ])),
-    runArgs: z.optional(z.array(z.string())),
-    shutdownAction: z.optional(ShutdownAction),
-    overrideCommand: z.optional(z.boolean()),
+    runArgs: z._default(z.optional(z.array(z.string())), []),
+    shutdownAction: z._default(z.optional(ShutdownAction), "stopContainer"),
+    overrideCommand: z._default(z.optional(z.boolean()), true),
     workspaceFolder: z.optional(minString),
     workspaceMount: z.optional(minString),
 });
@@ -83,22 +83,22 @@ export const ImageContainer_z = z.object({
     pull: z.optional(z.boolean()),
 });
 
-const DockerfileBuild_ZodBase = z.object({
+const DockerfileBuild_z = z.object({
     build: allOf(
         z.object({
             dockerfile: minString,
-            context: z.optional(z.string()),
+            context: z._default(z.optional(z.string()), "."),
         }),
         BuildOptions,
     ),
 });
 
-const _DockerfileContainer_ZodBase = oneOf([
-    DockerfileBuild_ZodBase,
+const _DockerfileContainer_z = oneOf([
+    DockerfileBuild_z,
     allOf(
         z.object({
             dockerFile: minString,
-            context: z.optional(z.string()),
+            context: z._default(z.optional(z.string()), "."),
         }),
         z.object({
             build: z.optional(BuildOptions),
@@ -107,13 +107,14 @@ const _DockerfileContainer_ZodBase = oneOf([
 ]);
 
 // always use buid: {...} syntax, by moving dockerFile and context inside
-type DockerfileContainer = z.infer<typeof _DockerfileContainer_ZodBase>;
-export const DockerfileContainer_z = z.pipe(_DockerfileContainer_ZodBase, z.transform<DockerfileContainer>((e) => {
+type DockerfileContainer = z.infer<typeof _DockerfileContainer_z>;
+export const DockerfileContainer_z = z.pipe(_DockerfileContainer_z, z.transform<DockerfileContainer>((e) => {
     if ("dockerFile" in e) {
         const ret: DockerfileContainer = {
             build: {
                 dockerfile: e.dockerFile,
                 context: e.context,
+                options: [],
                 ...e.build,
             },
         };
@@ -139,16 +140,16 @@ export type Customizations = z.infer<typeof customizations_z>;
 export const DevcontainerCommon_z = z.object({
     name: z.optional(minString),
     // features : Features,
-    forwardPorts: z.optional(z.array(_stringOrNumber)),
+    forwardPorts: z._default(z.optional(z.array(_stringOrNumber)), []),
     mounts: z.optional(z.array(oneOf([
         Mount_z,
         minString,
     ]))),
-    updateRemoteUserUID: z.optional(z.boolean()),
-    init: z.optional(z.boolean()),
-    privileged: z.optional(z.boolean()),
-    capAdd: z.optional(z.array(minString)),
-    securityOpt: z.optional(z.array(minString)),
+    updateRemoteUserUID: z._default(z.optional(z.boolean()), true),
+    init: z._default(z.optional(z.boolean()), false),
+    privileged: z._default(z.optional(z.boolean()), false),
+    capAdd: z._default(z.optional(z.array(minString)), []),
+    securityOpt: z._default(z.optional(z.array(minString)), []),
     remoteEnv: z.optional(_envPairsNullable_z),
     containerEnv: z.optional(_envPairs),
     remoteUser: z.optional(minString),
@@ -159,7 +160,7 @@ export const DevcontainerCommon_z = z.object({
     postCreateCommand: z.optional(_cmd),
     postStartCommand: z.optional(_cmd),
     postAttachCommand: z.optional(_cmd),
-    userEnvProbe: z.optional(EnvProbe),
+    userEnvProbe: z._default(z.optional(EnvProbe), "loginInteractiveShell"),
     customizations: z.optional(customizations_z),
 });
 
@@ -177,18 +178,18 @@ const _rawcheckbase_z = z.unknown().check((c) => {
 });
 
 // ------------ container spec ------------
-export const DevcontainerConfig = allOf(DevcontainerCommon_z, NonComposeBase_z);
-export type DevcontainerCommon = z.infer<typeof DevcontainerConfig>;
+export const DevcontainerConfig_z = allOf(DevcontainerCommon_z, NonComposeBase_z);
+export type DevcontainerCommon = z.infer<typeof DevcontainerConfig_z>;
 // this transforms so build always exists
-export type DockerfileDevcontainer = z.infer<typeof DockerfileBuild_ZodBase> & z.infer<typeof DevcontainerConfig>;
+export type DockerfileDevcontainer = z.infer<typeof DockerfileBuild_z> & z.infer<typeof DevcontainerConfig_z>;
 
 // ------------ image spec ------------
-export type ImageDevcontainer = z.infer<typeof ImageContainer_z> & z.infer<typeof DevcontainerConfig>;
+export type ImageDevcontainer = z.infer<typeof ImageContainer_z> & z.infer<typeof DevcontainerConfig_z>;
 
 // ------------ full schema spec ------------
-const ConfigSchemaBase = z.pipe(
+export const ConfigSchemaBase = z.pipe(
     _rawcheckbase_z,
-    allOf(oneOf([ImageContainer_z, DockerfileContainer_z]), DevcontainerConfig),
+    allOf(oneOf([ImageContainer_z, DockerfileContainer_z]), DevcontainerConfig_z),
 );
 
 export const ConfigSchema = ConfigSchemaBase.check(postparseCheck);

@@ -1,5 +1,5 @@
 import path from "node:path";
-import { ExtensionContext, Uri, window } from "vscode";
+import { window } from "vscode";
 import { describe, expect, test, vi } from "vitest";
 
 import * as schema from "../../parser/schema";
@@ -11,6 +11,12 @@ import { getHostUserInfo, HostUserInfo } from "../../common/utils";
 import { initMocks } from "../../tests/common";
 
 initMocks();
+
+function withDefaults(cfg: { image: string, [k: string]: unknown }): schema.ImageDevcontainer;
+function withDefaults(cfg: { build: object, [k: string]: unknown }): schema.DockerfileDevcontainer;
+function withDefaults(cfg: Record<string, unknown>) {
+    return schema.ConfigSchemaBase.parse(cfg);
+}
 
 describe("ContainerConfig tests", async () => {
     const localWsf = "/tmp/dir";
@@ -52,10 +58,10 @@ describe("ContainerConfig tests", async () => {
 
     test("test workspace mounts (default)", () => {
         {
-            const cfg: schema.ImageDevcontainer = {
+            const cfg = withDefaults({
                 name: "test",
                 image: "ubuntu:24.04",
-            };
+            });
 
             const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
             expect(cc.isImageBased()).toBe(true);
@@ -74,12 +80,12 @@ describe("ContainerConfig tests", async () => {
 
     test("test workspace mounts (explicit)", () => {
         {
-            const cfg: schema.ImageDevcontainer = {
+            const cfg = withDefaults({
                 name: "test",
                 image: "ubuntu:24.04",
                 // workspaceFolder: "/custom/subdir/repodir",
                 workspaceMount: "source=${localWorkspaceFolder}/sub-folder,target=/workspace/dir,type=bind,consistency=cached",
-            };
+            });
 
             const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
             expect(cc.isImageBased()).toBe(true);
@@ -233,7 +239,7 @@ describe("ContainerConfig tests", async () => {
 
     } as NodeJS.ProcessEnv;
 
-    const common: schema.DevcontainerCommon = {
+    const common = {
         name: "foobar",
         containerUser: "foo",
         appPort: [100, "123:456", "${localEnv:APP_PORT:4040}:${localEnv:FOO_PORT:5012}"],
@@ -247,12 +253,12 @@ describe("ContainerConfig tests", async () => {
         securityOpt: ["seccomp=unconfined", "no-new-privileges=true"],
     };
 
-    const imgCfg: schema.ImageDevcontainer = {
+    const imgCfg = withDefaults({
         ...common,
         image: "ubuntu:24.04",
-    };
+    });
 
-    const dockerfileCfg: schema.DockerfileDevcontainer = {
+    const dockerfileCfg = withDefaults({
         ...common,
         build: {
             dockerfile: "dockerfile",
@@ -266,7 +272,7 @@ describe("ContainerConfig tests", async () => {
             },
             "source=/c,target=/d,type=bind",
         ],
-    };
+    });
 
     test("build dockerfile implicit context dir (dockerfile based)", () => {
         const cc = ContainerConfig.create(localWsf, cfgPath, dockerfileCfg, localEnv);
@@ -289,7 +295,7 @@ describe("ContainerConfig tests", async () => {
     });
 
     test("build dockerfile explicit context and dockerfile dir (dockerfile based)", () => {
-        const newCfg: schema.DockerfileDevcontainer = {
+        const newCfg = withDefaults({
             ...dockerfileCfg,
             build: {
                 dockerfile: "../Dockerfile",
@@ -303,7 +309,7 @@ describe("ContainerConfig tests", async () => {
                 LOCALENV4: "HELLO",
                 LOCALENV5: null,
             },
-        };
+        });
 
         const cc = ContainerConfig.create(localWsf, cfgPath, newCfg, localEnv);
         const execCmd = cc.getExecArgs(cc.getConfigId(), {}).join(" ");
@@ -395,11 +401,11 @@ describe("ContainerConfig tests", async () => {
     });
 
     test("exec args: withRemoteEnv=true injects --env and env -u", () => {
-        const cfg: schema.ImageDevcontainer = {
+        const cfg = withDefaults({
             image: "ubuntu",
             remoteEnv: { EDITOR: "vim", UNSET_ME: null, KEEP: "yes" },
             remoteUser: "dev",
-        };
+        });
         const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
         const args = cc.getExecArgs("cid123", { PATH: "/usr/bin" }).join(" ");
 
@@ -413,11 +419,11 @@ describe("ContainerConfig tests", async () => {
     });
 
     test("exec args: withRemoteEnv=false skips all remoteEnv injection", () => {
-        const cfg: schema.ImageDevcontainer = {
+        const cfg = withDefaults({
             image: "ubuntu",
             remoteEnv: { EDITOR: "vim", UNSET_ME: null },
             remoteUser: "dev",
-        };
+        });
         const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
         const args = cc.getExecArgs("cid123", {}, { tty: false, withRemoteEnv: false }).join(" ");
 
@@ -430,10 +436,10 @@ describe("ContainerConfig tests", async () => {
     });
 
     test("getResolvedRemoteEnv excludes null values", () => {
-        const cfg: schema.ImageDevcontainer = {
+        const cfg = withDefaults({
             image: "ubuntu",
             remoteEnv: { KEEP: "yes", DROP: null, ALSO_KEEP: "yep" },
-        };
+        });
         const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
         const resolved = cc.getResolvedRemoteEnv({});
 
@@ -443,57 +449,59 @@ describe("ContainerConfig tests", async () => {
     });
 
     test("getUnsetRemoteEnvArgs returns empty when no nulls", () => {
-        const cfg: schema.ImageDevcontainer = {
+        const cfg = withDefaults({
             image: "ubuntu",
             remoteEnv: { A: "1", B: "2" },
-        };
+        });
         const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
         expect(cc.getUnsetRemoteEnvArgs()).toStrictEqual([]);
     });
 
     test("getUnsetRemoteEnvArgs returns empty when no remoteEnv", () => {
-        const cfg: schema.ImageDevcontainer = { image: "ubuntu" };
+        const cfg = withDefaults({ image: "ubuntu" });
         const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
         expect(cc.getUnsetRemoteEnvArgs()).toStrictEqual([]);
     });
 
     test("getResolvedRemoteUser priority chain", () => {
-        const base: schema.ImageDevcontainer = { image: "ubuntu" };
+        const base = withDefaults({ image: "ubuntu" });
         const cc1 = ContainerConfig.create(localWsf, cfgPath, base, {});
         expect(cc1.getResolvedRemoteUser("imguser")).toBe("imguser");
         expect(cc1.getResolvedRemoteUser(undefined)).toBe("root");
 
-        const withRemote: schema.ImageDevcontainer = { image: "ubuntu", remoteUser: "alice" };
+        const withRemote = withDefaults({ image: "ubuntu", remoteUser: "alice" });
         const cc2 = ContainerConfig.create(localWsf, cfgPath, withRemote, {});
         expect(cc2.getResolvedRemoteUser("imguser")).toBe("alice");
         expect(cc2.getResolvedRemoteUser(undefined)).toBe("alice");
 
-        const withContainer: schema.ImageDevcontainer = { image: "ubuntu", containerUser: "bob" };
+        const withContainer = withDefaults({ image: "ubuntu", containerUser: "bob" });
         const cc3 = ContainerConfig.create(localWsf, cfgPath, withContainer, {});
         expect(cc3.getResolvedRemoteUser("imguser")).toBe("bob");
         expect(cc3.getResolvedRemoteUser(undefined)).toBe("bob");
 
-        const withBoth: schema.ImageDevcontainer = { image: "ubuntu", containerUser: "bob", remoteUser: "alice" };
+        const withBoth = withDefaults({ image: "ubuntu", containerUser: "bob", remoteUser: "alice" });
         const cc4 = ContainerConfig.create(localWsf, cfgPath, withBoth, {});
         expect(cc4.getResolvedRemoteUser("imguser")).toBe("alice");
     });
 
     test("getConfigId is stable when non-id fields change", () => {
         // TODO: handle other fields as well
-        const base: schema.ImageDevcontainer = { image: "ubuntu", remoteUser: "dev" };
+        const base = withDefaults({ image: "ubuntu", remoteUser: "dev" });
         const cc1 = ContainerConfig.create(localWsf, cfgPath, base, {});
 
-        const withPull: schema.ImageDevcontainer = { ...base, pull: true };
-        const withUserEnvProbe: schema.ImageDevcontainer = { ...base, userEnvProbe: "loginShell" };
+        const variants: schema.ImageDevcontainer[] = [
+            { ...base, pull: true },
+            { ...base, userEnvProbe: "loginShell" },
+        ];
 
-        for (const cfg of [withPull, withUserEnvProbe]) {
+        for (const cfg of variants) {
             expect(ContainerConfig.create(localWsf, cfgPath, cfg, {}).getConfigId()).eq(cc1.getConfigId());
         }
     });
 
     test("getConfigId changes when id-relevant fields change", () => {
         // TODO: handle other fields as well
-        const base: schema.ImageDevcontainer = { image: "ubuntu", remoteUser: "dev" };
+        const base = withDefaults({ image: "ubuntu", remoteUser: "dev" });
         const baseId = ContainerConfig.create(localWsf, cfgPath, base, {}).getConfigId();
 
         const variants: schema.ImageDevcontainer[] = [
@@ -505,7 +513,7 @@ describe("ContainerConfig tests", async () => {
             { ...base, privileged: true },
             { ...base, capAdd: ["SYS_PTRACE"] },
             { ...base, securityOpt: ["seccomp=unconfined"] },
-            { ...base, overrideCommand: true },
+            { ...base, overrideCommand: false },
             { ...base, initializeCommand: "echo init" },
             { ...base, onCreateCommand: "echo create" },
             { ...base, updateContentCommand: "echo update" },
@@ -516,7 +524,7 @@ describe("ContainerConfig tests", async () => {
             { ...base, mounts: [{ type: "bind" as const, source: "/a", target: "/b" }] },
             { ...base, containerEnv: { FOO: "bar" } },
             { ...base, containerUser: "nobody" },
-            { ...base, updateRemoteUserUID: true },
+            { ...base, updateRemoteUserUID: false },
             { ...base, remoteEnv: { BAZ: "qux" } },
             { ...base, remoteUser: "alice" },
         ];
@@ -528,10 +536,10 @@ describe("ContainerConfig tests", async () => {
     });
 
     test("volume mount without source produces no undefined in args", () => {
-        const cfg: schema.ImageDevcontainer = {
+        const cfg = withDefaults({
             image: "ubuntu",
             mounts: [{ type: "volume" as const, target: "/data" }],
-        };
+        });
         const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
         const args = cc.getRunCreateCmd("ubuntu", "test").join(" ");
         expect(args).includes("-v /data");
@@ -539,7 +547,7 @@ describe("ContainerConfig tests", async () => {
     });
 
     test("getRunCreateCmd includes configId and workspaceId labels", () => {
-        const cfg: schema.ImageDevcontainer = { image: "ubuntu" };
+        const cfg = withDefaults({ image: "ubuntu" });
         const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
         const args = cc.getRunCreateCmd("ubuntu", "test-container");
 
@@ -552,9 +560,9 @@ describe("ContainerConfig tests", async () => {
 
     test("getStage2BuildCmd includes configId and workspaceId labels", () => {
         const cfgPath = path.join(localWsf, ".devcontainer.json");
-        const cfg: schema.DockerfileDevcontainer = {
+        const cfg = withDefaults({
             build: { dockerfile: "Dockerfile" },
-        };
+        });
         const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
         const args = cc.getStage2BuildCmd(hostUserInfo, "root");
 
@@ -563,6 +571,23 @@ describe("ContainerConfig tests", async () => {
 
         expect(args[labelIndices[0]]).includes(`configId=${cc.getConfigId()}`);
         expect(args[labelIndices[1]]).includes(`workspaceId=${getWorkspaceId(localWsf)}`);
+    });
+
+    test("getStage2BuildCmd uses stage1 image as BASE_IMAGE for dockerfile configs", () => {
+        const cfgPath = path.join(localWsf, ".devcontainer.json");
+        const cfg = withDefaults({
+            build: { dockerfile: "Dockerfile" },
+        });
+        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+        const args = cc.getStage2BuildCmd(hostUserInfo, "root");
+
+        const baseImageArg = args.find(a => a.startsWith("BASE_IMAGE="));
+        expect(baseImageArg).toBeDefined();
+
+        const stage1Name = ContainerConfig._getStage1ImageName(localWsf);
+        const stage2Name = ContainerConfig._getStage2ImageName(localWsf);
+        expect(baseImageArg).toBe(`BASE_IMAGE=${stage1Name}`);
+        expect(baseImageArg).not.toBe(`BASE_IMAGE=${stage2Name}`);
     });
 });
 
@@ -848,12 +873,12 @@ describe("context and dockerfile resolution", () => {
     const localWsf = "/tmp/dir";
 
     for (const c of cases) {
-        const cfg: schema.DockerfileDevcontainer = {
+        const cfg = withDefaults({
             build: {
                 dockerfile: c.dockerfile,
                 ...(c.context !== undefined ? { context: c.context } : {}),
             },
-        };
+        });
 
         test(`test: ${c.label}`, () => {
             const cc = ContainerConfig.create(localWsf, c.cfgPath, cfg, c.localEnv);

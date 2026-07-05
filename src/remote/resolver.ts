@@ -110,7 +110,8 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
 
     // showCandidatePort?: (host: string, port: number, detail: string) => Thenable<boolean>;
 
-    dispose() {
+    public async dispose() {
         this.statusItemFormatter?.dispose();
+        await this.containerState?.dispose();
     }
 };

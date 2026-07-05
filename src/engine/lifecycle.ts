@@ -295,17 +295,18 @@ export class ContainerState {
         }
     }
 
-    public async tryStopContainer() {
+    public async tryStopContainer(opts: { force: boolean } = { force: false }) {
         const ret = await run([
             ...settings.getEngineCmd(),
             "stop",
+            ...(opts.force ? ["-t", "1"] : []),
             this.getContainerName(),
         ], this.workspaceFolder, {});
         return ret;
     }
 
-    public async stopContainer() {
-        const ret = await this.tryStopContainer();
+    public async stopContainer(opts: { force: boolean } = { force: false }) {
+        const ret = await this.tryStopContainer(opts);
 
         if (ret.exit !== 0) {
             throw new EngineError(`Could not stop container: ${formatCmdErr(ret)}`);
@@ -493,10 +494,10 @@ export class ContainerState {
             const output = ret.stdout.trim();
 
             // expect image name to be in the generated name output
-            if (!output.includes(this.cc.getImageName())) {
-                throw new Error(`Expected image name to be in build tag output. This is a bug. Tag: '${output}' vs ${this.cc.getImageName()}`);
+            if (!output.includes(this.cc.getStage1ImageName())) {
+                throw new Error(`Expected image name to be in build tag output. This is a bug. Tag: '${output}' vs ${this.cc.getStage1ImageName()}`);
             }
-            return this.cc.getImageName();
+            return this.cc.getStage1ImageName();
         }
     }
 
@@ -607,6 +608,10 @@ export class ContainerState {
                 return port;
             }
         }
+    }
+
+    public async dispose() {
+        // TODO: handle shutdown in installServer.sh
     }
 }
 

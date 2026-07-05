@@ -2,8 +2,7 @@ import * as path from "node:path";
 import * as crypto from "node:crypto";
 
 import * as schema from "../parser/schema";
-import { getLogSink } from "../extension/log";
-import { ConfigError } from "../extension/error";
+import { ConfigError, InternalError } from "../extension/error";
 import { HostUserInfo } from "../common/utils";
 import { EXTENSION_ID } from "../common/constants";
 import { getWorkspaceId } from "../extension/workspace";
@@ -53,10 +52,10 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             "build",
             ...(opts.noCache ? ["--pull", "--no-cache"] : []),
             ...this.getBuildArgs(),
-            "-t", this.getImageName(),
+            "-t", this.getStage1ImageName(),
             "-f", this.getResolvedDockerfilePath(),
             ...(this.cfg.build.target ? ["--target", this.cfg.build.target] : []),
-            ...(this.cfg.build.options ? this.cfg.build.options : []),
+            ...this.cfg.build.options,
             this.getResolvedBuildcontextDir(),
         ].filter(Boolean)
             .map(e => interpolateLocal(e, this.workspaceFolder, this.getRemoteMountDir(), this.localEnv));
@@ -111,12 +110,18 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         return `${EXTENSION_ID}.workspaceId=${getWorkspaceId(workspace)}`;
     }
 
-    public static getContainerName(wsf: string): string {
-        return `codium-devcontainer-${getWorkspaceId(wsf)}`;
+    public getContainerName(): string {
+        return ContainerConfig.getContainerName(this.workspaceFolder);
     }
 
-    public getContainerName(): string {
-        return `codium-devcontainer-${getWorkspaceId(this.workspaceFolder)}`;
+    public getStage1ImageName(this: ContainerConfig<schema.DockerfileDevcontainer>): string {
+        // TODO: resolve symlinks?
+        // const safeImgName = this.workspacePath.replaceAll('/[^a-z0-9.-]', '-');
+        return ContainerConfig._getStage1ImageName(this.workspaceFolder);
+    }
+
+    public getStage2ImageName(): string {
+        return ContainerConfig._getStage2ImageName(this.workspaceFolder);
     }
 
     public addLabels(): string[] {
@@ -124,26 +129,6 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             "--label", this.getConfigLabel(),
             "--label", ContainerConfig.getWorkspaceIdLabel(this.workspaceFolder),
         ];
-    }
-
-    public getImageName(this: ContainerConfig<schema.DockerfileDevcontainer>): string {
-        // TODO: resolve symlinks?
-        // const safeImgName = this.workspacePath.replaceAll('/[^a-z0-9.-]', '-');
-        return this._getImageName();
-    }
-
-    // useful for stage2 build
-    private _getImageName(): string {
-        // TODO: resolve symlinks?
-        // const safeImgName = this.workspacePath.replaceAll('/[^a-z0-9.-]', '-');
-        const idHash = crypto
-            .createHash("sha256")
-            .update(this.workspaceFolder)
-            .digest("hex")
-            .slice(0, 16);
-
-        getLogSink().info(`Image name from workspace '${this.workspaceFolder}' : '${idHash}'`);
-        return `codium-devcontainer-${idHash}`;
     }
 
     public getExecArgs(containerId: string, remoteEnvProbe: NodeJS.ProcessEnv, opts: ExecOpts = { tty: false, withRemoteEnv: true }): string[] {
@@ -176,7 +161,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
 
     public getResolvedBuildcontextDir(this: ContainerConfig<schema.DockerfileDevcontainer>): string {
         const cfgDir = path.dirname(this.cfgPath);
-        const ret = interpolateLocal(this.cfg.build.context ?? ".", this.workspaceFolder, this.getRemoteMountDir(), this.localEnv);
+        const ret = interpolateLocal(this.cfg.build.context, this.workspaceFolder, this.getRemoteMountDir(), this.localEnv);
         return path.resolve(cfgDir, ret);
     }
 
@@ -197,23 +182,22 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     private getStage2BuildArgs(hostUserInfo: HostUserInfo, imageUser: string | undefined): string[] {
         const imageName = (() => {
             if (this.isImageBased()) { return this.cfg.image; }
-            else { return this._getImageName(); }
+            else if (this.isDockerfileBased()) { return this.getStage1ImageName(); }
+            else {
+                throw new InternalError("getStage2BuildArgs: Unhandled image-name branch");
+            }
         })();
 
         // priority order
         const username = this.getResolvedRemoteUser(imageUser);
 
         return [
-            "--build-arg", `UPDATE_REMOTE_UID=${this.cfg.updateRemoteUserUID ?? "true"}`,
+            "--build-arg", `UPDATE_REMOTE_UID=${this.cfg.updateRemoteUserUID}`,
             "--build-arg", `BASE_IMAGE=${imageName}`,
             "--build-arg", `HOST_UID=${hostUserInfo.uid}`,
             "--build-arg", `HOST_GID=${hostUserInfo.gid}`,
             "--build-arg", `HOST_USERNAME=${username}`,
         ];
-    }
-
-    public getStage2ImageName(): string {
-        return `${this._getImageName()}-uid`;
     }
 
     private addAppPorts(): string[] {
@@ -245,18 +229,15 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     }
 
     private addSecurityOpts(): string[] {
-        if (this.cfg.securityOpt) { return this.cfg.securityOpt.flatMap(s => ["--security-opt", s]); }
-        else { return []; }
+        return this.cfg.securityOpt.flatMap(s => ["--security-opt", s]);
     }
 
     private addCaps(): string[] {
-        if (this.cfg.capAdd) { return this.cfg.capAdd.flatMap(c => ["--cap-add", c]); }
-        else { return []; }
+        return this.cfg.capAdd.flatMap(c => ["--cap-add", c]);
     }
 
     private addRunArgs(): string[] {
-        if (this.cfg.runArgs) { return this.cfg.runArgs; }
-        else { return []; }
+        return this.cfg.runArgs;
     }
 
     public getRemoteMountDir(): string {
@@ -377,18 +358,18 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
 
             // container creation
             this.cfg.name ?? "",
-            this.cfg.runArgs ?? "",
+            this.cfg.runArgs,
             this.cfg.workspaceFolder ?? "",
             this.cfg.workspaceMount ?? "",
             this.cfg.mounts ?? "",
             this.cfg.containerEnv ?? "",
             this.cfg.containerUser ?? "",
-            this.cfg.updateRemoteUserUID ?? "",
-            this.cfg.overrideCommand ?? "",
-            this.cfg.init ?? "",
-            this.cfg.privileged ?? "",
-            this.cfg.capAdd ?? "",
-            this.cfg.securityOpt ?? "",
+            this.cfg.updateRemoteUserUID,
+            this.cfg.overrideCommand,
+            this.cfg.init,
+            this.cfg.privileged,
+            this.cfg.capAdd,
+            this.cfg.securityOpt,
             this.cfg.appPort ?? "",
 
             // lifecycle
@@ -465,6 +446,30 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             );
             return Object.fromEntries(mapped) as Record<string, string[]>;
         }
+    }
+
+    public static getNameId(wsf: string): string {
+        return `codium-devcontainer-${getWorkspaceId(wsf)}`;
+    }
+
+    public static getContainerName(wsf: string): string {
+        return ContainerConfig.getNameId(wsf);
+    }
+
+    /**
+     *
+     * Only for use in tests. Not to be used directly
+     */
+    public static _getStage1ImageName(wsf: string): string {
+        return ContainerConfig.getNameId(wsf);
+    }
+
+    /**
+     *
+     * Only for use in tests. Not to be used directly
+     */
+    public static _getStage2ImageName(wsf: string): string {
+        return `${ContainerConfig._getStage1ImageName(wsf)}-uid`;
     }
 }
 

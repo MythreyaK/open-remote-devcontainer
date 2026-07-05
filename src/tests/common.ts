@@ -11,6 +11,7 @@ import { parseDevcontainerFile } from "../parser/parser";
 import { ContainerConfig } from "../engine/container";
 import * as server from "../remote/installServer";
 
+const DEBUG_TESTS = process.env.DEBUG_TESTS;
 let cached: string | undefined;
 
 export function getEngine() {
@@ -41,13 +42,11 @@ export const TEST_CODIUM_INFO: server.ServerInfo = {
 };
 
 export const initMocks = () => {
-    const debugMode = process.env.DEBUG_TESTS;
-
     const spyCreateOutput = vi.spyOn(window, "createOutputChannel");
     spyCreateOutput.mockReturnValue({
-        info: debugMode !== undefined ? console.log : vi.fn(),
-        warn: debugMode !== undefined ? console.log : vi.fn(),
-        error: debugMode !== undefined ? console.log : vi.fn(),
+        info: DEBUG_TESTS !== undefined ? console.log : vi.fn(),
+        warn: DEBUG_TESTS !== undefined ? console.log : vi.fn(),
+        error: DEBUG_TESTS !== undefined ? console.log : vi.fn(),
     } as any);
 
     const spySettings = vi.spyOn(workspace, "getConfiguration");
@@ -85,7 +84,7 @@ export function setupFixture(opts: { name: string, testDir: string }) {
     const config = parseDevcontainerFile(devcJson);
 
     afterAll(async () => {
-        console.info(`Stopping and removing container ${containerName}`);
+        if (DEBUG_TESTS) { console.info(`Stopping and removing container ${containerName}`); }
         const proc1 = await runCmd(ENGINE, ["container", "stop", containerName], testDir, {});
         const proc2 = await runCmd(ENGINE, ["container", "rm", containerName], testDir, {});
 
@@ -93,6 +92,11 @@ export function setupFixture(opts: { name: string, testDir: string }) {
         if (proc2.exit !== 0) { console.warn("Warning: Containers were not removed cleanly. Maybe a bug?"); }
 
         if (proc1.exit !== 0 || proc2.exit !== 0) { await runCmd(ENGINE, ["container", "rm", "--force", containerName], testDir, {}); }
+
+        const stg1 = ContainerConfig._getStage1ImageName(testDir);
+        const stg2 = ContainerConfig._getStage2ImageName(testDir);
+        if (DEBUG_TESTS) { console.info(`Removing images [${stg1}, ${stg2}]`); }
+        await runCmd(ENGINE, ["image", "rm", stg1, stg2], testDir, {});
     });
 
     return { localWsf: testDir, localWsfBasename: path.parse(testDir).base, config: config };

@@ -288,4 +288,40 @@ describe("Parser tests", () => {
         const result = parser.ConfigSchema.safeParse(cfg);
         expect(result.success).toBe(true);
     });
+
+    test("spec defaults: image config", () => {
+        const result = parser.ConfigSchema.parse({ image: "ubuntu" });
+
+        expect(result.overrideCommand).toBe(true);
+        expect(result.shutdownAction).toBe("stopContainer");
+        expect(result.updateRemoteUserUID).toBe(true);
+        expect(result.userEnvProbe).toBe("loginInteractiveShell");
+        expect(result.init).toBe(false);
+        expect(result.privileged).toBe(false);
+        expect(result.capAdd).toStrictEqual([]);
+        expect(result.securityOpt).toStrictEqual([]);
+        expect(result.runArgs).toStrictEqual([]);
+        expect(result.forwardPorts).toStrictEqual([]);
+    });
+
+    test("spec defaults: dockerfile config", () => {
+        const result = parser.ConfigSchema.parse({
+            build: { dockerfile: "Dockerfile" },
+        });
+
+        expect(result.overrideCommand).toBe(true);
+        expect(result.shutdownAction).toBe("stopContainer");
+        expect(result.updateRemoteUserUID).toBe(true);
+        expect(result.userEnvProbe).toBe("loginInteractiveShell");
+        expect(result.init).toBe(false);
+        expect(result.privileged).toBe(false);
+        expect(result.capAdd).toStrictEqual([]);
+        expect(result.securityOpt).toStrictEqual([]);
+        expect(result.runArgs).toStrictEqual([]);
+        expect(result.forwardPorts).toStrictEqual([]);
+
+        assert.ok(parser.isDockerfileBased(result));
+        expect(result.build.context).toBe(".");
+        expect(result.build.options).toStrictEqual([]);
+    });
 });
