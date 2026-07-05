@@ -5,17 +5,32 @@ import { describe, expect, test, vi } from "vitest";
 import * as schema from "../../parser/schema";
 import { getLogSink } from "../../extension/log";
 import { ContainerConfig, interpolateVars, interpolateLocal, interpolateContainer } from "../container";
+import { getHostUserInfo, HostUserInfo } from "../../common/utils";
 
 import { initMocks } from "../../tests/common";
 
 initMocks();
 
-describe("ContainerConfig tests", () => {
+describe("ContainerConfig tests", async () => {
     const localWsf = "/tmp/dir";
     const localWsfBase = path.parse(localWsf).base;
     const remoteWsf = "/workspace/dir";
     const remoteWsfBase = path.parse("/workspace/dir").base;
     const cfgPath = "/tmp/dir/.devcontainer/devcontainer.json";
+
+    const hostUserInfo: HostUserInfo = await (async () => {
+        try {
+            return await getHostUserInfo();
+        }
+        catch (e) {
+            getLogSink().error(`Could not query host info! ${JSON.stringify(e)}`);
+            return {
+                uid: 1000,
+                gid: 1000,
+                name: "username",
+            };
+        }
+    })();
 
     const sanityCheck = (_lsf: string, _cfg: string) => {
         const resolvedWsf = path.resolve(_lsf);
@@ -347,7 +362,7 @@ describe("ContainerConfig tests", () => {
         }
     });
 
-    test("build image cmd (noCache)", async () => {
+    test("build image cmd (noCache)", () => {
         const localWsf = __dirname;
         const localWsfBase = path.parse(localWsf).base;
         const cfgPath = path.join(localWsf, ".devcontainer.json");
@@ -368,7 +383,7 @@ describe("ContainerConfig tests", () => {
 
             expect(stage1.endsWith(` ${__dirname}`)).toBe(true);
 
-            const stage2 = (await cc.getStage2BuildCmd("root", { noCache: true })).join(" ");
+            const stage2 = cc.getStage2BuildCmd(hostUserInfo, "root", { noCache: true }).join(" ");
             expect(stage2)
                 .includes("build ")
                 .includes(" --pull ")

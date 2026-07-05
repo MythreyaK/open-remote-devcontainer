@@ -4,7 +4,7 @@ import * as crypto from "node:crypto";
 import * as schema from "../parser/schema";
 import { getLogSink } from "../extension/log";
 import { ConfigError } from "../extension/error";
-import { getHostUserInfo } from "../common/utils";
+import { HostUserInfo } from "../common/utils";
 import { getWorkspaceId } from "../extension/workspace";
 
 export interface ExecOpts {
@@ -61,12 +61,11 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             .map(e => interpolateLocal(e, this.workspaceFolder, this.getRemoteMountDir(), this.localEnv));
     }
 
-    public async getStage2BuildCmd(imgUser: string | undefined, opts: { noCache: boolean } = { noCache: false }): Promise<string[]> {
-        const stage2Args = await this.getStage2BuildArgs(imgUser);
+    public getStage2BuildCmd(hostUserInfo: HostUserInfo, imgUser: string | undefined, opts: { noCache: boolean } = { noCache: false }): string[] {
         return [
             "build",
             ...(opts.noCache ? ["--pull", "--no-cache"] : []),
-            ...stage2Args,
+            ...this.getStage2BuildArgs(hostUserInfo, imgUser),
             "-t", this.getStage2ImageName(),
             "-f", path.join(__dirname, "Dockerfile"),
             this.workspaceFolder,
@@ -177,7 +176,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         return [];
     }
 
-    private async getStage2BuildArgs(imageUser: string | undefined): Promise<string[]> {
+    private getStage2BuildArgs(hostUserInfo: HostUserInfo, imageUser: string | undefined): string[] {
         const imageName = (() => {
             if (this.isImageBased()) { return this.cfg.image; }
             else { return this._getImageName(); }
@@ -186,12 +185,11 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         // priority order
         const username = this.getResolvedRemoteUser(imageUser);
 
-        const userInfo = await getHostUserInfo(this.workspaceFolder);
         return [
             "--build-arg", `UPDATE_REMOTE_UID=${this.cfg.updateRemoteUserUID ?? "true"}`,
             "--build-arg", `BASE_IMAGE=${imageName}`,
-            "--build-arg", `HOST_UID=${userInfo.uid}`,
-            "--build-arg", `HOST_GID=${userInfo.gid}`,
+            "--build-arg", `HOST_UID=${hostUserInfo.uid}`,
+            "--build-arg", `HOST_GID=${hostUserInfo.gid}`,
             "--build-arg", `HOST_USERNAME=${username}`,
         ];
     }

@@ -3,12 +3,12 @@ import { tmpdir } from "node:os";
 import { mkdirSync, writeFileSync } from "node:fs";
 
 import { run } from "../common/cmd";
-import { parseEnv } from "../common/utils";
 import { getLogSink } from "../extension/log";
-import { ContainerConfig, LifecycleCmd } from "./container";
 import { formatCmdErr } from "../common/spawn";
-import { getWorkspaceId, NotificationLevel, showNotification } from "../extension/workspace";
+import { parseEnv, getHostUserInfo } from "../common/utils";
+import { ContainerConfig, LifecycleCmd } from "./container";
 import { EngineError, InstallError, InternalError } from "../extension/error";
+import { getWorkspaceId, NotificationLevel, showNotification } from "../extension/workspace";
 
 import * as settings from "../extension/settings";
 import * as server from "../remote/installServer";
@@ -255,9 +255,10 @@ export class ContainerState {
             showNotification(NotificationLevel.Warning, msg);
         }
 
+        const hostUserInfo = await getHostUserInfo(this.workspaceFolder);
         const ret = await run([
             ...settings.getEngineCmd(),
-            ...(await this.cc.getStage2BuildCmd(imageUser, { noCache: this.buildOpts === BuildOpts.RebuildNoCache })),
+            ...this.cc.getStage2BuildCmd(hostUserInfo, imageUser, { noCache: this.buildOpts === BuildOpts.RebuildNoCache }),
         ], this.workspaceFolder, {});
 
         if (ret.exit !== 0) {
