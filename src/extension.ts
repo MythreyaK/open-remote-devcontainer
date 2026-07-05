@@ -2,13 +2,16 @@ import * as vscode from "vscode";
 
 import * as cmds from "./extension/commands";
 import { BuildOpts } from "./engine/lifecycle";
-import { AUTHORITY_BASE, DevContainerResolver } from "./remote/resolver";
 import { initLogs } from "./extension/log";
+import { AUTHORITY_BASE, DevContainerResolver } from "./remote/resolver";
+import { createDevcontainerConfigWatcher } from "./extension/workspace";
 
-export function activate(ctx: vscode.ExtensionContext) {
+export async function activate(ctx: vscode.ExtensionContext) {
     const logger = initLogs(ctx);
 
     const remoteResolver = new DevContainerResolver(ctx);
+
+    const configWatcher = await createDevcontainerConfigWatcher();
 
     ctx.subscriptions.push(
         vscode.workspace.registerRemoteAuthorityResolver(AUTHORITY_BASE, remoteResolver),
@@ -20,6 +23,7 @@ export function activate(ctx: vscode.ExtensionContext) {
         vscode.commands.registerCommand(cmds.getCmd("showDevcontainerFile"), () => { cmds.showDevcontainerFile(); }),
         vscode.commands.registerCommand(cmds.getCmd("openLocal"), async () => { await cmds.openLocal(); }),
         vscode.commands.registerCommand(cmds.getCmd("showLog"), () => { cmds.showLogFile(); }),
+        configWatcher,
         logger,
     );
 }
