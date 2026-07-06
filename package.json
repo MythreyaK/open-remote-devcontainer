@@ -124,8 +124,9 @@
   },
   "devDependencies": {
     "@stylistic/eslint-plugin": "^5.10.0",
-    "@types/node": "22.x",
+    "@types/node": "^22.20.0",
     "@types/vscode": "^1.110.0",
+    "@vitest/coverage-v8": "^4.1.10",
     "@vscode/dts": "^0.4.1",
     "@vscode/vsce": "^3.9.2",
     "esbuild": "^0.28.1",
