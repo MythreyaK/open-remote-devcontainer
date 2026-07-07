@@ -382,8 +382,8 @@ describe("ContainerConfig tests", async () => {
 
             expect(buildArgs.endsWith(" /tmp/dir/.devcontainer")).toBe(true);
 
-            expect(buildArgs).not.includes(" --pull ");
-            expect(buildArgs).not.includes(" --no-cache ");
+            expect(buildArgs).not.includes("--pull");
+            expect(buildArgs).not.includes("--no-cache");
         }
     });
 
@@ -416,6 +416,54 @@ describe("ContainerConfig tests", async () => {
 
             expect(stage2.endsWith(` ${__dirname}`)).toBe(true);
         }
+    });
+
+    test("build cmd: --target flag", () => {
+        const cfg = withDefaults({
+            build: { dockerfile: "Dockerfile", target: "builder" },
+        });
+        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+        const args = cc.getBuildCmd().join(" ");
+        expect(args).includes(" --target builder ");
+    });
+
+    test("build cmd: --cache-from single string", () => {
+        const cfg = withDefaults({
+            build: { dockerfile: "Dockerfile", cacheFrom: "myregistry/myimage:latest" },
+        });
+        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+        const args = cc.getBuildCmd().join(" ");
+        expect(args).includes(" --cache-from myregistry/myimage:latest ");
+        expect(args).not.includes("--no-cache");
+    });
+
+    test("build cmd: --cache-from array", () => {
+        const cfg = withDefaults({
+            build: { dockerfile: "Dockerfile", cacheFrom: ["img1:latest", "img2:v1"] },
+        });
+        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+        const args = cc.getBuildCmd().join(" ");
+        expect(args).includes(" --cache-from img1:latest --cache-from img2:v1 ");
+    });
+
+    test("build cmd: --cache-from skipped when noCache", () => {
+        const cfg = withDefaults({
+            build: { dockerfile: "Dockerfile", cacheFrom: "myregistry/myimage:latest" },
+        });
+        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+        const args = cc.getBuildCmd({ noCache: true }).join(" ");
+        expect(args).includes(" --no-cache ");
+        expect(args).includes(" --pull ");
+        expect(args).not.includes("--cache-from");
+    });
+
+    test("build cmd: no --cache-from when not specified", () => {
+        const cfg = withDefaults({
+            build: { dockerfile: "Dockerfile" },
+        });
+        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+        const args = cc.getBuildCmd().join(" ");
+        expect(args).not.includes("--cache-from");
     });
 
     test("exec args: withRemoteEnv=true injects --env and env -u", () => {

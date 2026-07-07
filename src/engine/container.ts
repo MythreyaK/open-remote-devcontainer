@@ -46,11 +46,10 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         return schema.isDockerfileBased(this.cfg);
     }
 
-    // TODO: handle cacheFrom
     public getBuildCmd(this: ContainerConfig<schema.DockerfileDevcontainer>, opts: { noCache: boolean } = { noCache: false }): string[] {
         return [
             "build",
-            ...(opts.noCache ? ["--pull", "--no-cache"] : []),
+            ...(opts.noCache ? ["--pull", "--no-cache"] : this.getCacheFromArgs()),
             ...this.getBuildArgs(),
             "-t", this.getStage1ImageName(),
             "-f", this.getResolvedDockerfilePath(),
@@ -169,6 +168,13 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         const cfgDir = path.dirname(this.cfgPath);
         const ret = interpolateLocal(this.cfg.build.dockerfile, this.workspaceFolder, this.getRemoteMountDir(), this.localEnv);
         return path.resolve(cfgDir, ret);
+    }
+
+    private getCacheFromArgs(this: ContainerConfig<schema.DockerfileDevcontainer>): string[] {
+        const cf = this.cfg.build.cacheFrom;
+        if (!cf) { return []; }
+        const images = Array.isArray(cf) ? cf : [cf];
+        return images.flatMap(img => ["--cache-from", img]);
     }
 
     private getBuildArgs(this: ContainerConfig<schema.DockerfileDevcontainer>): string[] {
