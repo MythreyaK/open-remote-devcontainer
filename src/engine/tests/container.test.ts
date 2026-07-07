@@ -336,6 +336,24 @@ describe("ContainerConfig tests", async () => {
         }
     });
 
+    test("create cmd: single (non-array) appPort", () => {
+        const cfgStr = withDefaults({ image: "ubuntu", appPort: "8080" });
+        const ccStr = ContainerConfig.create(localWsf, cfgPath, cfgStr, {});
+        expect(ccStr.getRunCreateCmd("ubuntu", "test").join(" ")).includes("-p 8080");
+
+        const cfgNum = withDefaults({ image: "ubuntu", appPort: 3000 });
+        const ccNum = ContainerConfig.create(localWsf, cfgPath, cfgNum, {});
+        expect(ccNum.getRunCreateCmd("ubuntu", "test").join(" ")).includes("-p 3000");
+    });
+
+    test("create cmd: --privileged and --init flags", () => {
+        const cfg = withDefaults({ image: "ubuntu", privileged: true, init: true });
+        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+        const args = cc.getRunCreateCmd("ubuntu", "test").join(" ");
+        expect(args).includes("--privileged");
+        expect(args).includes("--init");
+    });
+
     test("run cmd: string mounts use '--mount' flag", () => {
         const cc = ContainerConfig.create(localWsf, cfgPath, dockerfileCfg, localEnv);
         expect(cc.isImageBased()).toBe(false);
@@ -588,6 +606,57 @@ describe("ContainerConfig tests", async () => {
         const stage2Name = ContainerConfig._getStage2ImageName(localWsf);
         expect(baseImageArg).toBe(`BASE_IMAGE=${stage1Name}`);
         expect(baseImageArg).not.toBe(`BASE_IMAGE=${stage2Name}`);
+    });
+
+    test("getInitializeCmd: string wraps in /bin/sh -c", () => {
+        const cfg = withDefaults({ image: "ubuntu", initializeCommand: "echo hi" });
+        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+        expect(cc.getInitializeCmd()).toStrictEqual(["/bin/sh", "-c", "echo hi"]);
+    });
+
+    test("getInitializeCmd: array passes through", () => {
+        const cfg = withDefaults({ image: "ubuntu", initializeCommand: ["echo", "hi"] });
+        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+        expect(cc.getInitializeCmd()).toStrictEqual(["echo", "hi"]);
+    });
+
+    test("getInitializeCmd: undefined returns undefined", () => {
+        const cfg = withDefaults({ image: "ubuntu" });
+        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+        expect(cc.getInitializeCmd()).toBeUndefined();
+    });
+
+    describe("mounts", () => {
+        test("mount: bind with options appends options suffix", () => {
+            const cfg = withDefaults({
+                image: "ubuntu",
+                mounts: [{ type: "bind" as const, source: "/a", target: "/b", options: "ro,z" }],
+            });
+            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+            const args = cc.getRunCreateCmd("ubuntu", "test").join(" ");
+            expect(args).includes("-v /a:/b:ro,z");
+        });
+
+        test("mount: volume with source and options", () => {
+            const cfg = withDefaults({
+                image: "ubuntu",
+                mounts: [{ type: "volume" as const, source: "mydata", target: "/data", options: "nocopy" }],
+            });
+            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+            const args = cc.getRunCreateCmd("ubuntu", "test").join(" ");
+            expect(args).includes("-v mydata:/data:nocopy");
+        });
+
+        test("mount: volume without source omits source prefix", () => {
+            const cfg = withDefaults({
+                image: "ubuntu",
+                mounts: [{ type: "volume" as const, target: "/data" }],
+            });
+            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+            const args = cc.getRunCreateCmd("ubuntu", "test").join(" ");
+            expect(args).includes("-v /data");
+            expect(args).not.includes("-v :/data");
+        });
     });
 });
 

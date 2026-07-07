@@ -151,6 +151,18 @@ describe("Parser tests", () => {
         }
     });
 
+    test("Reject missing target in workspaceMount", () => {
+        const data = {
+            name: "foo",
+            image: "ubuntu",
+            workspaceMount: 'source="/dir1/foo,tgt=bar',
+        };
+
+        const res = parser.ConfigSchema.safeParse(data);
+        expect(res.success).toBe(false);
+        expect(res.error?.message.search("not detect a 'target=...' mount")).greaterThan(0);
+    });
+
     test("Reject multiple target matches in workspaceMount", () => {
         {
             const jsonbase = { name: "foo", image: "ubuntu", workspaceFolder: "/foo" };
