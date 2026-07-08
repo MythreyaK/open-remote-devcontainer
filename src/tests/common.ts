@@ -1,3 +1,4 @@
+import * as vscode from "vscode";
 import { window, workspace } from "vscode";
 import { afterAll, vi } from "vitest";
 import { spawnSync } from "node:child_process";
@@ -61,6 +62,8 @@ export const initMocks = () => {
 
     const spyProdsJson = vi.spyOn(server, "getProductJson");
     spyProdsJson.mockResolvedValue(TEST_CODIUM_INFO);
+
+    (vscode as any).env = { remoteAuthority: undefined };
 
     _initLog("Remote - Devcontainer (tests)");
 };

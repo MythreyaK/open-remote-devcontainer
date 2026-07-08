@@ -143,6 +143,7 @@ export class ContainerState {
                 .map(([name, cmd]) => {
                     getLogSink().info(`LifecycleCmd: ${cmdType}[${cname}]: Executing '${name}' cmd [${cmd.join(", ")}]`);
 
+                    // TODO: run in bash as a single exec instead? Might lose per-pid error reporting
                     return run([
                         ...settings.getEngineCmd(),
                         ...this.cc.getExecArgs(cname, this.remoteEnvProbe),

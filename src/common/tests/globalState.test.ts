@@ -8,8 +8,7 @@ import { initMocks } from "../../tests/common";
 
 initMocks();
 
-// getLocalWsfExtensionKey → getLocalWorkspaceFolder → vscode.env / vscode.workspace
-(vscode as any).env = { remoteAuthority: undefined };
+// getLocalWsfExtensionKey → getLocalWorkspaceFolder → vscode.workspace.workspaceFolders
 Object.defineProperty(vscode.workspace, "workspaceFolders", {
     value: [{ uri: { fsPath: "/tmp/test-ws" } }],
     writable: true,
