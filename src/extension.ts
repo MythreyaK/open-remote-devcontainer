@@ -4,7 +4,7 @@ import * as cmds from "./extension/commands";
 import { BuildOpts } from "./engine/lifecycle";
 import { initLogs } from "./extension/log";
 import { AUTHORITY_BASE, DevContainerResolver } from "./remote/resolver";
-import { createDevcontainerConfigWatcher } from "./extension/workspace";
+import { createDevcontainerConfigWatcher, isRemoteSession } from "./extension/workspace";
 
 export function activate(ctx: vscode.ExtensionContext) {
     const logger = initLogs(ctx);
@@ -26,6 +26,10 @@ export function activate(ctx: vscode.ExtensionContext) {
         configWatcher,
         logger,
     );
+
+    if (isRemoteSession()) {
+        cmds.runPostAttachCommand();
+    }
 }
 
 export function deactivate() { }

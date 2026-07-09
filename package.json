@@ -98,7 +98,8 @@
   },
   "enabledApiProposals": [
     "resolvers",
-    "contribViewsRemote"
+    "contribViewsRemote",
+    "taskPresentationGroup"
   ],
   "extensionKind": [
     "ui"
