@@ -30,7 +30,7 @@ if [ "${HOST_USERNAME}" = "root" ]; then                                        
 fi;                                                                                                         \
 if getent passwd "${HOST_USERNAME}" > /dev/null; then                                                       \
     EXISTING_UID=$(id -u "${HOST_USERNAME}");                                                               \
-    echo "User '${HOST_USERNAME}' exists, updating UID from ${EXISTING_UID} to '${HOST_UID}'";              \
+    echo "User '${HOST_USERNAME}' exists, updating UID from ${EXISTING_UID} to ${HOST_UID}";                \
     #                                                                                                       \
     # if HOST_UID already exists, (but, obviously, with different username)                                 \
     # move that user to a new ID and update HOST_USERNAME's uid to HOST_UID                                 \
@@ -38,10 +38,10 @@ if getent passwd "${HOST_USERNAME}" > /dev/null; then                           
     if [ -n "${EXISTING_USERNAME}" ] && [ "${EXISTING_USERNAME}" != "${HOST_USERNAME}" ]; then              \
         NEW_UID=$((${HOST_UID}+1234));                                                                      \
         if getent passwd "${NEW_UID}" > /dev/null; then                                                     \
-            echo "{{ERROR: Not attempting to resolve user UID/GID fixup. Please fix it in a Dockerfile}}";  \
+            echo "{{DEVCONTAINER_STAGE2 ERROR: Not attempting to resolve user UID/GID fixup. Please fix it in a Dockerfile}}" 1>&2;  \
             exit 1;                                                                                         \
         fi;                                                                                                 \
-        echo "User '${EXISTING_USERNAME}' with ID '${HOST_UID}' already exists. Moving to '${NEW_UID}'";    \
+        echo "User '${EXISTING_USERNAME}' with ID ${HOST_UID} already exists. Moving to ${NEW_UID}";        \
         usermod -u "${NEW_UID}" "${EXISTING_USERNAME}";                                                     \
     fi;                                                                                                     \
     #                                                                                                       \
