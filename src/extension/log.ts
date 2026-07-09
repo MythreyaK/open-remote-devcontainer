@@ -2,7 +2,7 @@ import path from "node:path";
 import * as vscode from "vscode";
 
 import * as consts from "node:constants";
-import { close, mkdirSync, openSync, writeSync } from "node:fs";
+import { close, mkdirSync, openSync, truncateSync, writeSync } from "node:fs";
 import { EXTENSION_ID, EXTENSION_PRETTY_NAME } from "../common/constants";
 import { getLocalWorkspaceFolder, getWorkspaceId } from "./workspace";
 
@@ -57,6 +57,7 @@ export class TeeLogOutputChannel implements vscode.LogOutputChannel {
         this.logLevel = this.base.logLevel;
         this.onDidChangeLogLevel = this.base.onDidChangeLogLevel;
         this.logfile = openSync(logPath, LOG_FLAGS, LOG_MODE);
+        truncateSync(logPath, 0);
     }
 
     trace(message: string, ...args: any[]): void {

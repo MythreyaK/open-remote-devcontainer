@@ -128,8 +128,8 @@ describe("Parser tests", () => {
             const o2 = parser.ConfigSchema.safeParse(jsondata2);
             expect(o1.success).toBe(false);
             expect(o2.success).toBe(false);
-            expect(o1.error?.message.search("must be [un]+set")).greaterThan(0);
-            expect(o2.error?.message.search("must be [un]+set")).greaterThan(0);
+            expect(o1.error?.message.search("must be (un)?set")).greaterThan(0);
+            expect(o2.error?.message.search("must be (un)?set")).greaterThan(0);
         }
     });
 

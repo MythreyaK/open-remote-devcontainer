@@ -51,14 +51,16 @@ describe.skipIf(!ENGINE)("integration: lifecycle: img-pull", () => {
         const cId = await container.getContainerId();
 
         expect(cId.length).toBeGreaterThan(16);
-    }, 30 * 1000);
+    }, 30_000);
 
     test("getConnectionToken returns correct token over multiple install (without force)", async () => {
         const firstInstall = await container.installServer();
+        expect(firstInstall.result.exit).eq(0);
         const token = await container.getConnectionToken();
 
         for (let i = 0; i < 3; ++i) {
             const installServer = await container.installServer();
+            expect(installServer.result.exit).eq(0);
 
             const catResult = await run([
                 engine,
@@ -81,6 +83,7 @@ describe.skipIf(!ENGINE)("integration: lifecycle: img-pull", () => {
 
         for (let i = 0; i < 3; ++i) {
             const installServer = await container.installServer();
+            expect(installServer.result.exit).eq(0);
 
             const catResult = await run([
                 engine,
@@ -97,12 +100,13 @@ describe.skipIf(!ENGINE)("integration: lifecycle: img-pull", () => {
             const iterTok = await container.getConnectionToken();
             expect(iterTok).eq(token);
         }
-    }, 60 * 1000);
+    }, 60_0000);
 
     test("getConnectionToken dies on stopped container", async () => {
         const installServer = await container.installServer();
+        expect(installServer.result.exit).eq(0);
 
         await container.stopContainer();
         await expect(container.getConnectionToken()).rejects.toThrow(Error);
-    }, 60 * 1000);
+    }, 60_0000);
 });
