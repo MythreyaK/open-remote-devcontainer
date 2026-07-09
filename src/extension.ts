@@ -6,12 +6,12 @@ import { initLogs } from "./extension/log";
 import { AUTHORITY_BASE, DevContainerResolver } from "./remote/resolver";
 import { createDevcontainerConfigWatcher } from "./extension/workspace";
 
-export async function activate(ctx: vscode.ExtensionContext) {
+export function activate(ctx: vscode.ExtensionContext) {
     const logger = initLogs(ctx);
 
     const remoteResolver = new DevContainerResolver(ctx);
 
-    const configWatcher = await createDevcontainerConfigWatcher();
+    const configWatcher = createDevcontainerConfigWatcher();
 
     ctx.subscriptions.push(
         vscode.workspace.registerRemoteAuthorityResolver(AUTHORITY_BASE, remoteResolver),

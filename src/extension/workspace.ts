@@ -84,7 +84,7 @@ export function showNotification(level: NotificationLevel, msg: string) {
     }
 }
 
-export async function createDevcontainerConfigWatcher() {
+export function createDevcontainerConfigWatcher() {
     const emptyDisposable = new vscode.Disposable(() => { });
     let workspace: string | undefined;
 
@@ -94,7 +94,7 @@ export async function createDevcontainerConfigWatcher() {
 
         // if config failed, we throw, so safe to notify here
         if (!isRemoteSession()) {
-            await onOpenNotify(workspace);
+            onOpenNotify(workspace);
         }
     }
     catch (e) {
@@ -109,7 +109,7 @@ export async function createDevcontainerConfigWatcher() {
     return emptyDisposable;
 }
 
-async function onOpenNotify(_: string) {
+function onOpenNotify(_: string) {
     // TODO: Store preference per-workspace
     enum OpenOpts {
         Yes = "Yes",
@@ -117,11 +117,11 @@ async function onOpenNotify(_: string) {
         // DontShow = "Don't show again"
     };
 
-    const opt = await vscode.window.showInformationMessage(
+    vscode.window.showInformationMessage(
         "devcontainer configuration detected. Open in devcontainer?",
-        ...Object.values(OpenOpts));
-
-    if (opt === OpenOpts.Yes) {
-        vscode.commands.executeCommand(cmds.getCmd("openRemote"));
-    }
+        ...Object.values(OpenOpts)).then((opt) => {
+        if (opt === OpenOpts.Yes) {
+            vscode.commands.executeCommand(cmds.getCmd("openRemote"));
+        }
+    });
 }
