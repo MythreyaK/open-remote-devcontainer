@@ -496,7 +496,7 @@ export class ContainerState {
 
             // expect image name to be in the generated name output
             if (!output.includes(this.cc.getStage1ImageName())) {
-                throw new Error(`Expected image name to be in build tag output. This is a bug. Tag: '${output}' vs ${this.cc.getStage1ImageName()}`);
+                throw new InternalError(`Expected image name to be in build tag output. Tag: '${output}' vs ${this.cc.getStage1ImageName()}`);
             }
             return this.cc.getStage1ImageName();
         }
@@ -603,7 +603,7 @@ export class ContainerState {
             const allParts = portCmdRes.stdout.trim().split(":");
             const port = allParts.at(-1);
             if (port === undefined) {
-                throw new Error(`Could not extract port from '${portCmdRes.stdout}'. This is a bug.`);
+                throw new InternalError(`Could not extract port from '${portCmdRes.stdout}'.`);
             }
             else {
                 return port;

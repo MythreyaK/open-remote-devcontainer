@@ -5,6 +5,7 @@ import * as consts from "node:constants";
 import { close, mkdirSync, openSync, truncateSync, writeSync } from "node:fs";
 import { EXTENSION_ID, EXTENSION_PRETTY_NAME } from "../common/constants";
 import { getLocalWorkspaceFolder, getWorkspaceId } from "./workspace";
+import { InternalError } from "./error";
 
 let log: vscode.LogOutputChannel | undefined;
 let logFile: string | undefined;
@@ -131,7 +132,7 @@ export function getLogSink(): vscode.LogOutputChannel {
 export function getLogfilePath() {
     if (!log || !logFile) {
         vscode.window.showErrorMessage("Devcontainers: getLogfilePath: Logging was incorrectly initialized. This is a bug, please report it.");
-        throw new Error("Devcontainers: getLogfilePath: Logging was incorrectly initialized. This is a bug, please report it.");
+        throw new InternalError("Devcontainers: getLogfilePath: Logging was incorrectly initialized.");
     };
     return logFile;
 }
