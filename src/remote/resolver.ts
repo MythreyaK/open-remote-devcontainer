@@ -1,17 +1,25 @@
 import * as vscode from "vscode";
 import path from "node:path";
 
-import { getLogSink } from "../extension/log";
+import { getLogSink, getLogfilePath } from "../extension/log";
 import { BuildOpts, ContainerState } from "../engine/lifecycle";
 import { findDevcontainerJson } from "../extension/workspace";
 import { ContainerConfig } from "../engine/container";
 import { parseDevcontainerFile } from "../parser/parser";
 import { BuildOptIntent } from "../common/globalState";
 import { getExtensionList } from "../extension/settings";
+import { EngineError, InstallError } from "../extension/error";
 
 export const AUTHORITY_BASE: string = "devcontainer-remote";
 
 const ENCODE_SCHEME = "hex";
+
+export enum RetryOpts {
+    // Cancel = "Cancel",
+    Retry = "Retry",
+    ShowLog = "Show log",
+    Close = "Close remote",
+};
 
 export function encodeRemoteAuthority(localWsf: string) {
     const encoded = Buffer.from(localWsf).toString(ENCODE_SCHEME);
@@ -45,15 +53,43 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
         void this.extensionCtx; // TODO
     }
 
-    resolve(authority: string, _1: vscode.RemoteAuthorityResolverContext): Thenable<vscode.ResolverResult> {
+    resolve(authority: string, context: vscode.RemoteAuthorityResolverContext): Thenable<vscode.ResolverResult> {
         this.localWsf = decodeRemoteAuthority(authority);
 
-        getLogSink().info(`Starting remote session from ${this.localWsf} (authority ${authority})...`);
+        getLogSink().info(`Starting remote session from ${this.localWsf} (authority ${authority}, attempt #${context.resolveAttempt})...`);
+
+        const localWsfBasename = path.parse(this.localWsf).base;
 
         return vscode.window.withProgress(
-            { location: vscode.ProgressLocation.Notification },
-            (p, i) => this.createWindowTask(p, i),
+            {
+                title: `Remote - Devcontainer: ${localWsfBasename}`,
+                location: vscode.ProgressLocation.Notification,
+            },
+            (p, i) => this.tryResolve(context, p, i),
         );
+    }
+
+    private async tryResolve(
+        context: vscode.RemoteAuthorityResolverContext,
+        progress: vscode.Progress<{ message?: string, increment?: number }>,
+        cancellationToken: vscode.CancellationToken,
+    ): Promise<vscode.ResolverResult> {
+        try {
+            return await this.createWindowTask(progress, cancellationToken);
+        }
+        catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            getLogSink().error(`Resolver failed (attempt #${context.resolveAttempt}): ${msg}`);
+
+            if (context.resolveAttempt === 1) {
+                await notifyResolverError(msg);
+            }
+
+            if (e instanceof InstallError || e instanceof EngineError) {
+                throw vscode.RemoteAuthorityResolverError.NotAvailable(msg);
+            }
+            throw vscode.RemoteAuthorityResolverError.TemporarilyNotAvailable(msg);
+        }
     }
 
     private async createWindowTask(progress: vscode.Progress<{ message?: string, increment?: number }>, _2: vscode.CancellationToken): Promise<vscode.ResolverResult> {
@@ -66,7 +102,7 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
 
         const containerConfig = ContainerConfig.create(this.localWsf, devcontainerJson, parsedConfig);
 
-        progress.report({ message: "Building image and starting container...", increment: 50 });
+        progress.report({ message: "Building image and starting container...", increment: 15 });
         this.containerState = await ContainerState.create(this.localWsf, containerConfig, buildOpt);
 
         const containerId = await this.containerState.getContainerId();
@@ -81,25 +117,23 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
                     label: "${path}",
                     separator: "/",
                     tildify: true,
-                    workspaceSuffix: `📦 ${containerId.slice(0, 8)}: ${localWsfBasename}`,
+                    workspaceSuffix: `📦 ${localWsfBasename} [${containerId.slice(0, 8)}]`,
                     authorityPrefix: this.localWsf,
                 },
             });
 
-        progress.report({ message: "Created container...", increment: 75 });
-        progress.report({ message: "Installing server...", increment: 85 });
+        progress.report({ message: "Installing server...", increment: 30 });
 
         const { host, port } = await this.containerState.installServer([
             ...getExtensionList(),
             ...parsedConfig.customizations?.vscode?.extensions ?? [],
         ]);
-        progress.report({ message: "Server install complete, opening remote...", increment: 85 });
+        progress.report({ message: "Connecting...", increment: 40 });
 
         const ctkn = await this.containerState.getConnectionToken();
-        progress.report({ message: "Opening remote ...", increment: 100 });
+        progress.report({ message: "Opening remote...", increment: 10 });
 
-        const ret: vscode.ResolverResult = new vscode.ResolvedAuthority(host, port, ctkn);
-        return ret;
+        return new vscode.ResolvedAuthority(host, port, ctkn);
     }
 
     // getCanonicalURI?(uri: vscode.Uri): vscode.ProviderResult<vscode.Uri> {
@@ -115,3 +149,30 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
         await this.containerState?.dispose();
     }
 };
+
+async function notifyResolverError(message: string) {
+    const choice = await vscode.window.showErrorMessage(
+        "Could not open devcontainer",
+        { modal: true, detail: message },
+        ...Object.values(RetryOpts),
+    );
+
+    if (choice === RetryOpts.Retry) {
+        await vscode.commands.executeCommand("workbench.action.reloadWindow");
+        return;
+    }
+    else if (choice === RetryOpts.ShowLog) {
+        try {
+            const logPath = getLogfilePath();
+            getLogSink().show();
+            await vscode.commands.executeCommand("vscode.open", vscode.Uri.file(logPath));
+        }
+        catch {
+            getLogSink().show();
+        }
+    }
+    else if (choice === RetryOpts.Close) {
+        await vscode.commands.executeCommand("open-remote-devcontainer.openLocal");
+        return;
+    }
+}
