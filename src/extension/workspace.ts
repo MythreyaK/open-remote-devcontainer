@@ -3,13 +3,22 @@ import path from "node:path";
 import { existsSync } from "node:fs";
 import * as crypto from "node:crypto";
 
+import { getLogSink } from "./log";
+import { ConfigError } from "./error";
 import { AUTHORITY_BASE, decodeRemoteAuthority } from "../remote/resolver";
+import * as cmds from "../extension/commands";
 
 export enum NotificationLevel {
     Info,
     Warning,
     Error,
 };
+
+export const ConfigPaths = (dir: string) => [
+    path.join(dir, ".devcontainer.json"),
+    path.join(dir, ".devcontainer", "devcontainer.json"),
+    // path.join(dir, ".config", ".devcontainer", "devcontainer.json"),
+];
 
 /**
  *
@@ -25,18 +34,15 @@ export function getWorkspaceId(localWsp: string): string {
 }
 
 export function findDevcontainerJson(dir: string): string {
-    const filePaths = [
-        path.join(dir, ".devcontainer", "devcontainer.json"),
-        path.join(dir, ".devcontainer.json"),
-    ];
-
+    const filePaths = ConfigPaths(dir);
     for (const f of filePaths) {
         if (existsSync(f)) {
+            getLogSink().info(`Using devcontainer.json at ${f}`);
             return f;
         }
     }
 
-    throw new Error(`devcontainer.json not found. Searched: ${filePaths.join(", ")}`);
+    throw new ConfigError(`devcontainer.json not found. Searched: ${filePaths.join(", ")}`);
 }
 
 export function isRemoteSession() {
@@ -76,4 +82,57 @@ export function showNotification(level: NotificationLevel, msg: string) {
             break;
         }
     }
+}
+
+export function createDevcontainerConfigWatcher(ctx: vscode.ExtensionContext) {
+    let configPath: string | undefined;
+
+    try {
+        const workspace = getLocalWorkspaceFolder();
+        configPath = findDevcontainerJson(workspace);
+
+        if (!isRemoteSession()) {
+            onOpenNotify(workspace);
+        }
+    }
+    catch (e) {
+        if (e instanceof Error) {
+            getLogSink().error(`Watcher: No workspace or config found: ${e.message}`);
+        }
+        else {
+            getLogSink().error(`Unknown error: ${JSON.stringify(e)}`);
+        }
+        return new vscode.Disposable(() => { });
+    }
+
+    const pattern = new vscode.RelativePattern(
+        vscode.Uri.file(path.dirname(configPath)),
+        path.basename(configPath),
+    );
+    const watcher = vscode.workspace.createFileSystemWatcher(pattern);
+
+    watcher.onDidChange(() => {
+        if (isRemoteSession()) {
+            cmds.remotePromptRebuildIfStale(ctx);
+        }
+    });
+
+    return watcher;
+}
+
+function onOpenNotify(_: string) {
+    // TODO: Store preference per-workspace
+    enum OpenOpts {
+        Yes = "Yes",
+        No = "No",
+        // DontShow = "Don't show again"
+    };
+
+    vscode.window.showInformationMessage(
+        "devcontainer configuration detected. Open in devcontainer?",
+        ...Object.values(OpenOpts)).then((opt) => {
+        if (opt === OpenOpts.Yes) {
+            vscode.commands.executeCommand(cmds.getCmd("openRemote"));
+        }
+    });
 }

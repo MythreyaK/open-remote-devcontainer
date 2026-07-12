@@ -1,23 +1,24 @@
+import path from "node:path";
 import { describe, expect, test } from "vitest";
 import { setTimeout } from "node:timers/promises";
 
+import { run } from "../../../common/cmd";
 import { ContainerInspectResult, ContainerState } from "../../../engine/lifecycle";
 import { ContainerConfig } from "../../../engine/container";
 import { parseEnv } from "../../../common/utils";
 
 import { init, setupFixture, jsonFormat, TEST_CODIUM_INFO, ENGINE } from "../../common";
-import { run } from "../../../common/cmd";
 
-init();
+if (ENGINE) { init(); }
 
 describe.skipIf(!ENGINE)("integration: lifecycle: img-basic", () => {
-    if (!ENGINE) { throw new Error("Expected engine to be defined. Did you forget to skip-if a test?"); }
-    const engine = ENGINE;
+    const engine = ENGINE!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
 
     let cc: ContainerConfig;
     let container: ContainerState;
 
-    const { localWsf, localWsfBasename, config } = setupFixture({ name: "image-basic", testDir: __dirname });
+    const { localWsf, config } = setupFixture({ name: "image-basic", testDir: __dirname });
+    const devcPath = path.join(localWsf, ".devcontainer/devcontainer.json");
 
     const localEnv = {
         ...process.env,
@@ -27,7 +28,7 @@ describe.skipIf(!ENGINE)("integration: lifecycle: img-basic", () => {
 
     test("create", async () => {
         // TODO: use auto-detection
-        cc = ContainerConfig.create(localWsf, config, localEnv);
+        cc = ContainerConfig.create(localWsf, devcPath, config, localEnv);
 
         container = await ContainerState.create(localWsf, cc);
     }, 60 * 1000);

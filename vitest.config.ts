@@ -6,6 +6,9 @@ export default defineConfig({
         include: [ "src/**/test.ts", "src/**/*.test.ts" ],
         alias: {
             vscode: resolve(__dirname, './src/mocks/vscode.cts'),
-        }
+        },
+        typecheck: {
+            enabled: true,
+        },
     }
 })

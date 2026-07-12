@@ -40,11 +40,43 @@
     "commands": [
       {
         "command": "open-remote-devcontainer.getVersion",
-        "title": "Remote - Devcontainer: Get engine version"
+        "category": "Remote - Devcontainer",
+        "title": "Get engine version"
       },
       {
         "command": "open-remote-devcontainer.openRemote",
-        "title": "Remote - Devcontainer: Open workspace in container"
+        "category": "Remote - Devcontainer",
+        "title": "Open workspace in container"
+      },
+      {
+        "command": "open-remote-devcontainer.rebuildOpenRemote",
+        "category": "Remote - Devcontainer",
+        "title": "Rebuild and reopen in container"
+      },
+      {
+        "command": "open-remote-devcontainer.rebuildNoCacheOpenRemote",
+        "category": "Remote - Devcontainer",
+        "title": "Rebuild without cache and reopen in container"
+      },
+      {
+        "command": "open-remote-devcontainer.openLocal",
+        "category": "Remote - Devcontainer",
+        "title": "Reopen workspace locally"
+      },
+      {
+        "command": "open-remote-devcontainer.openLocal",
+        "category": "Remote - Devcontainer",
+        "title": "Close remote (reopen locally)"
+      },
+      {
+        "command": "open-remote-devcontainer.showDevcontainerFile",
+        "category": "Remote - Devcontainer",
+        "title": "Show configuration (devcontainer.json)"
+      },
+      {
+        "command": "open-remote-devcontainer.showLog",
+        "category": "Remote - Devcontainer",
+        "title": "Show log file"
       }
     ],
     "configuration": {
@@ -71,25 +103,28 @@
   },
   "enabledApiProposals": [
     "resolvers",
-    "contribViewsRemote"
+    "contribViewsRemote",
+    "taskPresentationGroup"
   ],
   "extensionKind": [
     "ui"
   ],
   "scripts": {
-    "vscode:prepublish": "npm run package",
-    "compile": "npm run check-types && npm run lint && node esbuild.js",
-    "package": "npm run check-types && npm run lint && node esbuild.js --production",
+    "build": "node esbuild.js && cp src/remote/installServer.sh dist/ && cp src/engine/Dockerfile dist/",
+    "build:clean": "rm -rf dist out",
+    "build:prod": "node esbuild.js --production && cp src/remote/installServer.sh dist/ && cp src/engine/Dockerfile dist/",
+    "compile": "tsc --noEmit && eslint src",
+    "test": "npm run test:noengine",
+    "test:noengine": "SKIP_ENGINE_TESTS=1 vitest run",
+    "test:engine": "vitest run",
+    "verify": "npm run compile && npm run test:noengine",
+    "verify:all": "npm run compile && npm run test:engine",
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",
     "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
-    "watch-tests": "tsc -p . -w --outDir out",
-    "compile-tests": "tsc -p . --outDir out",
-    "pretest": "npm run compile-tests && npm run compile && npm run lint",
-    "check-types": "tsc --noEmit",
-    "dts": "cd src/remote/typings && npx @vscode/dts dev",
-    "lint": "eslint src",
-    "test": "vitest run"
+    "package": "npm run verify && npm run build:prod",
+    "vscode:prepublish": "npm run package",
+    "dts": "cd src/remote/typings && dts dev"
   },
   "dependencies": {
     "jsonc-parser": "^3.3.1",
@@ -97,8 +132,9 @@
   },
   "devDependencies": {
     "@stylistic/eslint-plugin": "^5.10.0",
-    "@types/node": "22.x",
+    "@types/node": "^22.20.0",
     "@types/vscode": "^1.110.0",
+    "@vitest/coverage-v8": "^4.1.10",
     "@vscode/dts": "^0.4.1",
     "@vscode/vsce": "^3.9.2",
     "esbuild": "^0.28.1",

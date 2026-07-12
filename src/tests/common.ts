@@ -1,3 +1,4 @@
+import * as vscode from "vscode";
 import { window, workspace } from "vscode";
 import { afterAll, vi } from "vitest";
 import { spawnSync } from "node:child_process";
@@ -5,15 +6,18 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 
 import { runCmd } from "../common/cmd";
-import { initLog } from "../extension/log";
-import { ContainerState } from "../engine/lifecycle";
+import { _initLog } from "../extension/log";
 import { findDevcontainerJson } from "../extension/workspace";
 import { parseDevcontainerFile } from "../parser/parser";
+import { ContainerConfig } from "../engine/container";
 import * as server from "../remote/installServer";
 
+const DEBUG_TESTS = process.env.DEBUG_TESTS;
 let cached: string | undefined;
 
 export function getEngine() {
+    if (process.env.SKIP_ENGINE_TESTS) { return undefined; }
+
     const runCheck = () => {
         const engines = ["podman", "docker"];
 
@@ -40,16 +44,12 @@ export const TEST_CODIUM_INFO: server.ServerInfo = {
     serverUrlTemplate: "https://github.com/VSCodium/vscodium/releases/download/1.121.03429/vscodium-reh-${os}-${arch}-1.121.03429.tar.gz",
 };
 
-export const init = () => {
-    if (!ENGINE) { throw new Error("Expected engine to be defined. Did you forget to skip-if a test?"); }
+export const initMocks = () => {
     const spyCreateOutput = vi.spyOn(window, "createOutputChannel");
     spyCreateOutput.mockReturnValue({
-        // info: console.log,
-        // warn: console.log,
-        // error: console.log,
-        info: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
+        info: DEBUG_TESTS !== undefined ? console.log : vi.fn(),
+        warn: DEBUG_TESTS !== undefined ? console.log : vi.fn(),
+        error: DEBUG_TESTS !== undefined ? console.log : vi.fn(),
     } as any);
 
     const spySettings = vi.spyOn(workspace, "getConfiguration");
@@ -65,23 +65,35 @@ export const init = () => {
     const spyProdsJson = vi.spyOn(server, "getProductJson");
     spyProdsJson.mockResolvedValue(TEST_CODIUM_INFO);
 
-    initLog("Remote - Devcontainer (tests)");
+    (vscode as any).env = { remoteAuthority: undefined };
+
+    _initLog("Remote - Devcontainer (tests)");
 };
 
+export function init() {
+    if (!ENGINE) { throw new Error("No container engine (docker/podman) found. Cannot run integration tests."); }
+    initMocks();
+}
+
 export function setupFixture(opts: { name: string, testDir: string }) {
-    if (!ENGINE) { throw new Error("Expected engine to be defined. Did you forget to skip-if a test?"); }
+    if (!ENGINE) {
+        // called not from inside a test() but at describe-scope level, so can't throw
+        // it'll be resolved correctly during actual runs
+        // TODO: may be able to clean this up
+        return { localWsf: opts.testDir, localWsfBasename: path.parse(opts.testDir).base, config: undefined as any };
+    }
     const testDir = opts.testDir;
 
     if (!existsSync(testDir)) {
         throw new Error(`Test directory ${testDir} does not exist`);
     }
 
-    const containerName: string = ContainerState.getContainerName(testDir);
+    const containerName: string = ContainerConfig.getContainerName(testDir);
     const devcJson = findDevcontainerJson(testDir);
     const config = parseDevcontainerFile(devcJson);
 
     afterAll(async () => {
-        console.info(`Stopping and removing container ${containerName}`);
+        if (DEBUG_TESTS) { console.info(`Stopping and removing container ${containerName}`); }
         const proc1 = await runCmd(ENGINE, ["container", "stop", containerName], testDir, {});
         const proc2 = await runCmd(ENGINE, ["container", "rm", containerName], testDir, {});
 
@@ -89,6 +101,11 @@ export function setupFixture(opts: { name: string, testDir: string }) {
         if (proc2.exit !== 0) { console.warn("Warning: Containers were not removed cleanly. Maybe a bug?"); }
 
         if (proc1.exit !== 0 || proc2.exit !== 0) { await runCmd(ENGINE, ["container", "rm", "--force", containerName], testDir, {}); }
+
+        const stg1 = ContainerConfig._getStage1ImageName(testDir);
+        const stg2 = ContainerConfig._getStage2ImageName(testDir);
+        if (DEBUG_TESTS) { console.info(`Removing images [${stg1}, ${stg2}]`); }
+        await runCmd(ENGINE, ["image", "rm", stg1, stg2], testDir, {});
     });
 
     return { localWsf: testDir, localWsfBasename: path.parse(testDir).base, config: config };

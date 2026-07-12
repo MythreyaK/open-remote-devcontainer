@@ -2,29 +2,40 @@ import * as path from "node:path";
 import * as crypto from "node:crypto";
 
 import * as schema from "../parser/schema";
-import { getLogSink } from "../extension/log";
-import { ConfigError } from "../extension/error";
-import { getHostUserInfo } from "../common/utils";
+import { ConfigError, InternalError } from "../extension/error";
+import { HostUserInfo } from "../common/utils";
+import { EXTENSION_ID } from "../common/constants";
+import { getWorkspaceId } from "../extension/workspace";
 
 export interface ExecOpts {
     tty?: boolean,
     withRemoteEnv?: boolean,
 };
 
+export enum LifecycleCmd {
+    onCreate = "onCreate",
+    updateContent = "updateContent",
+    postCreate = "postCreate",
+    postStart = "postStart",
+    postAttach = "postAttachCommand",
+}
+
 export class ContainerConfig<T extends schema.Config = schema.Config> {
     public readonly cfg: T;
-    public readonly workspacePath: string;
+    public readonly workspaceFolder: string;
+    private readonly cfgPath: string;
     private readonly localEnv: NodeJS.ProcessEnv;
 
-    private constructor(cfg: T, workspacePath: string, localEnv: NodeJS.ProcessEnv) {
+    private constructor(workspaceFolder: string, cfgPath: string, cfg: T, localEnv: NodeJS.ProcessEnv) {
         this.cfg = cfg;
-        this.workspacePath = path.resolve(workspacePath);
+        this.workspaceFolder = workspaceFolder;
+        this.cfgPath = cfgPath;
         this.localEnv = localEnv;
         // normalize mount
     }
 
-    static create<T extends schema.Config>(workspacePath: string, cfg: T, localEnv: NodeJS.ProcessEnv = process.env): ContainerConfig<T> {
-        return new ContainerConfig(cfg, workspacePath, localEnv);
+    static create<T extends schema.Config>(workspacePath: string, cfgPath: string, cfg: T, localEnv: NodeJS.ProcessEnv = process.env): ContainerConfig<T> {
+        return new ContainerConfig(workspacePath, cfgPath, cfg, localEnv);
     }
 
     public isImageBased(): this is ContainerConfig<schema.ImageDevcontainer> {
@@ -35,28 +46,29 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         return schema.isDockerfileBased(this.cfg);
     }
 
-    // TODO: handle cacheFrom
-    public getBuildCmd(this: ContainerConfig<schema.DockerfileDevcontainer>): string[] {
+    public getBuildCmd(this: ContainerConfig<schema.DockerfileDevcontainer>, opts: { noCache: boolean } = { noCache: false }): string[] {
         return [
             "build",
+            ...(opts.noCache ? ["--pull", "--no-cache"] : this.getCacheFromArgs()),
             ...this.getBuildArgs(),
-            "-t", this.getImageName(),
-            "-f", this.cfg.build.dockerfile,
+            "-t", this.getStage1ImageName(),
+            "-f", this.getResolvedDockerfilePath(),
             ...(this.cfg.build.target ? ["--target", this.cfg.build.target] : []),
-            ...(this.cfg.build.options ? this.cfg.build.options : []),
-            this.cfg.build.context ?? this.workspacePath,
+            ...this.cfg.build.options,
+            this.getResolvedBuildcontextDir(),
         ].filter(Boolean)
-            .map(e => interpolateLocal(e, this.workspacePath, this.getRemoteMountDir(), this.localEnv));
+            .map(e => interpolateLocal(e, this.workspaceFolder, this.getRemoteMountDir(), this.localEnv));
     }
 
-    public async getStage2BuildCmd(imgUser: string | undefined): Promise<string[]> {
-        const stage2Args = await this.getStage2BuildArgs(imgUser);
+    public getStage2BuildCmd(hostUserInfo: HostUserInfo, imgUser: string | undefined, opts: { noCache: boolean } = { noCache: false }): string[] {
         return [
             "build",
-            ...stage2Args,
+            ...(opts.noCache ? ["--pull", "--no-cache"] : []),
+            ...this.getStage2BuildArgs(hostUserInfo, imgUser),
+            ...this.addLabels(),
             "-t", this.getStage2ImageName(),
             "-f", path.join(__dirname, "Dockerfile"),
-            this.workspacePath,
+            this.workspaceFolder,
         ].filter(Boolean);
     }
 
@@ -75,6 +87,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             ...this.addRunArgs(),
             ...this.addCaps(),
             ...this.addSecurityOpts(),
+            ...this.addLabels(),
             ...extraArgs,
             ...(this.cfg.privileged ? ["--privileged"] : []),
             ...(this.cfg.init ? ["--init"] : []),
@@ -85,36 +98,46 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             "-c",
             'trap "echo Got signal, exiting...; exit 0" SIGINT SIGTERM; while sleep 60 & wait $! ; do : ; done',
         ].filter(Boolean)
-            .map(e => interpolateLocal(e, this.workspacePath, this.getRemoteMountDir(), this.localEnv));
+            .map(e => interpolateLocal(e, this.workspaceFolder, this.getRemoteMountDir(), this.localEnv));
     }
 
-    public getImageName(this: ContainerConfig<schema.DockerfileDevcontainer>): string {
+    public getConfigLabel(): string {
+        return `${EXTENSION_ID}.configId=${this.getConfigId()}`;
+    }
+
+    static getWorkspaceIdLabel(workspace: string): string {
+        return `${EXTENSION_ID}.workspaceId=${getWorkspaceId(workspace)}`;
+    }
+
+    public getContainerName(): string {
+        return ContainerConfig.getContainerName(this.workspaceFolder);
+    }
+
+    public getStage1ImageName(this: ContainerConfig<schema.DockerfileDevcontainer>): string {
         // TODO: resolve symlinks?
         // const safeImgName = this.workspacePath.replaceAll('/[^a-z0-9.-]', '-');
-        return this._getImageName();
+        return ContainerConfig._getStage1ImageName(this.workspaceFolder);
     }
 
-    // useful for stage2 build
-    private _getImageName(): string {
-        // TODO: resolve symlinks?
-        // const safeImgName = this.workspacePath.replaceAll('/[^a-z0-9.-]', '-');
-        const idHash = crypto
-            .createHash("sha256")
-            .update(this.workspacePath)
-            .digest("hex")
-            .slice(0, 16);
-
-        getLogSink().info(`Image name from workspace '${this.workspacePath}' : '${idHash}'`);
-        return `codium-devcontainer-${idHash}`;
+    public getStage2ImageName(): string {
+        return ContainerConfig._getStage2ImageName(this.workspaceFolder);
     }
 
-    public getExecArgs(containerId: string, containerEnvs: NodeJS.ProcessEnv, opts: ExecOpts = { tty: false, withRemoteEnv: true }): string[] {
+    public addLabels(): string[] {
+        return [
+            "--label", this.getConfigLabel(),
+            "--label", ContainerConfig.getWorkspaceIdLabel(this.workspaceFolder),
+        ];
+    }
+
+    public getExecArgs(containerId: string, remoteEnvProbe: NodeJS.ProcessEnv, opts: ExecOpts = { tty: false, withRemoteEnv: true }): string[] {
         return [
             "exec",
             ...this.addRemoteUser(),
-            ...(opts.withRemoteEnv ? this.addRemoteEnv(containerEnvs) : []),
+            ...(opts.withRemoteEnv ? this.addRemoteEnv(remoteEnvProbe) : []),
             (opts.tty ? "-t" : ""),
             containerId,
+            ...(opts.withRemoteEnv ? this.getUnsetRemoteEnvArgs() : []),
         ].filter(Boolean);
     }
 
@@ -135,6 +158,25 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
           ?? "root";
     }
 
+    public getResolvedBuildcontextDir(this: ContainerConfig<schema.DockerfileDevcontainer>): string {
+        const cfgDir = path.dirname(this.cfgPath);
+        const ret = interpolateLocal(this.cfg.build.context, this.workspaceFolder, this.getRemoteMountDir(), this.localEnv);
+        return path.resolve(cfgDir, ret);
+    }
+
+    public getResolvedDockerfilePath(this: ContainerConfig<schema.DockerfileDevcontainer>): string {
+        const cfgDir = path.dirname(this.cfgPath);
+        const ret = interpolateLocal(this.cfg.build.dockerfile, this.workspaceFolder, this.getRemoteMountDir(), this.localEnv);
+        return path.resolve(cfgDir, ret);
+    }
+
+    private getCacheFromArgs(this: ContainerConfig<schema.DockerfileDevcontainer>): string[] {
+        const cf = this.cfg.build.cacheFrom;
+        if (!cf) { return []; }
+        const images = Array.isArray(cf) ? cf : [cf];
+        return images.flatMap(img => ["--cache-from", img]);
+    }
+
     private getBuildArgs(this: ContainerConfig<schema.DockerfileDevcontainer>): string[] {
         if (schema.isDockerfileBased(this.cfg)) {
             const args = this.cfg.build.args ?? {};
@@ -143,26 +185,25 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         return [];
     }
 
-    private async getStage2BuildArgs(imageUser: string | undefined): Promise<string[]> {
+    private getStage2BuildArgs(hostUserInfo: HostUserInfo, imageUser: string | undefined): string[] {
         const imageName = (() => {
             if (this.isImageBased()) { return this.cfg.image; }
-            else { return this._getImageName(); }
+            else if (this.isDockerfileBased()) { return this.getStage1ImageName(); }
+            else {
+                throw new InternalError("getStage2BuildArgs: Unhandled image-name branch");
+            }
         })();
 
         // priority order
         const username = this.getResolvedRemoteUser(imageUser);
 
-        const userInfo = await getHostUserInfo(this.workspacePath);
         return [
+            "--build-arg", `UPDATE_REMOTE_UID=${this.cfg.updateRemoteUserUID}`,
             "--build-arg", `BASE_IMAGE=${imageName}`,
-            "--build-arg", `HOST_UID=${userInfo.uid}`,
-            "--build-arg", `HOST_GID=${userInfo.gid}`,
+            "--build-arg", `HOST_UID=${hostUserInfo.uid}`,
+            "--build-arg", `HOST_GID=${hostUserInfo.gid}`,
             "--build-arg", `HOST_USERNAME=${username}`,
         ];
-    }
-
-    public getStage2ImageName(): string {
-        return `${this._getImageName()}-uid`;
     }
 
     private addAppPorts(): string[] {
@@ -194,18 +235,15 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     }
 
     private addSecurityOpts(): string[] {
-        if (this.cfg.securityOpt) { return this.cfg.securityOpt.flatMap(s => ["--security-opt", s]); }
-        else { return []; }
+        return this.cfg.securityOpt.flatMap(s => ["--security-opt", s]);
     }
 
     private addCaps(): string[] {
-        if (this.cfg.capAdd) { return this.cfg.capAdd.flatMap(c => ["--cap-add", c]); }
-        else { return []; }
+        return this.cfg.capAdd.flatMap(c => ["--cap-add", c]);
     }
 
     private addRunArgs(): string[] {
-        if (this.cfg.runArgs) { return this.cfg.runArgs; }
-        else { return []; }
+        return this.cfg.runArgs;
     }
 
     public getRemoteMountDir(): string {
@@ -213,14 +251,14 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             return schema.extractWorkspaceMount(this.cfg.workspaceMount)[0];
         }
         else {
-            const basename = path.parse(this.workspacePath).base;
+            const basename = path.parse(this.workspaceFolder).base;
             return `/workspace/${basename}`;
         }
     }
 
     private addWorkspaceMount(): string[] {
         if (this.cfg.workspaceMount) { return ["--mount", this.cfg.workspaceMount]; }
-        else { return ["-v", `${this.workspacePath}:${this.getRemoteMountDir()}`]; }
+        else { return ["-v", `${this.workspaceFolder}:${this.getRemoteMountDir()}`]; }
     }
 
     private addMounts(): string[] {
@@ -261,7 +299,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         return ret;
     }
 
-    public getResolvedRemoteEnv(containerEnvsProbe: NodeJS.ProcessEnv): Record<string, string> {
+    public getResolvedRemoteEnv(remoteEnvsProbe: NodeJS.ProcessEnv): Record<string, string> {
         const ret: Record<string, string> = {};
 
         for (const [k, v] of Object.entries(this.cfg.remoteEnv ?? {})) {
@@ -270,16 +308,30 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
                 /* ret.push("--env", k); */
             }
             else {
-                ret[k] = interpolateContainer(v, this.workspacePath, this.getRemoteMountDir(), this.localEnv, containerEnvsProbe);
+                ret[k] = interpolateContainer(v, this.workspaceFolder, this.getRemoteMountDir(), this.localEnv, remoteEnvsProbe);
             }
         }
         return ret;
     }
 
-    private addRemoteEnv(containerEnvsProbe: NodeJS.ProcessEnv): string[] {
+    /**
+     *
+     * @returns env -u ENV1 -u ENV2 for all ENVs that have undefined / null values
+     *          To be used with docker exec <container> env -u ENV ... <cmd>
+     */
+    public getUnsetRemoteEnvArgs(): string[] {
+        const unsetEnvs = Object.entries(this.cfg.remoteEnv ?? {})
+            .filter(([_, v]) => v === null)
+            .flatMap(([k, _]) => ["-u", k]);
+
+        if (unsetEnvs.length > 0) { return ["env", ...unsetEnvs]; }
+        else { return []; }
+    }
+
+    private addRemoteEnv(remoteEnvsProbe: NodeJS.ProcessEnv): string[] {
         const ret: string[] = [];
 
-        for (const [k, v] of Object.entries(this.getResolvedRemoteEnv(containerEnvsProbe))) {
+        for (const [k, v] of Object.entries(this.getResolvedRemoteEnv(remoteEnvsProbe))) {
             ret.push("--env", `${k}=${v}`);
         }
         return ret;
@@ -306,22 +358,45 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     // reference: https://containers.dev/implementors/json_reference/
     public getConfigId(): string {
         const items = JSON.stringify([
+            // image / build
+            "image" in this.cfg ? this.cfg.image : "",
+            "build" in this.cfg ? this.cfg.build : "",
+
+            // container creation
             this.cfg.name ?? "",
-            this.cfg.runArgs ?? "",
+            this.cfg.runArgs,
+            this.cfg.workspaceFolder ?? "",
+            this.cfg.workspaceMount ?? "",
+            this.cfg.mounts ?? "",
+            this.cfg.containerEnv ?? "",
+            this.cfg.containerUser ?? "",
+            this.cfg.updateRemoteUserUID,
+            this.cfg.overrideCommand,
+            this.cfg.init,
+            this.cfg.privileged,
+            this.cfg.capAdd,
+            this.cfg.securityOpt,
+            this.cfg.appPort ?? "",
+
+            // lifecycle
             this.cfg.initializeCommand ?? "",
             this.cfg.onCreateCommand ?? "",
             this.cfg.updateContentCommand ?? "",
             this.cfg.postCreateCommand ?? "",
             this.cfg.postStartCommand ?? "",
             this.cfg.postAttachCommand ?? "",
-            this.cfg.workspaceFolder ?? "",
-            this.cfg.workspaceMount ?? "",
-            this.cfg.mounts ?? "",
-            this.cfg.containerEnv ?? "",
+
+            // session (reconnect-only, but still part of config identity)
             this.cfg.remoteEnv ?? "",
-            this.cfg.containerUser ?? "",
             this.cfg.remoteUser ?? "",
-            // this.cfg.customizatios
+
+            // not yet supported
+            // this.cfg.features ?? "",
+            // this.cfg.overrideFeatureInstallOrder ?? "",
+            // this.cfg.hostRequirements ?? "",
+            // this.cfg.waitFor ?? "",
+            // this.cfg.portsAttributes ?? "",
+            // this.cfg.otherPortsAttributes ?? "",
         ]);
 
         return crypto
@@ -329,6 +404,78 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             .update(items)
             .digest("hex")
             .slice(0, 16);
+    }
+
+    public getInitializeCmd(): string[] | undefined {
+        const cmd = this.cfg.initializeCommand;
+        if (!cmd || cmd.length === 0) { return undefined; }
+        else {
+            if (typeof cmd === "string") { return ["/bin/sh", "-c", cmd]; }
+            else if (Array.isArray(cmd)) { return cmd; }
+        }
+
+        return undefined;
+    }
+
+    public getLifecycleCmd(cmdType: LifecycleCmd): Record<string, string[]> {
+        const cmd = (() => {
+            switch (cmdType) {
+                case LifecycleCmd.onCreate: return this.cfg.onCreateCommand;
+                case LifecycleCmd.updateContent: return this.cfg.updateContentCommand;
+                case LifecycleCmd.postCreate: return this.cfg.postCreateCommand;
+                case LifecycleCmd.postStart: return this.cfg.postStartCommand;
+                case LifecycleCmd.postAttach: return this.cfg.postAttachCommand;
+            }
+        })();
+
+        return ContainerConfig.normalizeLifecycleCmd(cmd);
+    }
+
+    static normalizeLifecycleCmd(args: schema.Cmd | undefined): Record<string, string[]> {
+        if (!args || (Array.isArray(args) && args.length === 0)) { return {}; }
+
+        if (typeof args === "string") {
+            return { string: ["/bin/sh", "-c", args] };
+        }
+        else if (Array.isArray(args)) {
+            return { array: args };
+        }
+        else {
+            const entries = Object.entries(args);
+            const mapped = entries.map(([k, v]) =>
+                // get a [key, transformed(value)] so that we
+                // can pair them back again in the end with fromEntries
+                [
+                    k,
+                    Object.values(this.normalizeLifecycleCmd(v))[0],
+                ],
+            );
+            return Object.fromEntries(mapped) as Record<string, string[]>;
+        }
+    }
+
+    public static getNameId(wsf: string): string {
+        return `codium-devcontainer-${getWorkspaceId(wsf)}`;
+    }
+
+    public static getContainerName(wsf: string): string {
+        return ContainerConfig.getNameId(wsf);
+    }
+
+    /**
+     *
+     * Only for use in tests. Not to be used directly
+     */
+    public static _getStage1ImageName(wsf: string): string {
+        return ContainerConfig.getNameId(wsf);
+    }
+
+    /**
+     *
+     * Only for use in tests. Not to be used directly
+     */
+    public static _getStage2ImageName(wsf: string): string {
+        return `${ContainerConfig._getStage1ImageName(wsf)}-uid`;
     }
 }
 

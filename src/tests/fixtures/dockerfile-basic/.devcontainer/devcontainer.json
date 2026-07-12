@@ -1,0 +1,25 @@
+{
+    "build": {
+        "dockerfile": "Dockerfile",
+        "args": {
+            "BUILD_ARG_TEST": "hello-from-build"
+        },
+        "context": ".."
+    },
+    "remoteUser": "ubuntu",
+    "containerEnv": {
+        "LOCAL_WSF": "${localWorkspaceFolder}",
+        "CENV_STATIC": "static-val"
+    },
+    "remoteEnv": {
+        "RENV_MIX": "${containerEnv:CENV_STATIC}:${localEnv:TEST_LOCAL_VAR}:${containerWorkspaceFolder}"
+    },
+    "onCreateCommand": {
+        "deps": "echo '{\"cmd\":\"onCreate-deps\",\"ts\":'$(date +%s%N)'}' >> /tmp/lifecycle.log",
+        "setup": "echo '{\"cmd\":\"onCreate-setup\",\"ts\":'$(date +%s%N)'}' > /tmp/onCreate-setup.log"
+    },
+    "updateContentCommand": "echo '{\"cmd\":\"updateContent\",\"ts\":'$(date +%s%N)'}' >> /tmp/lifecycle.log",
+    "postCreateCommand": "echo '{\"cmd\":\"postCreate\",\"ts\":'$(date +%s%N)'}' >> /tmp/lifecycle.log",
+    "postStartCommand": "echo '{\"cmd\":\"postStart\",\"ts\":'$(date +%s%N)'}' >> /tmp/lifecycle.log",
+    "postAttachCommand": "echo '{\"cmd\":\"postAttach\",\"ts\":'$(date +%s%N)'}' >> /tmp/lifecycle.log"
+}

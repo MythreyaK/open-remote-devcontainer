@@ -3,15 +3,17 @@ import { tmpdir } from "node:os";
 import { mkdirSync, writeFileSync } from "node:fs";
 
 import { run } from "../common/cmd";
-import { parseEnv } from "../common/utils";
 import { getLogSink } from "../extension/log";
-import { ContainerConfig } from "./container";
 import { formatCmdErr } from "../common/spawn";
-import { getWorkspaceId, NotificationLevel, showNotification } from "../extension/workspace";
+import { parseEnv, getHostUserInfo } from "../common/utils";
+import { ContainerConfig, LifecycleCmd } from "./container";
 import { EngineError, InstallError, InternalError } from "../extension/error";
+import { getWorkspaceId, NotificationLevel, showNotification } from "../extension/workspace";
 
 import * as settings from "../extension/settings";
 import * as server from "../remote/installServer";
+import { getContainerEngine } from "../extension/settings";
+import { EXTENSION_ID } from "../common/constants";
 
 const DEVCONTAINER_SERVER_LISTEN_PORT = 65432;
 const UUID_TOKEN_LEN = 36;
@@ -43,37 +45,66 @@ export interface ImageInspectResult {
     User: string | undefined,
 };
 
+export enum BuildOpts {
+    Default = "default",
+    Rebuild = "rebuild",
+    RebuildNoCache = "rebuildNoCache",
+};
+
 export class ContainerState {
     private readonly workspaceFolder: string;
-    private readonly tempDir: string;
     private readonly cc: ContainerConfig;
+    private readonly tempDir: string;
+    private readonly buildOpts: BuildOpts;
 
     private remoteEnvProbe: Record<string, string> = {};
     // private imageId: string;
 
-    private constructor(workspaceFolder: string, cc: ContainerConfig) {
+    private constructor(workspaceFolder: string, cc: ContainerConfig, opts: BuildOpts = BuildOpts.Default) {
         this.workspaceFolder = path.resolve(workspaceFolder);
+        this.cc = cc;
+        this.buildOpts = opts;
+
         this.tempDir = path.join(tmpdir(), `codium-devcontainer-${getWorkspaceId(this.workspaceFolder)}`);
         mkdirSync(this.tempDir, { recursive: true });
-
         getLogSink().info(`Created / using temp dir at ${this.tempDir}`);
-        this.cc = cc;
     }
 
-    public static async create(workspaceFolder: string, cc: ContainerConfig): Promise<ContainerState> {
-        const ret = new ContainerState(workspaceFolder, cc);
+    public static async create(workspaceFolder: string, cc: ContainerConfig, opts: BuildOpts = BuildOpts.Default): Promise<ContainerState> {
+        // mmm more spaghetti ... TODO: could use some cleanup
+        const ret = new ContainerState(workspaceFolder, cc, opts);
+        await ret.runInitializeCmd();
+
+        if (opts !== BuildOpts.Default) {
+            getLogSink().info(`'${opts}' requested ...`);
+            await ret.tryStopContainer();
+            await ret.removeContainer();
+        }
 
         const containerExists = await ret.tryContainerInspect(ret.getContainerName());
         let containerId: string | undefined;
 
+        if (opts !== BuildOpts.Default && containerExists !== undefined) {
+            throw new EngineError(`Failed to stop and remove container ${containerExists.Id}`);
+        }
+
+        let lifecycleCmds = true;
         if (containerExists === undefined) {
             containerId = await ret.createContainer();
+
             if (!await ret.isRunning()) {
                 throw new Error(`Could not start container ${ret.getContainerName()}`);
             }
+
+            ret.remoteEnvProbe = await ret.getContainerEnv();
+            lifecycleCmds &&= await ret.runLifecycleCmd(LifecycleCmd.onCreate)
+              && await ret.runLifecycleCmd(LifecycleCmd.updateContent)
+              && await ret.runLifecycleCmd(LifecycleCmd.postCreate)
+              && await ret.runLifecycleCmd(LifecycleCmd.postStart);
         }
         else if (!containerExists.State.Running) {
             containerId = await ret.startContainer();
+            lifecycleCmds &&= await ret.runLifecycleCmd(LifecycleCmd.postStart);
         }
         else {
             containerId = containerExists.Id;
@@ -87,6 +118,59 @@ export class ContainerState {
         return ret;
     }
 
+    private async runInitializeCmd() {
+        const cmd = this.cc.getInitializeCmd();
+        if (!cmd) { return; }
+
+        getLogSink().info(`InitializeCmd[host]: Executing cmd [${cmd.join(", ")}]`);
+        const res = await run([
+            ...cmd,
+        ], this.workspaceFolder, {});
+
+        if (res.exit === 0) {
+            getLogSink().info(`InitializeCmd[host]: OK: ${formatCmdErr(res)}`);
+        }
+        else {
+            getLogSink().info(`InitializeCmd[host]: ERROR: ${formatCmdErr(res)}`);
+        }
+    }
+
+    private async runLifecycleCmd(cmdType: LifecycleCmd) {
+        const cname = this.getContainerName();
+        const cmds = Object.entries(this.cc.getLifecycleCmd(cmdType));
+
+        const results = await Promise.allSettled(
+            cmds
+                .map(([name, cmd]) => {
+                    getLogSink().info(`LifecycleCmd: ${cmdType}[${cname}]: Executing '${name}' cmd [${cmd.join(", ")}]`);
+
+                    // TODO: run in bash as a single exec instead? Might lose per-pid error reporting
+                    return run([
+                        ...settings.getEngineCmd(),
+                        ...this.cc.getExecArgs(cname, this.remoteEnvProbe),
+                        ...cmd,
+                    ], this.workspaceFolder, {});
+                }));
+
+        let allOk = true;
+        for (let i = 0; i < results.length; ++i) {
+            const cmdName = cmds[i][0];
+            const res = results[i];
+
+            if (res.status === "fulfilled") {
+                const val = res.value;
+                allOk &&= (val.exit === 0);
+                getLogSink().info(`LifecycleCmd: ${cmdType}[${cname}]: OK: '${cmdName}' returned ${val.exit}`);
+            }
+            else {
+                allOk &&= false;
+                getLogSink().error(`LifecycleCmd: ${cmdType}[${cname}]: ERROR: '${cmdName}' failed to execute: ${res.reason}`);
+            }
+        }
+        getLogSink().info(`LifecycleCmd: ${cmdType}[${cname}] status: allOk=${allOk}`);
+        return allOk;
+    }
+
     public getConfig(): ContainerConfig {
         return this.cc;
     }
@@ -96,12 +180,8 @@ export class ContainerState {
         return ret.Id;
     }
 
-    public static getContainerName(wsf: string): string {
-        return `codium-devc-${getWorkspaceId(wsf)}`;
-    }
-
     public getContainerName(): string {
-        return `codium-devc-${getWorkspaceId(this.workspaceFolder)}`;
+        return this.cc.getContainerName();
     }
 
     private async createContainer() {
@@ -122,10 +202,10 @@ export class ContainerState {
             // ensure image exists
             const img = await this.tryInspectImage(stage1Image);
 
-            if (!img) {
+            if (!img || this.buildOpts !== BuildOpts.Default) {
                 // attempt to pull image
                 const imageHash = await (async () => {
-                    getLogSink().warn(`Image '${stage1Image}' does not exist, attempting to pull ...`);
+                    getLogSink().warn(`Image '${stage1Image}' does not exist or noCache specified, attempting to pull ...`);
                     const pullRes = await run([
                         ...settings.getEngineCmd(),
                         "pull",
@@ -164,9 +244,9 @@ export class ContainerState {
         }
 
         const imageUser = (() => {
-            const ret = (JSON.parse(imgUser.stdout.trim()) as ImageInspectResult).User;
-            if (!ret) { return undefined; }
-            else { return ret; }
+            const parsed = fixDockerImageInspect(imgUser.stdout.trim());
+            if (!parsed.User) { return undefined; }
+            else { return parsed.User; }
         })();
 
         const remoteUser = this.cc.getResolvedRemoteUser(imageUser);
@@ -177,9 +257,10 @@ export class ContainerState {
             showNotification(NotificationLevel.Warning, msg);
         }
 
+        const hostUserInfo = await getHostUserInfo(this.workspaceFolder);
         const ret = await run([
             ...settings.getEngineCmd(),
-            ...(await this.cc.getStage2BuildCmd(imageUser)),
+            ...this.cc.getStage2BuildCmd(hostUserInfo, imageUser, { noCache: this.buildOpts === BuildOpts.RebuildNoCache }),
         ], this.workspaceFolder, {});
 
         if (ret.exit !== 0) {
@@ -216,19 +297,46 @@ export class ContainerState {
         }
     }
 
-    public async stopContainer() {
+    public async tryStopContainer(opts: { force: boolean } = { force: false }) {
         const ret = await run([
             ...settings.getEngineCmd(),
             "stop",
+            ...(opts.force ? ["-t", "1"] : []),
             this.getContainerName(),
         ], this.workspaceFolder, {});
+        return ret;
+    }
+
+    public async stopContainer(opts: { force: boolean } = { force: false }) {
+        const ret = await this.tryStopContainer(opts);
 
         if (ret.exit !== 0) {
-            throw new EngineError(`Failed to stop container: ${formatCmdErr(ret)}`);
+            throw new EngineError(`Could not stop container: ${formatCmdErr(ret)}`);
+        }
+
+        return ret.stdout.trim();
+    }
+
+    public async removeContainer() {
+        const ret = await this.tryRemoveContainer();
+        if (ret.exit !== 0) {
+            getLogSink().error(`Could not remove container ${ret.exit}: ${ret.stderr.trim()}, forcing ...`);
+            const fRet = await this.tryRemoveContainer({ force: true });
+            return fRet.stdout.trim();
         }
         else {
             return ret.stdout.trim();
         }
+    }
+
+    public async tryRemoveContainer(opts: { force: boolean } = { force: false }) {
+        const ret = await run([
+            ...settings.getEngineCmd(),
+            "rm",
+            ...(opts.force ? ["--force"] : []),
+            this.getContainerName(),
+        ], this.workspaceFolder, {});
+        return ret;
     }
 
     private async inspectContainer(identifier: string): Promise<ContainerInspectResult> {
@@ -265,7 +373,7 @@ export class ContainerState {
             return undefined;
         }
         else {
-            return JSON.parse(res.stdout.trim()) as ImageInspectResult;
+            return fixDockerImageInspect(res.stdout.trim());
         }
     }
 
@@ -307,7 +415,7 @@ export class ContainerState {
 
             if (token.exit !== 0 || token.stdout.trim().length !== UUID_TOKEN_LEN) {
                 // TODO: reinstall server? force-restart with new token?
-                throw new InstallError(`Could not query token in container [stdout:${token.stdout}] [stderr:${token.stderr}]`);
+                throw new InstallError(`Could not query token in container [stdout:${token.stdout.trim()}] [stderr:${token.stderr.trim()}]`);
             }
             return token.stdout.trim();
         }
@@ -332,8 +440,8 @@ export class ContainerState {
         if (createRes.exit !== 0) {
             throw new EngineError(
                 `Failed to start ${this.getContainerName()}:\n`
-                + `stdout: ${createRes.stdout}\n`
-                + `stderr: ${createRes.stderr}\n`,
+                + `stdout: ${createRes.stdout.trim()}\n`
+                + `stderr: ${createRes.stderr.trim()}\n`,
             );
         }
         else {
@@ -378,7 +486,7 @@ export class ContainerState {
 
         const ret = await run([
             ...settings.getEngineCmd(),
-            ...this.cc.getBuildCmd(),
+            ...this.cc.getBuildCmd({ noCache: this.buildOpts === BuildOpts.RebuildNoCache }),
         ], this.workspaceFolder, {});
 
         if (ret.exit !== 0) {
@@ -388,10 +496,10 @@ export class ContainerState {
             const output = ret.stdout.trim();
 
             // expect image name to be in the generated name output
-            if (!output.includes(this.cc.getImageName())) {
-                throw new Error(`Expected image name to be in build tag output. This is a bug. Tag: '${output}' vs ${this.cc.getImageName()}`);
+            if (!output.includes(this.cc.getStage1ImageName())) {
+                throw new InternalError(`Expected image name to be in build tag output. Tag: '${output}' vs ${this.cc.getStage1ImageName()}`);
             }
-            return this.cc.getImageName();
+            return this.cc.getStage1ImageName();
         }
     }
 
@@ -405,7 +513,7 @@ export class ContainerState {
         );
     }
 
-    public async installServer(forceReinstall: boolean = false) {
+    public async installServer(extensionList: string[] = [], forceReinstall: boolean = false) {
         if (!await this.isRunning()) {
             await this.startContainer();
             if (!await this.isRunning()) {
@@ -435,8 +543,7 @@ export class ContainerState {
 
         const info: server.ScriptInstallInfo = {
             port: DEVCONTAINER_SERVER_LISTEN_PORT,
-            extensions: settings.getExtensionList(),
-            remoteEnvs: this.cc.getResolvedRemoteEnv(this.remoteEnvProbe),
+            extensions: extensionList,
             downloadTemplateUrl: prodJson.serverUrlTemplate,
             codiumVersion: prodJson.version,
             connectionToken: token,
@@ -473,7 +580,7 @@ export class ContainerState {
         );
 
         if (installExecResult.exit !== 0) {
-            const err = getInstallError(installExecResult.stdout);
+            const err = getInstallError(installExecResult.stdout.trim());
             throw new InstallError(`Install script at ${this.getContainerName()}:${destFile} failed with code ${installExecResult.exit}: Error: ${err}`);
         }
 
@@ -497,12 +604,16 @@ export class ContainerState {
             const allParts = portCmdRes.stdout.trim().split(":");
             const port = allParts.at(-1);
             if (port === undefined) {
-                throw new Error(`Could not extract port from '${portCmdRes.stdout}'. This is a bug.`);
+                throw new InternalError(`Could not extract port from '${portCmdRes.stdout}'.`);
             }
             else {
                 return port;
             }
         }
+    }
+
+    public async dispose() {
+        // TODO: handle shutdown in installServer.sh
     }
 }
 
@@ -520,4 +631,40 @@ function getInstallError(data: string) {
         // return `${errCode}${errMsg}`;
         return data;
     }
+}
+
+function fixDockerImageInspect(json: string): ImageInspectResult {
+    interface DockerImageInspectResult {
+        Config: {
+            User: string,
+        },
+    }
+
+    const data = JSON.parse(json.trim()) as unknown;
+    const parsed = data as ImageInspectResult;
+    if (getContainerEngine() === "docker") {
+        parsed.User = (data as DockerImageInspectResult).Config.User;
+    }
+    return parsed;
+}
+
+/**
+ *
+ * @param workspaceFolder
+ * @returns `undefined` if container doesn't exist. `true`/`false` if exists
+ */
+export async function queryContainerConfigId(workspaceFolder: string): Promise<string | undefined> {
+    const containerName = ContainerConfig.getContainerName(workspaceFolder);
+    const labelKey = `${EXTENSION_ID}.configId`;
+
+    const res = await run([
+        ...settings.getEngineCmd(),
+        "container", "inspect", containerName,
+        "--format", `{{index .Config.Labels "${labelKey}"}}`,
+    ], workspaceFolder, {});
+
+    if (res.exit !== 0) { return undefined; }
+
+    const id = res.stdout.trim();
+    return id.length > 0 ? id : undefined;
 }

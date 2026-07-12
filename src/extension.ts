@@ -1,31 +1,36 @@
 import * as vscode from "vscode";
 
-import { getContainerEngineVersion, openRemote } from "./extension/commands";
+import * as cmds from "./extension/commands";
+import { BuildOpts } from "./engine/lifecycle";
+import { initLogs } from "./extension/log";
 import { AUTHORITY_BASE, DevContainerResolver } from "./remote/resolver";
-import { initLog, getLogSink } from "./extension/log";
+import { createDevcontainerConfigWatcher, isRemoteSession } from "./extension/workspace";
 
-export const EXTENSION_ID: string = "open-remote-devcontainer";
-export const EXTENSION_PRETTY_NAME: string = "Remote - DevContainers";
+export function activate(ctx: vscode.ExtensionContext) {
+    const logger = initLogs(ctx);
 
-function getCmd(suffix: string) {
-    return `${EXTENSION_ID}.${suffix}`;
-}
+    const remoteResolver = new DevContainerResolver(ctx);
 
-export function activate(context: vscode.ExtensionContext) {
-    initLog(EXTENSION_PRETTY_NAME);
+    const configWatcher = createDevcontainerConfigWatcher(ctx);
 
-    const logger = getLogSink();
-    logger.info(`Activating ${EXTENSION_PRETTY_NAME} (${EXTENSION_ID})`);
-
-    const remoteResolver = new DevContainerResolver(context);
-
-    context.subscriptions.push(
+    ctx.subscriptions.push(
         vscode.workspace.registerRemoteAuthorityResolver(AUTHORITY_BASE, remoteResolver),
         remoteResolver,
-        vscode.commands.registerCommand(getCmd("getVersion"), () => getContainerEngineVersion()),
-        vscode.commands.registerCommand(getCmd("openRemote"), () => openRemote(context)),
+        vscode.commands.registerCommand(cmds.getCmd("getVersion"), async () => { await cmds.getContainerEngineVersion(); }),
+        vscode.commands.registerCommand(cmds.getCmd("openRemote"), async () => { await cmds.openRemote(ctx); }),
+        vscode.commands.registerCommand(cmds.getCmd("rebuildOpenRemote"), async () => { await cmds.openRemote(ctx, BuildOpts.Rebuild); }),
+        vscode.commands.registerCommand(cmds.getCmd("rebuildNoCacheOpenRemote"), async () => { await cmds.openRemote(ctx, BuildOpts.RebuildNoCache); }),
+        vscode.commands.registerCommand(cmds.getCmd("showDevcontainerFile"), () => { cmds.showDevcontainerFile(); }),
+        vscode.commands.registerCommand(cmds.getCmd("openLocal"), async () => { await cmds.openLocal(); }),
+        vscode.commands.registerCommand(cmds.getCmd("showLog"), () => { cmds.showLogFile(); }),
+        configWatcher,
         logger,
     );
+
+    if (isRemoteSession()) {
+        cmds.runPostAttachCommand();
+        cmds.remotePromptRebuildIfStale(ctx);
+    }
 }
 
 export function deactivate() { }

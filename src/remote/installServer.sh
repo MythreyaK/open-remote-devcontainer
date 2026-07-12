@@ -281,7 +281,6 @@ download_and_install_server
 
 # CODIUM_POST_DOWNLOAD_ENVS="CODIUM_INJECT_POST_DOWNLOAD_ENVS"
 
-#_CODIUM_INJECT_SERVER_LAUNCH_ENVS
 start_codium_server
 
 
