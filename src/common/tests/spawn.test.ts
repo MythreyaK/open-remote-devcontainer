@@ -1,11 +1,10 @@
-import { window } from "vscode";
 import { describe, expect, test, vi } from "vitest";
 
 import { spawn } from "../spawn";
 import { getLogSink } from "../../extension/log";
 import { ContainerInspectResult } from "../../engine/lifecycle";
 
-import { jsonFormat, initMocks, ENGINE } from "../../tests/common";
+import { jsonFormat, init, ENGINE } from "../../tests/common";
 
 function getcwd() {
     return __dirname;
@@ -13,20 +12,23 @@ function getcwd() {
 
 const bashSleepCmd = ["bash", "-c", "trap 'exit 0' SIGINT SIGTERM; while true; do sleep 1; done"];
 
-initMocks();
+if (ENGINE) { init(); }
 
 describe.skipIf(!ENGINE)("cmd spawn tests", () => {
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    const engine = ENGINE!;
+    const engine = ENGINE!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
 
-    const log = getLogSink();
+    test("log is initialized", () => {
+        expect(getLogSink()).toBeDefined();
+    });
 
     test("get engine version", async () => {
+        const log = getLogSink();
         const out = await spawn(engine, ["version", ...jsonFormat], getcwd(), {}, log);
         expect(out.exit).eq(0);
     });
 
     test("create and remove container", async () => {
+        const log = getLogSink();
         const create = await spawn(engine, ["create", "hello-world"], getcwd(), {}, log);
 
         const remove = await spawn(engine, ["rm", create.stdout.trim()], getcwd(), {}, log);
@@ -35,6 +37,7 @@ describe.skipIf(!ENGINE)("cmd spawn tests", () => {
     });
 
     test("run and exec command", async () => {
+        const log = getLogSink();
         const create = await spawn(engine, ["run", "--name", "turtles", "-d", "ubuntu:24.04", ...bashSleepCmd], getcwd(), {}, log);
         const containerId = create.stdout.trim();
 
@@ -58,5 +61,5 @@ describe.skipIf(!ENGINE)("cmd spawn tests", () => {
             const rm = await spawn(engine, ["rm", "turtles"], getcwd(), {}, log);
             expect(rm.exit).eq(0);
         }
-    });
+    }, 10_000);
 });

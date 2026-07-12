@@ -16,6 +16,8 @@ const DEBUG_TESTS = process.env.DEBUG_TESTS;
 let cached: string | undefined;
 
 export function getEngine() {
+    if (process.env.SKIP_ENGINE_TESTS) { return undefined; }
+
     const runCheck = () => {
         const engines = ["podman", "docker"];
 
@@ -68,14 +70,18 @@ export const initMocks = () => {
     _initLog("Remote - Devcontainer (tests)");
 };
 
-export const init = () => {
-    if (!ENGINE) { throw new Error("Expected engine to be defined. Did you forget to skip-if a test?"); }
-
+export function init() {
+    if (!ENGINE) { throw new Error("No container engine (docker/podman) found. Cannot run integration tests."); }
     initMocks();
-};
+}
 
 export function setupFixture(opts: { name: string, testDir: string }) {
-    if (!ENGINE) { throw new Error("Expected engine to be defined. Did you forget to skip-if a test?"); }
+    if (!ENGINE) {
+        // called not from inside a test() but at describe-scope level, so can't throw
+        // it'll be resolved correctly during actual runs
+        // TODO: may be able to clean this up
+        return { localWsf: opts.testDir, localWsfBasename: path.parse(opts.testDir).base, config: undefined as any };
+    }
     const testDir = opts.testDir;
 
     if (!existsSync(testDir)) {

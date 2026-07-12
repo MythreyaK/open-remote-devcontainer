@@ -8,9 +8,9 @@ import { ContainerConfig } from "../container";
 import { HostUserInfo } from "../../common/utils";
 import * as schema from "../../parser/schema";
 
-import { initMocks, ENGINE } from "../../tests/common";
+import { init, ENGINE } from "../../tests/common";
 
-initMocks();
+if (ENGINE) { init(); }
 
 const BASE_IMAGE = "ubuntu:24.04";
 
@@ -24,8 +24,7 @@ function imgCfg(overrides: Partial<schema.ImageDevcontainer> = {}): schema.Image
 }
 
 describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
-    if (!ENGINE) { throw new Error("Expected engine to be defined. Did you forget to skip-if a test?"); }
-    const engine = ENGINE;
+    const engine = ENGINE!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
 
     const images: string[] = [];
 

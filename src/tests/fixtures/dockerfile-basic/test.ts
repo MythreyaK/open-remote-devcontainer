@@ -8,7 +8,7 @@ import { getHostUserInfo, parseEnv } from "../../../common/utils";
 
 import { init, setupFixture, ENGINE } from "../../common";
 
-init();
+if (ENGINE) { init(); }
 
 interface LifecycleEntry {
     cmd: string,
@@ -20,8 +20,6 @@ function parseLifecycleLog(stdout: string): LifecycleEntry[] {
 }
 
 describe.skipIf(!ENGINE)("integration: dockerfile-basic", () => {
-    if (!ENGINE) { throw new Error("Expected engine to be defined. Did you forget to skip-if a test?"); }
-
     let cc: ContainerConfig;
     let container: ContainerState;
 
