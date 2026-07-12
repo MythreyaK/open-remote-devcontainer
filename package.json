@@ -40,38 +40,43 @@
     "commands": [
       {
         "command": "open-remote-devcontainer.getVersion",
-        "title": "Get engine version",
-        "category": "Remote - Devcontainer"
+        "category": "Remote - Devcontainer",
+        "title": "Get engine version"
       },
       {
         "command": "open-remote-devcontainer.openRemote",
-        "title": "Open workspace in container",
-        "category": "Remote - Devcontainer"
+        "category": "Remote - Devcontainer",
+        "title": "Open workspace in container"
       },
       {
         "command": "open-remote-devcontainer.rebuildOpenRemote",
-        "title": "Rebuild and reopen in container",
-        "category": "Remote - Devcontainer"
+        "category": "Remote - Devcontainer",
+        "title": "Rebuild and reopen in container"
       },
       {
         "command": "open-remote-devcontainer.rebuildNoCacheOpenRemote",
-        "title": "Rebuild without cache and reopen in container",
-        "category": "Remote - Devcontainer"
+        "category": "Remote - Devcontainer",
+        "title": "Rebuild without cache and reopen in container"
       },
       {
         "command": "open-remote-devcontainer.openLocal",
-        "title": "Reopen folder locally",
-        "category": "Remote - Devcontainer"
+        "category": "Remote - Devcontainer",
+        "title": "Reopen workspace locally"
+      },
+      {
+        "command": "open-remote-devcontainer.openLocal",
+        "category": "Remote - Devcontainer",
+        "title": "Close remote (reopen locally)"
       },
       {
         "command": "open-remote-devcontainer.showDevcontainerFile",
-        "title": "Show devcontainer.json",
-        "category": "Remote - Devcontainer"
+        "category": "Remote - Devcontainer",
+        "title": "Show configuration (devcontainer.json)"
       },
       {
         "command": "open-remote-devcontainer.showLog",
-        "title": "Show log file",
-        "category": "Remote - Devcontainer"
+        "category": "Remote - Devcontainer",
+        "title": "Show log file"
       }
     ],
     "configuration": {
