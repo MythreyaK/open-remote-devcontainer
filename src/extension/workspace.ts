@@ -84,15 +84,13 @@ export function showNotification(level: NotificationLevel, msg: string) {
     }
 }
 
-export function createDevcontainerConfigWatcher() {
-    const emptyDisposable = new vscode.Disposable(() => { });
-    let workspace: string | undefined;
+export function createDevcontainerConfigWatcher(ctx: vscode.ExtensionContext) {
+    let configPath: string | undefined;
 
     try {
-        workspace = getLocalWorkspaceFolder();
-        findDevcontainerJson(workspace);
+        const workspace = getLocalWorkspaceFolder();
+        configPath = findDevcontainerJson(workspace);
 
-        // if config failed, we throw, so safe to notify here
         if (!isRemoteSession()) {
             onOpenNotify(workspace);
         }
@@ -104,9 +102,22 @@ export function createDevcontainerConfigWatcher() {
         else {
             getLogSink().error(`Unknown error: ${JSON.stringify(e)}`);
         }
+        return new vscode.Disposable(() => { });
     }
 
-    return emptyDisposable;
+    const pattern = new vscode.RelativePattern(
+        vscode.Uri.file(path.dirname(configPath)),
+        path.basename(configPath),
+    );
+    const watcher = vscode.workspace.createFileSystemWatcher(pattern);
+
+    watcher.onDidChange(() => {
+        if (isRemoteSession()) {
+            cmds.remotePromptRebuildIfStale(ctx);
+        }
+    });
+
+    return watcher;
 }
 
 function onOpenNotify(_: string) {

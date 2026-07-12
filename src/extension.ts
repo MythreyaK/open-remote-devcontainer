@@ -11,7 +11,7 @@ export function activate(ctx: vscode.ExtensionContext) {
 
     const remoteResolver = new DevContainerResolver(ctx);
 
-    const configWatcher = createDevcontainerConfigWatcher();
+    const configWatcher = createDevcontainerConfigWatcher(ctx);
 
     ctx.subscriptions.push(
         vscode.workspace.registerRemoteAuthorityResolver(AUTHORITY_BASE, remoteResolver),
@@ -29,6 +29,7 @@ export function activate(ctx: vscode.ExtensionContext) {
 
     if (isRemoteSession()) {
         cmds.runPostAttachCommand();
+        cmds.remotePromptRebuildIfStale(ctx);
     }
 }
 

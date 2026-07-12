@@ -13,6 +13,7 @@ import { getWorkspaceId, NotificationLevel, showNotification } from "../extensio
 import * as settings from "../extension/settings";
 import * as server from "../remote/installServer";
 import { getContainerEngine } from "../extension/settings";
+import { EXTENSION_ID } from "../common/constants";
 
 const DEVCONTAINER_SERVER_LISTEN_PORT = 65432;
 const UUID_TOKEN_LEN = 36;
@@ -647,14 +648,23 @@ function fixDockerImageInspect(json: string): ImageInspectResult {
     return parsed;
 }
 
-// export function queryByWorkspaceId(workspace: string): {
+/**
+ *
+ * @param workspaceFolder
+ * @returns `undefined` if container doesn't exist. `true`/`false` if exists
+ */
+export async function queryContainerConfigId(workspaceFolder: string): Promise<string | undefined> {
+    const containerName = ContainerConfig.getContainerName(workspaceFolder);
+    const labelKey = `${EXTENSION_ID}.configId`;
 
-// }
+    const res = await run([
+        ...settings.getEngineCmd(),
+        "container", "inspect", containerName,
+        "--format", `{{index .Config.Labels "${labelKey}"}}`,
+    ], workspaceFolder, {});
 
-// export function rebuildNeeded(workspace: string): boolean {
-//     const workspaceLabel = ContainerConfig.getWorkspaceIdLabel(workspace);
+    if (res.exit !== 0) { return undefined; }
 
-//     // query by workspace label
-//     const container =
-//     return true;
-// }
+    const id = res.stdout.trim();
+    return id.length > 0 ? id : undefined;
+}
