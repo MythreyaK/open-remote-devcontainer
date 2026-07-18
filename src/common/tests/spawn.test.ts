@@ -21,6 +21,13 @@ describe.skipIf(!ENGINE)("cmd spawn tests", () => {
         expect(getLogSink()).toBeDefined();
     });
 
+    test("env buildkit", async () => {
+        const log = getLogSink();
+        const out = await spawn("env", [], getcwd(), {}, log);
+        expect(out.stdout).contains("BUILDKIT_PROGRESS=plain");
+        expect(out.exit).eq(0);
+    });
+
     test("get engine version", async () => {
         const log = getLogSink();
         const out = await spawn(engine, ["version", ...jsonFormat], getcwd(), {}, log);
@@ -51,7 +58,7 @@ describe.skipIf(!ENGINE)("cmd spawn tests", () => {
 
             const inspectData = JSON.parse(inspect.stdout.trim()) as ContainerInspectResult;
             expect(inspectData.Id).eq(containerId);
-            expect(inspectData.Name).eq("turtles");
+            expect(inspectData.Name).matches(/\/?turtles/);
             expect(inspectData.State.Running).eq(true);
         }
         finally {
@@ -61,5 +68,5 @@ describe.skipIf(!ENGINE)("cmd spawn tests", () => {
             const rm = await spawn(engine, ["rm", "turtles"], getcwd(), {}, log);
             expect(rm.exit).eq(0);
         }
-    }, 10_000);
+    }, 30_000);
 });

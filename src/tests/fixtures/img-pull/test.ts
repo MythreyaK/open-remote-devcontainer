@@ -43,7 +43,7 @@ describe.skipIf(!ENGINE)("integration: lifecycle: img-pull", () => {
 
         const inspectResult = await run([engine, "inspect", imageName, ...jsonFormat], localWsf, localEnv);
         expect(inspectResult.exit).not.eq(0);
-        expect(inspectResult.stdout).toBe("");
+        expect(inspectResult.stdout.trim()).toBe("");
 
         cc = ContainerConfig.create(localWsf, devcPath, config, localEnv);
         container = await ContainerState.create(localWsf, cc);

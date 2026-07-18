@@ -264,7 +264,9 @@ export class ContainerState {
         ], this.workspaceFolder, {});
 
         if (ret.exit !== 0) {
-            const errMsg = Array.from(ret.stderr.trim().matchAll(/{{DEVCONTAINER_STAGE2 ERROR: (.*?)}}/g));
+            // docker and podman output differs, some to stdout, some to stderr
+            const output = ret.stdout.trim() + ret.stderr.trim();
+            const errMsg = Array.from(output.matchAll(/{{DEVCONTAINER_STAGE2 ERROR: (.*?)}}/g));
             if (errMsg.length !== 1 || errMsg[0].length < 2) {
                 throw new Error(`Could not build stage2 image with unknown error: ${formatCmdErr(ret)}`);
             }
@@ -493,7 +495,8 @@ export class ContainerState {
             throw new EngineError(`Could not build stage1 image ${formatCmdErr(ret)}`);
         }
         else {
-            const output = ret.stdout.trim();
+            // docker and podman output differs, some to stdout, some to stderr
+            const output = ret.stdout.trim() + ret.stderr.trim();
 
             // expect image name to be in the generated name output
             if (!output.includes(this.cc.getStage1ImageName())) {

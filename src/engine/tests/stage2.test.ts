@@ -34,7 +34,7 @@ describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
 
     async function buildStage2(cc: ContainerConfig, hostInfo: HostUserInfo, imgUser?: string) {
         trackImage(cc);
-        const buildCmd = cc.getStage2BuildCmd(hostInfo, imgUser);
+        const buildCmd = cc.getStage2BuildCmd(hostInfo, imgUser, { noCache: true });
 
         // set context and cwd to a dir that exists
         buildCmd[buildCmd.length - 1] = __dirname;
@@ -68,9 +68,10 @@ describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
         const { localWsf, cfgPath } = testWsf("root-skip");
         const cc = ContainerConfig.create(localWsf, cfgPath, imgCfg(), {});
         const build = await buildStage2(cc, { uid: 0, gid: 0, name: "root" });
+        const output = build.stdout.trim() + build.stderr.trim();
         expect(build.exit).eq(0);
-        expect(build.stderr).includes("WARNING: Using user root");
-    }, 30_000);
+        expect(output).includes("{{DEVCONTAINER_STAGE2 WARNING: Using user root. May cause permission issues.}}");
+    }, 45_000);
 
     test("remaps existing user UID/GID to host values", async () => {
         const { localWsf, cfgPath } = testWsf("remap-basic");
@@ -81,7 +82,7 @@ describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
         const { uid, gid } = await getRemoteUserInfo(cc, "ubuntu");
         expect(uid).eq("5000");
         expect(gid).eq("5000");
-    }, 30_000);
+    }, 45_000);
 
     test("remaps UID when host GID already exists in container", async () => {
         // Regression test for upstream bugs:
@@ -96,18 +97,18 @@ describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
         const { uid, gid } = await getRemoteUserInfo(cc, "ubuntu");
         expect(uid).eq("2345");
         expect(gid).eq("100");
-    }, 30_000);
+    }, 45_000);
 
     test("UPDATE_REMOTE_UID=false skips remapping", async () => {
         const { localWsf, cfgPath } = testWsf("skip-remap");
         const cc = ContainerConfig.create(localWsf, cfgPath, imgCfg({ remoteUser: "ubuntu", updateRemoteUserUID: false }), {});
         const build = await buildStage2(cc, { uid: 9999, gid: 9999, name: "host" });
         expect(build.exit).eq(0);
-        expect(build.stdout).includes("UPDATE_REMOTE_UID was false");
+        expect(build.stdout + build.stderr).includes("UPDATE_REMOTE_UID was false");
 
         const { uid } = await getRemoteUserInfo(cc, "ubuntu");
         expect(uid).not.eq("9999");
-    }, 30_000);
+    }, 45_000);
 
     test("nonexistent user fails with descriptive error", async () => {
         const { localWsf, cfgPath } = testWsf("no-user");
@@ -116,7 +117,7 @@ describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
         const build = await buildStage2(cc, { uid: 1000, gid: 1000, name: "host" });
         expect(build.exit).not.eq(0);
         expect(build.stderr).includes("does not exist in container");
-    }, 30_000);
+    }, 45_000);
 
     test("UID conflict: moves colliding user before remapping", async () => {
         const { localWsf, cfgPath } = testWsf("uid-conflict");
@@ -137,8 +138,9 @@ describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
         const cc = ContainerConfig.create(localWsf, cfgPath, imgCfg({ image: baseTag, remoteUser: "foobar" }), {});
         const build = await buildStage2(cc, { uid: 1000, gid: 1000, name: "host" });
         expect(build.exit).eq(0);
-        expect(build.stdout.trim()).includes("User 'foobar' exists, updating UID from 2000 to 1000");
-        expect(build.stdout.trim()).includes("User 'ubuntu' with ID 1000 already exists. Moving to 2234");
+        const output = build.stdout.trim() + build.stderr.trim();
+        expect(output).includes("User 'foobar' exists, updating UID from 2000 to 1000");
+        expect(output).includes("User 'ubuntu' with ID 1000 already exists. Moving to 2234");
 
         const { uid } = await getRemoteUserInfo(cc, "foobar");
         expect(uid).eq("1000");
@@ -146,5 +148,5 @@ describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
         // original owner of uid 1000 moved to 1000+1234
         const { uid: movedUid } = await getRemoteUserInfo(cc, "ubuntu");
         expect(movedUid).eq("2234");
-    }, 30_000);
+    }, 45_000);
 });

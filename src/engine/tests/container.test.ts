@@ -411,8 +411,11 @@ describe("ContainerConfig tests", async () => {
             const stage2 = cc.getStage2BuildCmd(hostUserInfo, "root", { noCache: true }).join(" ");
             expect(stage2)
                 .includes("build ")
-                .includes(" --pull ")
                 .includes(" --no-cache ");
+
+            // stage2 source is always local
+            expect(stage2)
+                .not.includes(" --pull ");
 
             expect(stage2.endsWith(` ${__dirname}`)).toBe(true);
         }

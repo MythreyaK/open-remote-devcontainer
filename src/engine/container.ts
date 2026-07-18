@@ -63,7 +63,8 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     public getStage2BuildCmd(hostUserInfo: HostUserInfo, imgUser: string | undefined, opts: { noCache: boolean } = { noCache: false }): string[] {
         return [
             "build",
-            ...(opts.noCache ? ["--pull", "--no-cache"] : []),
+            // stage2 source is always local, so no --pull here
+            ...(opts.noCache ? ["--no-cache"] : []),
             ...this.getStage2BuildArgs(hostUserInfo, imgUser),
             ...this.addLabels(),
             "-t", this.getStage2ImageName(),
