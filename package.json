@@ -110,10 +110,11 @@
     "ui"
   ],
   "scripts": {
-    "build": "node esbuild.js && cp src/remote/installServer.sh dist/ && cp src/engine/Dockerfile dist/",
+    "compile": "tsc --noEmit && eslint src",
+    "build": "npm run build:dev",
+    "build:dev": "node esbuild.js && cp src/remote/installServer.sh dist/ && cp src/engine/Dockerfile dist/",
     "build:clean": "rm -rf dist out",
     "build:prod": "node esbuild.js --production && cp src/remote/installServer.sh dist/ && cp src/engine/Dockerfile dist/",
-    "compile": "tsc --noEmit && eslint src",
     "test": "npm run test:noengine",
     "test:noengine": "SKIP_ENGINE_TESTS=1 vitest run",
     "test:engine": "vitest run",
@@ -122,8 +123,10 @@
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",
     "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
-    "package": "npm run verify && npm run build:prod",
-    "vscode:prepublish": "npm run package",
+    "package": "npm run verify && npm run build:prod && npm run vsce",
+    "package:all": "npm run verify:all && npm run build:prod && npm run vsce",
+    "package:clean": "npm run build:clean && npm run package",
+    "vsce": "vsce package",
     "dts": "cd src/remote/typings && dts dev"
   },
   "dependencies": {

@@ -20,8 +20,14 @@ export function getEngine() {
     if (process.env.SKIP_ENGINE_TESTS) { return undefined; }
 
     const runCheck = () => {
-        const engines = ["podman", "docker"];
+        const explicit = process.env.CONTAINER_ENGINE;
+        if (explicit) {
+            const res = spawnSync(explicit, ["version"], { stdio: "pipe", env: process.env });
+            if (!res.error) { return explicit; }
+            throw new Error(`CONTAINER_ENGINE="${explicit}" is set but not found on PATH`);
+        }
 
+        const engines = ["podman", "docker"];
         for (const engine of engines) {
             const res = spawnSync(engine, ["version"], { stdio: "pipe", env: process.env });
             if (!res.error) {
