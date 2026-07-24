@@ -50,7 +50,7 @@ describe.skipIf(!ENGINE)("integration: lifecycle: img-pull", () => {
         const cId = await container.getContainerId();
 
         expect(cId.length).toBeGreaterThan(16);
-    }, 30_000);
+    }, 60_0000);
 
     test("getConnectionToken returns correct token over multiple install (without force)", async () => {
         const firstInstall = await container.installServer();

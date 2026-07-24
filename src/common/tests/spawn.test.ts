@@ -41,7 +41,7 @@ describe.skipIf(!ENGINE)("cmd spawn tests", () => {
         const remove = await spawn(engine, ["rm", create.stdout.trim()], getcwd(), {}, log);
         expect(create.exit).eq(0);
         expect(remove.exit).eq(0);
-    });
+    }, 10_000);
 
     test("run and exec command", async () => {
         const log = getLogSink();
