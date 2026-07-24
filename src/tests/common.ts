@@ -12,7 +12,8 @@ import { parseDevcontainerFile } from "../parser/parser";
 import { ContainerConfig } from "../engine/container";
 import * as server from "../remote/installServer";
 
-const DEBUG_TESTS = process.env.DEBUG_TESTS;
+const DEBUG_TESTS: boolean = process.env.DEBUG_TESTS !== undefined
+  && ["true", "on", "t", "1"].includes(process.env.DEBUG_TESTS.toLowerCase());
 let cached: string | undefined;
 
 export function getEngine() {
@@ -47,9 +48,9 @@ export const TEST_CODIUM_INFO: server.ServerInfo = {
 export const initMocks = () => {
     const spyCreateOutput = vi.spyOn(window, "createOutputChannel");
     spyCreateOutput.mockReturnValue({
-        info: DEBUG_TESTS !== undefined ? console.log : vi.fn(),
-        warn: DEBUG_TESTS !== undefined ? console.log : vi.fn(),
-        error: DEBUG_TESTS !== undefined ? console.log : vi.fn(),
+        info: DEBUG_TESTS ? console.log : vi.fn(),
+        warn: DEBUG_TESTS ? console.log : vi.fn(),
+        error: DEBUG_TESTS ? console.log : vi.fn(),
     } as any);
 
     const spySettings = vi.spyOn(workspace, "getConfiguration");
