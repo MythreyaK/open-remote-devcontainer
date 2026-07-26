@@ -56,7 +56,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             const wsBasename = path.parse(localWsf).base;
             return {
                 remoteWorkspace: remoteWsFolder,
-                workspaceMount: `source=${localWsf},target=/workspace/${wsBasename},type=bind`,
+                workspaceMount: `source=${localWsf},target=/workspaces/${wsBasename},type=bind`,
             };
         }
         else if (wsMount && !remoteWsFolder) {
@@ -78,8 +78,8 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         else {
             const wsBasename = path.parse(localWsf).base;
             return {
-                remoteWorkspace: `/workspace/${wsBasename}`,
-                workspaceMount: `source=${localWsf},target=/workspace/${wsBasename},type=bind`,
+                remoteWorkspace: `/workspaces/${wsBasename}`,
+                workspaceMount: `source=${localWsf},target=/workspaces/${wsBasename},type=bind`,
             };
         }
     }
@@ -298,18 +298,13 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     }
 
     public getRemoteMountDir(): string {
-        if (this.cfg.workspaceMount) {
-            return schema.extractWorkspaceMount(this.cfg.workspaceMount)[0];
-        }
-        else {
-            const basename = path.parse(this.workspaceFolder).base;
-            return `/workspace/${basename}`;
-        }
+        if (!this.cfg.workspaceMount) throw new InternalError("getDefaultWorkspaceMount should've set defaults.");
+        return schema.extractWorkspaceMount(this.cfg.workspaceMount)[0];
     }
 
     private addWorkspaceMount(): string[] {
-        if (this.cfg.workspaceMount) { return ["--mount", this.cfg.workspaceMount]; }
-        else { return ["-v", `${this.workspaceFolder}:${this.getRemoteMountDir()}`]; }
+        if (!this.cfg.workspaceMount) throw new InternalError("getDefaultWorkspaceMount should've set defaults.");
+        return ["--mount", this.cfg.workspaceMount];
     }
 
     private addMounts(): string[] {
