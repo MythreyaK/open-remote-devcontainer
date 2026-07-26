@@ -77,7 +77,7 @@ describe("ContainerConfig tests", async () => {
         });
 
         test("both set: passthrough", () => {
-            for (const dir of [ "/custom/dir", "/custom/dir/subdir" ]) {
+            for (const dir of ["/custom/dir", "/custom/dir/subdir"]) {
                 const cfg = withDefaults({
                     name: "test",
                     image: "ubuntu:24.04",
@@ -93,8 +93,10 @@ describe("ContainerConfig tests", async () => {
                 expect(cc.isImageBased()).toBe(true);
                 if (cc.isImageBased()) {
                     const createArgs = cc.getRunCreateCmd(cfg.image, "foobar");
+
+                    expect(cfg.workspaceMount).toBeDefined();
                     expect(createArgs.join(" "))
-                        .contains(` --mount ${cfg.workspaceMount!.replace("${localWorkspaceFolder}", localWsf)} `)
+                        .contains(` --mount ${cfg.workspaceMount?.replace("${localWorkspaceFolder}", localWsf)} `)
                         .not.contains("${localWorkspaceFolder}")
                         .not.contains("/custom/dir/subdir");
                 }

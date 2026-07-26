@@ -298,12 +298,12 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     }
 
     public getRemoteMountDir(): string {
-        if (!this.cfg.workspaceMount) throw new InternalError("getDefaultWorkspaceMount should've set defaults.");
+        if (!this.cfg.workspaceMount) { throw new InternalError("getDefaultWorkspaceMount should've set defaults."); }
         return schema.extractWorkspaceMount(this.cfg.workspaceMount)[0];
     }
 
     private addWorkspaceMount(): string[] {
-        if (!this.cfg.workspaceMount) throw new InternalError("getDefaultWorkspaceMount should've set defaults.");
+        if (!this.cfg.workspaceMount) { throw new InternalError("getDefaultWorkspaceMount should've set defaults."); }
         return ["--mount", this.cfg.workspaceMount];
     }
 
