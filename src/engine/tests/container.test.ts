@@ -56,51 +56,53 @@ describe("ContainerConfig tests", async () => {
         sanityCheck(localWsf, cfgPath);
     });
 
-    test("test workspace mounts (default)", () => {
-        {
-            const cfg = withDefaults({
-                name: "test",
-                image: "ubuntu:24.04",
-            });
+    describe("workspace mounts", () => {
+        test("test workspace mounts (default)", () => {
+            {
+                const cfg = withDefaults({
+                    name: "test",
+                    image: "ubuntu:24.04",
+                });
 
-            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
-            expect(cc.isImageBased()).toBe(true);
+                const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+                expect(cc.isImageBased()).toBe(true);
 
-            if (cc.isImageBased()) {
-                const createArgs = cc.getRunCreateCmd(cfg.image, "foobar");
+                if (cc.isImageBased()) {
+                    const createArgs = cc.getRunCreateCmd(cfg.image, "foobar");
 
-                expect(cc.getRemoteMountDir()).eq("/workspace/dir");
-                expect(createArgs[0]).eq("run");
-                expect(createArgs[1]).eq("-d");
-                expect(createArgs)
-                    .contains("/tmp/dir:/workspace/dir");
+                    expect(cc.getRemoteMountDir()).eq("/workspace/dir");
+                    expect(createArgs[0]).eq("run");
+                    expect(createArgs[1]).eq("-d");
+                    expect(createArgs)
+                        .contains("/tmp/dir:/workspace/dir");
+                }
             }
-        }
-    });
+        });
 
-    test("test workspace mounts (explicit)", () => {
-        {
-            const cfg = withDefaults({
-                name: "test",
-                image: "ubuntu:24.04",
-                // workspaceFolder: "/custom/subdir/repodir",
-                workspaceMount: "source=${localWorkspaceFolder}/sub-folder,target=/workspace/dir,type=bind,consistency=cached",
-            });
+        test("test workspace mounts (explicit)", () => {
+            {
+                const cfg = withDefaults({
+                    name: "test",
+                    image: "ubuntu:24.04",
+                    // workspaceFolder: "/custom/subdir/repodir",
+                    workspaceMount: "source=${localWorkspaceFolder}/sub-folder,target=/workspace/dir,type=bind,consistency=cached",
+                });
 
-            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
-            expect(cc.isImageBased()).toBe(true);
+                const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+                expect(cc.isImageBased()).toBe(true);
 
-            if (cc.isImageBased()) {
-                const createArgs = cc.getRunCreateCmd(cfg.image, "foobar");
+                if (cc.isImageBased()) {
+                    const createArgs = cc.getRunCreateCmd(cfg.image, "foobar");
 
-                expect(cc.getRemoteMountDir()).eq("/workspace/dir");
-                expect(createArgs[0]).eq("run");
-                expect(createArgs[1]).eq("-d");
-                expect(createArgs)
-                    .contains(`${cfg.workspaceMount?.replace("${localWorkspaceFolder}", localWsf)}`)
-                    .not.contains("${localWorkspaceFolder}");
+                    expect(cc.getRemoteMountDir()).eq("/workspace/dir");
+                    expect(createArgs[0]).eq("run");
+                    expect(createArgs[1]).eq("-d");
+                    expect(createArgs)
+                        .contains(`${cfg.workspaceMount?.replace("${localWorkspaceFolder}", localWsf)}`)
+                        .not.contains("${localWorkspaceFolder}");
+                }
             }
-        }
+        });
     });
 
     test("variable interpolation", () => {
