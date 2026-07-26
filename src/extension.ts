@@ -29,7 +29,9 @@ export function activate(ctx: vscode.ExtensionContext) {
 
     if (isRemoteSession()) {
         cmds.runPostAttachCommand();
-        cmds.remotePromptRebuildIfStale(ctx);
+        void remoteResolver.onContainerReady.then(() => {
+            cmds.remotePromptRebuildIfStale(ctx);
+        });
     }
 }
 

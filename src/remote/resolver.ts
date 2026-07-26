@@ -47,6 +47,8 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
     private localWsf: string = "";
 
     private statusItemFormatter: vscode.Disposable | undefined;
+    private onContainerReadyFunc?: () => void;
+    public readonly onContainerReady = new Promise<void>((r) => { this.onContainerReadyFunc = r; });
 
     constructor(context: vscode.ExtensionContext) {
         this.extensionCtx = context;
@@ -132,6 +134,8 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
 
         const ctkn = await this.containerState.getConnectionToken();
         progress.report({ message: "Opening remote...", increment: 10 });
+
+        this.onContainerReadyFunc?.();
 
         return new vscode.ResolvedAuthority(host, port, ctkn);
     }
