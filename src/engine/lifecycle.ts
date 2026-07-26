@@ -20,6 +20,10 @@ const UUID_TOKEN_LEN = 36;
 
 const jsonFormat = ["--format", "{{json .}}"];
 
+export const STAGE2_INFO_MSG_REGEX = /{{DEVCONTAINER_STAGE2 INFO: (.*?)}}/g;
+export const STAGE2_WARN_MSG_REGEX = /{{DEVCONTAINER_STAGE2 WARNING: (.*?)}}/g;
+export const STAGE2_ERR_MSG_REGEX = /{{DEVCONTAINER_STAGE2 ERROR: (.*?)}}/g;
+
 export interface ContainerInspectResult {
     Id: string,
     Name: string,
@@ -266,9 +270,10 @@ export class ContainerState {
         if (ret.exit !== 0) {
             // docker and podman output differs, some to stdout, some to stderr
             const output = ret.stdout.trim() + ret.stderr.trim();
-            const errMsg = Array.from(output.matchAll(/{{DEVCONTAINER_STAGE2 ERROR: (.*?)}}/g));
-            if (errMsg.length !== 1 || errMsg[0].length < 2) {
-                throw new Error(`Could not build stage2 image with unknown error: ${formatCmdErr(ret)}`);
+            const errMsg = Array.from(output.matchAll(STAGE2_ERR_MSG_REGEX));
+            getLogSink().error(JSON.stringify(errMsg));
+            if (errMsg.length < 1 || errMsg[0].length < 2) {
+                throw new Error(`Could not build stage2 image with unknown error :: ${formatCmdErr(ret)}`);
             }
             else {
                 throw new EngineError(`Could not build stage2 image: ${errMsg[0][1]}`);

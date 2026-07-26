@@ -7,6 +7,7 @@ import { runCmd } from "../../common/cmd";
 import { ContainerConfig } from "../container";
 import { HostUserInfo } from "../../common/utils";
 import * as schema from "../../parser/schema";
+import { STAGE2_ERR_MSG_REGEX, STAGE2_INFO_MSG_REGEX, STAGE2_WARN_MSG_REGEX } from "../lifecycle";
 
 import { init, ENGINE } from "../../tests/common";
 
@@ -70,7 +71,9 @@ describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
         const build = await buildStage2(cc, { uid: 0, gid: 0, name: "root" });
         const output = build.stdout.trim() + build.stderr.trim();
         expect(build.exit).eq(0);
-        expect(output).includes("{{DEVCONTAINER_STAGE2 WARNING: Using user root. May cause permission issues.}}");
+        const warnMsg = Array.from(output.matchAll(STAGE2_WARN_MSG_REGEX));
+        expect(warnMsg.length).eq(1);
+        expect(warnMsg[0][1]).includes("Using user root");
     }, 45_000);
 
     test("remaps existing user UID/GID to host values", async () => {
@@ -104,7 +107,10 @@ describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
         const cc = ContainerConfig.create(localWsf, cfgPath, imgCfg({ remoteUser: "ubuntu", updateRemoteUserUID: false }), {});
         const build = await buildStage2(cc, { uid: 9999, gid: 9999, name: "host" });
         expect(build.exit).eq(0);
-        expect(build.stdout + build.stderr).includes("UPDATE_REMOTE_UID was false");
+        const output = build.stdout.trim() + build.stderr.trim();
+        const infoMsg = Array.from(output.matchAll(STAGE2_INFO_MSG_REGEX));
+        expect(infoMsg.length).eq(1);
+        expect(infoMsg[0][1]).includes("UPDATE_REMOTE_UID was false");
 
         const { uid } = await getRemoteUserInfo(cc, "ubuntu");
         expect(uid).not.eq("9999");
@@ -116,7 +122,10 @@ describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
 
         const build = await buildStage2(cc, { uid: 1000, gid: 1000, name: "host" });
         expect(build.exit).not.eq(0);
-        expect(build.stderr).includes("does not exist in container");
+        const output = build.stdout.trim() + build.stderr.trim();
+        const errMsg = Array.from(output.matchAll(STAGE2_ERR_MSG_REGEX));
+        expect(errMsg.length).toBeGreaterThanOrEqual(1);
+        expect(errMsg[0][1]).includes("does not exist in container");
     }, 45_000);
 
     test("UID conflict: moves colliding user before remapping", async () => {

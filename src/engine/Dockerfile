@@ -11,6 +11,7 @@ SHELL [ "/bin/sh", "-c" ]
 USER root
 
 RUN set -e;                                     \
+_M="{{DEVCONTAINER_STAGE2";                     \
 NOUPD_MSG="UPDATE_REMOTE_UID was false";        \
 OS_ID=$(. /etc/os-release && echo "$ID");       \
 if [ "$OS_ID" = "alpine" ]; then                \
@@ -21,7 +22,7 @@ elif [ "$OS_ID" = "fedora" ]; then              \
     dnf install -y curl;                        \
 fi;                                             \
 if [ "$UPDATE_REMOTE_UID" = "false" ]; then     \
-    echo "{{DEVCONTAINER_STAGE2 INFO: ${NOUPD_MSG}}}"; \
+    echo "${_M} INFO: ${NOUPD_MSG}}}"; \
     exit 0;                                     \
 fi;                                             \
 #                                               \
@@ -30,7 +31,7 @@ FIXUP_FAIL_MSG="Not attempting to resolve user UID/GID fixup. Please fix it in a
 USER_DNE_MSG="User '${HOST_USERNAME}' does not exist in container";                                         \
 #                                                                                                           \
 if [ "${HOST_USERNAME}" = "root" ]; then                                                                    \
-    echo "{{DEVCONTAINER_STAGE2 WARNING: ${ROOT_USER_MSG}}}" 1>&2;                                          \
+    echo "${_M} WARNING: ${ROOT_USER_MSG}}}" 1>&2;                                          \
     exit 0;                                                                                                 \
 fi;                                                                                                         \
 if getent passwd "${HOST_USERNAME}" > /dev/null; then                                                       \
@@ -43,7 +44,7 @@ if getent passwd "${HOST_USERNAME}" > /dev/null; then                           
     if [ -n "${EXISTING_USERNAME}" ] && [ "${EXISTING_USERNAME}" != "${HOST_USERNAME}" ]; then              \
         NEW_UID=$((${HOST_UID}+1234));                                                                      \
         if getent passwd "${NEW_UID}" > /dev/null; then                                                     \
-            echo "{{DEVCONTAINER_STAGE2 ERROR: ${FIXUP_FAIL_MSG}}}" 1>&2;                                   \
+            echo "${_M} ERROR: ${FIXUP_FAIL_MSG}}}" 1>&2;                                   \
             exit 1;                                                                                         \
         fi;                                                                                                 \
         echo "User '${EXISTING_USERNAME}' with ID ${HOST_UID} already exists. Moving to ${NEW_UID}";        \
@@ -75,7 +76,7 @@ if getent passwd "${HOST_USERNAME}" > /dev/null; then                           
         chown -R "${HOST_UID}:${HOST_GID}" "${USER_HOMEDIR}";                                               \
     fi;                                                                                                     \
 else                                                                                                        \
-    echo "{{DEVCONTAINER_STAGE2 ERROR: ${USER_DNE_MSG}}}" 1>&2;                                             \
+    echo "${_M} ERROR: ${USER_DNE_MSG}}}" 1>&2;                                             \
     exit 1;                                                                                                 \
 fi;                                                                                                         \
 id "${HOST_USERNAME}";                                                                                      \
