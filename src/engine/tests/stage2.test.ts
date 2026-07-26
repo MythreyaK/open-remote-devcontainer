@@ -1,13 +1,13 @@
 import path from "node:path";
 import { tmpdir } from "node:os";
-import { writeFileSync, unlinkSync } from "node:fs";
+import { mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import { afterAll, describe, expect, test } from "vitest";
 
 import { runCmd } from "../../common/cmd";
 import { ContainerConfig } from "../container";
 import { HostUserInfo } from "../../common/utils";
 import * as schema from "../../parser/schema";
-import { STAGE2_ERR_MSG_REGEX, STAGE2_INFO_MSG_REGEX, STAGE2_WARN_MSG_REGEX } from "../lifecycle";
+import { ContainerState, STAGE2_ERR_MSG_REGEX, STAGE2_INFO_MSG_REGEX, STAGE2_WARN_MSG_REGEX } from "../lifecycle";
 
 import { init, ENGINE } from "../../tests/common";
 
@@ -17,6 +17,7 @@ const BASE_IMAGE = "ubuntu:24.04";
 
 function testWsf(label: string) {
     const wsf = path.join(tmpdir(), `stage2-${label}`);
+    mkdirSync(wsf, { recursive: true });
     return { localWsf: wsf, cfgPath: path.join(wsf, ".devcontainer.json") };
 }
 
@@ -158,4 +159,70 @@ describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
         const { uid: movedUid } = await getRemoteUserInfo(cc, "ubuntu");
         expect(movedUid).eq("2234");
     }, 45_000);
+});
+
+const IS_PODMAN = ENGINE === "podman";
+
+describe.skipIf(!IS_PODMAN)("podman: --userns=keep-id", () => {
+    const containers: ContainerState[] = [];
+    const engine = ENGINE!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+
+    afterAll(async () => {
+        for (const c of containers) {
+            await runCmd(engine, ["container", "stop", "-t", "2", c.getContainerName()], __dirname, {});
+            await runCmd(engine, ["container", "rm", "--force", c.getContainerName()], __dirname, {});
+            await runCmd(engine, ["rmi", "-f", c.getConfig().getStage2ImageName()], __dirname, {});
+        }
+    });
+
+    test("non-root remoteUser: workspace is readable and writable", async () => {
+        const { localWsf, cfgPath } = testWsf("podman-keepid");
+        const cc = ContainerConfig.create(localWsf, cfgPath, imgCfg({ remoteUser: "ubuntu" }), {});
+
+        const container = await ContainerState.create(localWsf, cc);
+        containers.push(container);
+
+        const wsDir = container.getConfig().getRemoteMountDir();
+
+        const read = await container.engineExec(["ls", wsDir]);
+        expect(read.exit).eq(0);
+
+        const marker = `podman-keepid-${Date.now()}`;
+        const write = await container.engineExec(["touch", `${wsDir}/${marker}`]);
+        expect(write.exit).eq(0);
+
+        const cleanup = await container.engineExec(["rm", `${wsDir}/${marker}`]);
+        expect(cleanup.exit).eq(0);
+    }, 60_000);
+
+    test("non-root remoteUser: uid inside container matches host uid", async () => {
+        const { localWsf, cfgPath } = testWsf("podman-keepid-uid");
+        const cc = ContainerConfig.create(localWsf, cfgPath, imgCfg({ remoteUser: "ubuntu" }), {});
+
+        const container = await ContainerState.create(localWsf, cc);
+        containers.push(container);
+
+        const res = await container.engineExec(["id", "-u"]);
+        expect(res.exit).eq(0);
+        expect(res.stdout.trim()).eq(String(process.getuid?.()));
+    }, 60_000);
+
+    test("root remoteUser: no keep-id, workspace still accessible", async () => {
+        const { localWsf, cfgPath } = testWsf("podman-root");
+        const cc = ContainerConfig.create(localWsf, cfgPath, imgCfg(), {});
+
+        const container = await ContainerState.create(localWsf, cc);
+        containers.push(container);
+
+        const wsDir = container.getConfig().getRemoteMountDir();
+
+        const read = await container.engineExec(["ls", wsDir]);
+        expect(read.exit).eq(0);
+
+        const write = await container.engineExec(["touch", `${wsDir}/podman-root-test`]);
+        expect(write.exit).eq(0);
+
+        const cleanup = await container.engineExec(["rm", `${wsDir}/podman-root-test`]);
+        expect(cleanup.exit).eq(0);
+    }, 60_000);
 });
