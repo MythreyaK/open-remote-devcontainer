@@ -104,6 +104,10 @@ jobs:
           node-version: 22
           cache: 'npm'
 
+      - name: Install and compile
+        shell: bash
+        run: npm ci && npm run dts
+
       - name: Build
         id: build
         env:

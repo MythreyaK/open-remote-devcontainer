@@ -114,10 +114,6 @@ def set_package_ver(version: str) -> None:
     #     json.dump(pkg, f, indent=2)
     #     f.write("\n")
 
-def setup() -> None:
-    runCmd(["npm", "ci"])
-    runCmd(["npm", "run", "dts"])
-
 def build_prod(env: dict[str, str] | None = None) -> None:
     runCmd(["npm", "run", "build:prod"], env=env)
 
@@ -149,11 +145,29 @@ def clean_artifacts() -> None:
         for f in glob.glob(pattern):
             os.remove(f)
 
+# ── Pre-steps ────────────────────────────────────────────────
+
+def run_pre_steps(args: argparse.Namespace) -> None:
+    if args.with_checkout:
+        ref = getattr(args, "tag", None) or getattr(args, "branch", None)
+        if not ref:
+            print("Error: --with-checkout requires --tag or --branch", file=sys.stderr)
+            sys.exit(1)
+        status = runCmd(["git", "status", "--porcelain", "-uno"], capture=True)
+        if status:
+            print("Error: workspace is not clean:", file=sys.stderr)
+            print(status, file=sys.stderr)
+            sys.exit(1)
+        runCmd(["git", "checkout", ref])
+
+    if args.with_npm:
+        runCmd(["npm", "ci"])
+        runCmd(["npm", "run", "dts"])
+
 # ── Shared build logic ───────────────────────────────────────
 
 def _build_dev(label: str, sha: str, run_num: int = 1, epoch_ref: str = "HEAD") -> None:
     clean_artifacts()
-    setup()
 
     version = parse_version(get_package_ver())
     dev_version = format_dev_version(version, label, sha, run_num)
@@ -177,6 +191,7 @@ def _build_dev(label: str, sha: str, run_num: int = 1, epoch_ref: str = "HEAD") 
 # ── Entry points ──────────────────────────────────────────────
 
 def cmd_ci(args: argparse.Namespace) -> None:
+    run_pre_steps(args)
     if args.pr is not None:
         label = f"pr{args.pr}"
         ref = args.sha or "HEAD"
@@ -197,10 +212,10 @@ def validate_versions(args: argparse.Namespace) -> None:
     validate_tag(args.tag, pkg_ver, pkg_lock_ver)
 
 def cmd_release(args: argparse.Namespace) -> None:
+    run_pre_steps(args)
     validate_versions(args)
 
     clean_artifacts()
-    setup()
 
     version = parse_version(get_package_ver())
 
@@ -224,7 +239,8 @@ def cmd_release(args: argparse.Namespace) -> None:
     set_github_output("vsix_sha256", sha_path)
     set_github_output("pre_release", "true" if version.is_prerelease else "false")
 
-def cmd_local(_args: argparse.Namespace) -> None:
+def cmd_local(args: argparse.Namespace) -> None:
+    run_pre_steps(args)
     branch = git_branch_name()
     if branch == "HEAD":
         print("Error: detached HEAD — check out a branch first", file=sys.stderr)
@@ -294,6 +310,8 @@ def cmd_test(_args: argparse.Namespace | None = None) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Build open-remote-devcontainer")
+    parser.add_argument("--with-checkout", action="store_true", help="Checkout the ref from --tag or --branch (ensures clean workspace first)")
+    parser.add_argument("--with-npm", action="store_true", help="Run npm ci && npm run dts")
     sub = parser.add_subparsers(dest="command", required=True)
 
     ci = sub.add_parser("ci", help="CI build (PR or branch)")
