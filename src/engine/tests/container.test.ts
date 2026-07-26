@@ -157,6 +157,65 @@ describe("ContainerConfig tests", async () => {
         });
     });
 
+    describe("relabel (SELinux)", () => {
+        test("inferred mount gets relabel=shared when relabel is true", () => {
+            const cfg = withDefaults({ image: "ubuntu:24.04" });
+            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+            const args = cc.getRunCreateCmd(cfg.image, "foobar", { relabel: true }).join(" ");
+            expect(args).includes(` --mount source=${localWsf},target=/workspaces/dir,type=bind,relabel=shared `);
+        });
+
+        test("inferred mount has no relabel when relabel is false", () => {
+            const cfg = withDefaults({ image: "ubuntu:24.04" });
+            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+            const args = cc.getRunCreateCmd(cfg.image, "foobar", { relabel: false }).join(" ");
+            expect(args).includes(` --mount source=${localWsf},target=/workspaces/dir,type=bind `);
+            expect(args).not.includes("relabel");
+        });
+
+        test("user-provided mount is not modified regardless of relabel flag", () => {
+            const userMount = `source=${localWsf},target=/custom/dir,type=bind,consistency=cached`;
+            const cfg = withDefaults({
+                image: "ubuntu:24.04",
+                workspaceMount: userMount,
+                workspaceFolder: "/custom/dir",
+            });
+            for (const shouldRelabel of [true, false]) {
+                const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+                const args = cc.getRunCreateCmd(cfg.image, "foobar", { relabel: shouldRelabel }).join(" ");
+                expect(args).includes(` --mount ${userMount} `);
+                expect(args).not.includes("relabel");
+            }
+        });
+    });
+
+    describe("runArgs ordering", () => {
+        test("internal extraArgs appear before user runArgs", () => {
+            const cfg = withDefaults({
+                image: "ubuntu:24.04",
+                runArgs: ["--userns=auto"],
+            });
+            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+            const args = cc.getRunCreateCmd(cfg.image, "foobar", { extraArgs: ["--userns=keep-id"] });
+            const keepIdIdx = args.indexOf("--userns=keep-id");
+            const autoIdx = args.indexOf("--userns=auto");
+            expect(keepIdIdx).toBeGreaterThan(-1);
+            expect(autoIdx).toBeGreaterThan(-1);
+            expect(keepIdIdx).toBeLessThan(autoIdx);
+        });
+
+        test("user runArgs can override extraArgs (last one wins)", () => {
+            const cfg = withDefaults({
+                image: "ubuntu:24.04",
+                runArgs: ["--userns=auto"],
+            });
+            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+            const args = cc.getRunCreateCmd(cfg.image, "foobar", { extraArgs: ["--userns=keep-id"] });
+            const allUserns = args.filter(a => a.startsWith("--userns="));
+            expect(allUserns).toEqual(["--userns=keep-id", "--userns=auto"]);
+        });
+    });
+
     test("variable interpolation", () => {
         {
             const localWsf = "/home/user/Projects/codium";
