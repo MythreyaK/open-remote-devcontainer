@@ -39,7 +39,8 @@ export function initLogs(ctx: vscode.ExtensionContext) {
     }
 
     const logger = getLogSink();
-    logger.info(`Activating ${EXTENSION_PRETTY_NAME} (${EXTENSION_ID})`);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    logger.info(`Activating ${EXTENSION_PRETTY_NAME} (${EXTENSION_ID}) v${ctx.extension.packageJSON.version as string}`);
     return logger;
 }
 
