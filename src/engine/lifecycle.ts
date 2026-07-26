@@ -75,6 +75,7 @@ export class ContainerState {
     }
 
     public static async create(workspaceFolder: string, cc: ContainerConfig, opts: BuildOpts = BuildOpts.Default): Promise<ContainerState> {
+        getLogSink().info(`Using compat/convenience options for '${cc.engine}'`);
         // mmm more spaghetti ... TODO: could use some cleanup
         const ret = new ContainerState(workspaceFolder, cc, opts);
         await ret.runInitializeCmd();
@@ -190,14 +191,7 @@ export class ContainerState {
 
     private async createContainer() {
         const { image, remoteUser } = await this.buildFinalImage();
-        const isPodman = path.parse(settings.getContainerEngine()).base === "podman";
-        return await this.runCreate(image, {
-            relabel: isPodman,
-            extraArgs: [
-                "-p", `${DEVCONTAINER_SERVER_LISTEN_PORT}`,
-                ...(isPodman && remoteUser !== "root" ? ["--userns=keep-id"] : []),
-            ],
-        });
+        return await this.runCreate(image, remoteUser);
     }
 
     private async buildFinalImage(): Promise<{ image: string, remoteUser: string }> {
@@ -443,12 +437,16 @@ export class ContainerState {
         }
     }
 
-    private async runCreate(imageName: string, opts: { relabel: boolean, extraArgs: string[] }): Promise<string> {
-        // TODO: auto-assign free port and query
+    private async runCreate(imageName: string, remoteUser: string): Promise<string> {
         const createRes = await run(
             [
                 ...settings.getEngineCmd(),
-                ...this.cc.getRunCreateCmd(imageName, this.getContainerName(), opts),
+                ...this.cc.getRunCreateCmd(imageName, this.getContainerName(), {
+                    extraArgs: [
+                        "-p", `${DEVCONTAINER_SERVER_LISTEN_PORT}`,
+                    ],
+                    remoteUser: remoteUser,
+                }),
             ], this.workspaceFolder, {},
         );
 

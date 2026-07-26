@@ -5,7 +5,7 @@ import { describe, expect, test, vi } from "vitest";
 import * as schema from "../../parser/schema";
 import { getLogSink } from "../../extension/log";
 import { getWorkspaceId } from "../../extension/workspace";
-import { ContainerConfig, interpolateVars, interpolateLocal, interpolateContainer } from "../container";
+import { ContainerConfig, ContainerEngine, interpolateVars, interpolateLocal, interpolateContainer } from "../container";
 import { getHostUserInfo, HostUserInfo } from "../../common/utils";
 
 import { initMocks } from "../../tests/common";
@@ -155,31 +155,31 @@ describe("ContainerConfig tests", async () => {
     });
 
     describe("relabel (SELinux)", () => {
-        test("inferred mount gets relabel=shared when relabel is true", () => {
+        test("podman: inferred mount gets relabel=shared", () => {
             const cfg = withDefaults({ image: "ubuntu:24.04" });
-            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
-            const args = cc.getRunCreateCmd(cfg.image, "foobar", { relabel: true }).join(" ");
+            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {}, { engine: ContainerEngine.podman });
+            const args = cc.getRunCreateCmd(cfg.image, "foobar").join(" ");
             expect(args).includes(` --mount source=${localWsf},target=/workspaces/dir,type=bind,relabel=shared `);
         });
 
-        test("inferred mount has no relabel when relabel is false", () => {
+        test("docker: inferred mount has no relabel", () => {
             const cfg = withDefaults({ image: "ubuntu:24.04" });
-            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
-            const args = cc.getRunCreateCmd(cfg.image, "foobar", { relabel: false }).join(" ");
+            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {}, { engine: ContainerEngine.docker });
+            const args = cc.getRunCreateCmd(cfg.image, "foobar").join(" ");
             expect(args).includes(` --mount source=${localWsf},target=/workspaces/dir,type=bind `);
             expect(args).not.includes("relabel");
         });
 
-        test("user-provided mount is not modified regardless of relabel flag", () => {
+        test("user-provided mount is not modified regardless of engine", () => {
             const userMount = `source=${localWsf},target=/custom/dir,type=bind,consistency=cached`;
             const cfg = withDefaults({
                 image: "ubuntu:24.04",
                 workspaceMount: userMount,
                 workspaceFolder: "/custom/dir",
             });
-            for (const shouldRelabel of [true, false]) {
-                const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
-                const args = cc.getRunCreateCmd(cfg.image, "foobar", { relabel: shouldRelabel }).join(" ");
+            for (const engine of [ContainerEngine.podman, ContainerEngine.docker]) {
+                const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {}, { engine });
+                const args = cc.getRunCreateCmd(cfg.image, "foobar").join(" ");
                 expect(args).includes(` --mount ${userMount} `);
                 expect(args).not.includes("relabel");
             }
@@ -210,6 +210,63 @@ describe("ContainerConfig tests", async () => {
             const args = cc.getRunCreateCmd(cfg.image, "foobar", { extraArgs: ["--userns=keep-id"] });
             const allUserns = args.filter(a => a.startsWith("--userns="));
             expect(allUserns).toEqual(["--userns=keep-id", "--userns=auto"]);
+        });
+    });
+
+    describe("podman userns=keep-id", () => {
+        test("podman + non-root: adds --userns=keep-id", () => {
+            const cfg = withDefaults({ image: "ubuntu:24.04" });
+            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {}, { engine: ContainerEngine.podman });
+            const args = cc.getRunCreateCmd(cfg.image, "foobar", { remoteUser: "ubuntu" });
+            expect(args).toContain("--userns=keep-id");
+        });
+
+        test("podman + root: no --userns=keep-id", () => {
+            const cfg = withDefaults({ image: "ubuntu:24.04" });
+            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {}, { engine: ContainerEngine.podman });
+            const args = cc.getRunCreateCmd(cfg.image, "foobar", { remoteUser: "root" });
+            expect(args).not.toContain("--userns=keep-id");
+        });
+
+        test("docker: no --userns=keep-id regardless of remoteUser", () => {
+            const cfg = withDefaults({ image: "ubuntu:24.04" });
+            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {}, { engine: ContainerEngine.docker });
+            {
+                const args = cc.getRunCreateCmd(cfg.image, "foobar", { remoteUser: "ubuntu" });
+                expect(args).not.toContain("--userns=keep-id");
+            }
+            {
+                const args = cc.getRunCreateCmd(cfg.image, "foobar", { remoteUser: "root" });
+                expect(args).not.toContain("--userns=keep-id");
+            }
+        });
+
+        test("podman + non-root + --uidmap in runArgs skips internal --userns", () => {
+            const cfg = withDefaults({ image: "ubuntu:24.04", runArgs: ["--uidmap=0:0:1"] });
+            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {}, { engine: ContainerEngine.podman });
+            const args = cc.getRunCreateCmd(cfg.image, "foobar", { remoteUser: "ubuntu" });
+            expect(args).not.toContain("--userns=keep-id");
+        });
+
+        test("podman + non-root + --gidmap in runArgs skips internal --userns", () => {
+            const cfg = withDefaults({ image: "ubuntu:24.04", runArgs: ["--gidmap=0:0:1"] });
+            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {}, { engine: ContainerEngine.podman });
+            const args = cc.getRunCreateCmd(cfg.image, "foobar", { remoteUser: "ubuntu" });
+            expect(args).not.toContain("--userns=keep-id");
+        });
+
+        test("podman + non-root + --userns=auto in runArgs skips internal --userns", () => {
+            const cfg = withDefaults({ image: "ubuntu:24.04", runArgs: ["--userns=auto"] });
+            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {}, { engine: ContainerEngine.podman });
+            const args = cc.getRunCreateCmd(cfg.image, "foobar", { remoteUser: "ubuntu" });
+            expect(args).not.toContain("--userns=keep-id");
+        });
+
+        test("podman + non-root + unrelated runArgs: still adds --userns=keep-id", () => {
+            const cfg = withDefaults({ image: "ubuntu:24.04", runArgs: ["--device", "/dev/kfd", "--pid", "host"] });
+            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {}, { engine: ContainerEngine.podman });
+            const args = cc.getRunCreateCmd(cfg.image, "foobar", { remoteUser: "ubuntu" });
+            expect(args).toContain("--userns=keep-id");
         });
     });
 

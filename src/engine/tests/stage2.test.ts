@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import { afterAll, describe, expect, test } from "vitest";
 
 import { runCmd } from "../../common/cmd";
-import { ContainerConfig } from "../container";
+import { ContainerConfig, ContainerEngine } from "../container";
 import { HostUserInfo } from "../../common/utils";
 import * as schema from "../../parser/schema";
 import { ContainerState, STAGE2_ERR_MSG_REGEX, STAGE2_INFO_MSG_REGEX, STAGE2_WARN_MSG_REGEX } from "../lifecycle";
@@ -177,7 +177,7 @@ describe.skipIf(!IS_PODMAN)("podman: --userns=keep-id", () => {
 
     test("non-root remoteUser: workspace is readable and writable", async () => {
         const { localWsf, cfgPath } = testWsf("podman-keepid");
-        const cc = ContainerConfig.create(localWsf, cfgPath, imgCfg({ remoteUser: "ubuntu" }), {});
+        const cc = ContainerConfig.create(localWsf, cfgPath, imgCfg({ remoteUser: "ubuntu" }), {}, { engine: ContainerEngine.podman });
 
         const container = await ContainerState.create(localWsf, cc);
         containers.push(container);
@@ -197,7 +197,7 @@ describe.skipIf(!IS_PODMAN)("podman: --userns=keep-id", () => {
 
     test("non-root remoteUser: uid inside container matches host uid", async () => {
         const { localWsf, cfgPath } = testWsf("podman-keepid-uid");
-        const cc = ContainerConfig.create(localWsf, cfgPath, imgCfg({ remoteUser: "ubuntu" }), {});
+        const cc = ContainerConfig.create(localWsf, cfgPath, imgCfg({ remoteUser: "ubuntu" }), {}, { engine: ContainerEngine.podman });
 
         const container = await ContainerState.create(localWsf, cc);
         containers.push(container);
@@ -209,7 +209,7 @@ describe.skipIf(!IS_PODMAN)("podman: --userns=keep-id", () => {
 
     test("root remoteUser: no keep-id, workspace still accessible", async () => {
         const { localWsf, cfgPath } = testWsf("podman-root");
-        const cc = ContainerConfig.create(localWsf, cfgPath, imgCfg(), {});
+        const cc = ContainerConfig.create(localWsf, cfgPath, imgCfg(), {}, { engine: ContainerEngine.podman });
 
         const container = await ContainerState.create(localWsf, cc);
         containers.push(container);

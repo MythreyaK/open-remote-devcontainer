@@ -4,11 +4,11 @@ import path from "node:path";
 import { getLogSink, getLogfilePath } from "../extension/log";
 import { BuildOpts, ContainerState } from "../engine/lifecycle";
 import { findDevcontainerJson } from "../extension/workspace";
-import { ContainerConfig } from "../engine/container";
+import { ContainerConfig, ContainerEngine } from "../engine/container";
 import { parseDevcontainerFile } from "../parser/parser";
 import { BuildOptIntent } from "../common/globalState";
-import { getExtensionList } from "../extension/settings";
 import { EngineError, InstallError } from "../extension/error";
+import { getExtensionList, getContainerEngine } from "../extension/settings";
 
 export const AUTHORITY_BASE: string = "devcontainer-remote";
 
@@ -96,13 +96,19 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
 
     private async createWindowTask(progress: vscode.Progress<{ message?: string, increment?: number }>, _2: vscode.CancellationToken): Promise<vscode.ResolverResult> {
         const buildOpt = BuildOptIntent.get(this.extensionCtx) ?? BuildOpts.Default;
+        const engine = (() => {
+            const e = path.parse(getContainerEngine()).base;
+            if (e === "podman") { return ContainerEngine.podman; }
+            if (e === "docker") { return ContainerEngine.docker; }
+            return ContainerEngine.none;
+        })();
 
         progress.report({ message: "Parsing config...", increment: 5 });
 
         const devcontainerJson = findDevcontainerJson(this.localWsf);
         const parsedConfig = parseDevcontainerFile(devcontainerJson);
 
-        const containerConfig = ContainerConfig.create(this.localWsf, devcontainerJson, parsedConfig);
+        const containerConfig = ContainerConfig.create(this.localWsf, devcontainerJson, parsedConfig, process.env, { engine: engine });
 
         progress.report({ message: "Building image and starting container...", increment: 15 });
         this.containerState = await ContainerState.create(this.localWsf, containerConfig, buildOpt);

@@ -7,6 +7,8 @@ import { HostUserInfo } from "../common/utils";
 import { EXTENSION_ID } from "../common/constants";
 import { getWorkspaceId } from "../extension/workspace";
 
+const USERNS_CONFLICT_FLAGS = ["--userns", "--uidmap", "--gidmap"];
+
 export interface ExecOpts {
     tty?: boolean,
     withRemoteEnv?: boolean,
@@ -20,22 +22,37 @@ export enum LifecycleCmd {
     postAttach = "postAttachCommand",
 }
 
+export enum UserNsOpt {
+    auto = "auto",
+    host = "host",
+    keepId = "keep-id",
+    nomap = "nomap",
+};
+
 interface InferredWorkspace {
     remoteWorkspace: string,
     workspaceMount: string,
 };
 
+export enum ContainerEngine {
+    none = "none",
+    podman = "podman",
+    docker = "docker",
+};
+
 export class ContainerConfig<T extends schema.Config = schema.Config> {
     public readonly cfg: T;
     public readonly workspaceFolder: string;
+    public readonly engine: ContainerEngine;
     private readonly cfgPath: string;
     private readonly localEnv: NodeJS.ProcessEnv;
     private readonly inferredMounts: InferredWorkspace;
 
-    private constructor(workspaceFolder: string, cfgPath: string, cfg: T, localEnv: NodeJS.ProcessEnv) {
+    private constructor(workspaceFolder: string, cfgPath: string, cfg: T, localEnv: NodeJS.ProcessEnv, opts: { engine: ContainerEngine } = { engine: ContainerEngine.none }) {
         this.cfg = cfg;
         this.workspaceFolder = workspaceFolder;
         this.cfgPath = cfgPath;
+        this.engine = opts.engine;
         this.localEnv = localEnv;
 
         // TODO: normalize mount
@@ -83,8 +100,8 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         }
     }
 
-    static create<T extends schema.Config>(workspacePath: string, cfgPath: string, cfg: T, localEnv: NodeJS.ProcessEnv = process.env): ContainerConfig<T> {
-        return new ContainerConfig(workspacePath, cfgPath, cfg, localEnv);
+    static create<T extends schema.Config>(workspacePath: string, cfgPath: string, cfg: T, localEnv: NodeJS.ProcessEnv = process.env, opts: { engine: ContainerEngine } = { engine: ContainerEngine.none }): ContainerConfig<T> {
+        return new ContainerConfig(workspacePath, cfgPath, cfg, localEnv, opts);
     }
 
     public isImageBased(): this is ContainerConfig<schema.ImageDevcontainer> {
@@ -122,7 +139,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         ].filter(Boolean);
     }
 
-    public getRunCreateCmd(imageName: string, containerName: string, opts: { relabel?: boolean, extraArgs?: string[] } = { relabel: true, extraArgs: [] }): string[] {
+    public getRunCreateCmd(imageName: string, containerName: string, opts: { extraArgs?: string[], remoteUser?: string } = {}): string[] {
         // TODO: handle overrideCmd
         return [
             "run",
@@ -132,22 +149,28 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             ...this.addContainerUser(),
             ...this.addAppPorts(),
             ...this.addMounts(),
-            ...this.addWorkspaceMount(opts.relabel ?? true),
+            ...this.addWorkspaceMount(this.engine === ContainerEngine.podman),
             ...this.addContainerEnv(),
             ...this.addCaps(),
             ...this.addSecurityOpts(),
             ...this.addLabels(),
             ...(this.cfg.privileged ? ["--privileged"] : []),
             ...(this.cfg.init ? ["--init"] : []),
-            ...this.addRunArgs(opts.extraArgs ?? []),
+            ...this.addUserNsOpts(this.engine === ContainerEngine.podman, opts.remoteUser),
             "--entrypoint",
             this.getShell(),
+            ...this.addRunArgs(opts.extraArgs ?? []), // must come last, so user can apply overrides
             imageName,
             //
             "-c",
             'trap "echo Got signal, exiting...; exit 0" SIGINT SIGTERM; while sleep 60 & wait $! ; do : ; done',
         ].filter(Boolean)
             .map(e => interpolateLocal(e, this.workspaceFolder, this.getRemoteMountDir(), this.localEnv));
+    }
+
+    private addUserNsOpts(isPodman: boolean, remoteUser?: string) {
+        const conflictFlags = (this.cfg.runArgs.some(a => USERNS_CONFLICT_FLAGS.some(f => a.startsWith(f))));
+        return [isPodman && remoteUser !== "root" && !conflictFlags ? `--userns=${UserNsOpt.keepId}` : ""];
     }
 
     public getConfigLabel(): string {
