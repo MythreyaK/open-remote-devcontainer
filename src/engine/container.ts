@@ -2,7 +2,7 @@ import * as path from "node:path";
 import * as crypto from "node:crypto";
 
 import * as schema from "../parser/schema";
-import { ConfigError, InternalError } from "../extension/error";
+import { ConfigError, InternalError, ParseError } from "../extension/error";
 import { HostUserInfo } from "../common/utils";
 import { EXTENSION_ID } from "../common/constants";
 import { getWorkspaceId } from "../extension/workspace";
@@ -20,6 +20,11 @@ export enum LifecycleCmd {
     postAttach = "postAttachCommand",
 }
 
+interface InferredWorkspace {
+    remoteWorkspace: string,
+    workspaceMount: string,
+};
+
 export class ContainerConfig<T extends schema.Config = schema.Config> {
     public readonly cfg: T;
     public readonly workspaceFolder: string;
@@ -31,7 +36,52 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         this.workspaceFolder = workspaceFolder;
         this.cfgPath = cfgPath;
         this.localEnv = localEnv;
-        // normalize mount
+
+        // TODO: normalize mount
+
+        const { remoteWorkspace, workspaceMount } = ContainerConfig.getDefaultWorkspaceMount(this.cfg, this.workspaceFolder);
+        this.cfg.workspaceFolder = remoteWorkspace;
+        this.cfg.workspaceMount = workspaceMount;
+    }
+
+    public static getDefaultWorkspaceMount(cfg: schema.Config, localWsf: string): InferredWorkspace {
+        // if one of workspaceFolder and workspaceMount or neither are set, use
+        // defaults or infer the other
+        const wsMount = cfg.workspaceMount;
+        const remoteWsFolder = cfg.workspaceFolder;
+
+        if (remoteWsFolder && !wsMount) {
+            // remote location could be a subfolder of the standard mount
+            // so don't update workspaceMount or workspaceFolder
+            const wsBasename = path.parse(localWsf).base;
+            return {
+                remoteWorkspace: remoteWsFolder,
+                workspaceMount: `source=${localWsf},target=/workspace/${wsBasename},type=bind`,
+            };
+        }
+        else if (wsMount && !remoteWsFolder) {
+            const remoteWsf = schema.extractWorkspaceMount(wsMount);
+            if (remoteWsf.length !== 1) {
+                throw new ParseError("Invalid schema: expected exactly one source and target in workspaceMount");
+            }
+            return {
+                remoteWorkspace: remoteWsf[0],
+                workspaceMount: wsMount,
+            };
+        }
+        else if (wsMount && remoteWsFolder) {
+            return {
+                workspaceMount: wsMount,
+                remoteWorkspace: remoteWsFolder,
+            };
+        }
+        else {
+            const wsBasename = path.parse(localWsf).base;
+            return {
+                remoteWorkspace: `/workspace/${wsBasename}`,
+                workspaceMount: `source=${localWsf},target=/workspace/${wsBasename},type=bind`,
+            };
+        }
     }
 
     static create<T extends schema.Config>(workspacePath: string, cfgPath: string, cfg: T, localEnv: NodeJS.ProcessEnv = process.env): ContainerConfig<T> {
