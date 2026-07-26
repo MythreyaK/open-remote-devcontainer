@@ -189,11 +189,18 @@ export class ContainerState {
     }
 
     private async createContainer() {
-        const name = await this.buildFinalImage();
-        return await this.runCreate(name);
+        const { image, remoteUser } = await this.buildFinalImage();
+        const isPodman = path.parse(settings.getContainerEngine()).base === "podman";
+        return await this.runCreate(image, {
+            relabel: isPodman,
+            extraArgs: [
+                "-p", `${DEVCONTAINER_SERVER_LISTEN_PORT}`,
+                ...(isPodman && remoteUser !== "root" ? ["--userns=keep-id"] : []),
+            ],
+        });
     }
 
-    private async buildFinalImage(): Promise<string> {
+    private async buildFinalImage(): Promise<{ image: string, remoteUser: string }> {
         let stage1Image: string | undefined;
 
         if (this.cc.isDockerfileBased()) {
@@ -234,7 +241,7 @@ export class ContainerState {
         return await this.buildStage2(stage1Image);
     }
 
-    private async buildStage2(stage1Image: string): Promise<string> {
+    private async getEffectiveUser(stage1Image: string): Promise<{ imageUser: string | undefined, remoteUser: string }> {
         const imgUser = await run([
             ...settings.getEngineCmd(),
             "image",
@@ -254,6 +261,11 @@ export class ContainerState {
         })();
 
         const remoteUser = this.cc.getResolvedRemoteUser(imageUser);
+        return { imageUser, remoteUser };
+    }
+
+    private async buildStage2(stage1Image: string): Promise<{ image: string, remoteUser: string }> {
+        const { imageUser, remoteUser } = await this.getEffectiveUser(stage1Image);
 
         if (remoteUser === "root") {
             const msg = "Warning: remote user not specified, using 'root'. This may cause permission issues.";
@@ -280,7 +292,7 @@ export class ContainerState {
             }
         }
         else {
-            return this.cc.getStage2ImageName();
+            return { image: this.cc.getStage2ImageName(), remoteUser };
         }
     }
 
@@ -431,16 +443,12 @@ export class ContainerState {
         }
     }
 
-    private async runCreate(imageName: string): Promise<string> {
+    private async runCreate(imageName: string, opts: { relabel: boolean, extraArgs: string[] }): Promise<string> {
         // TODO: auto-assign free port and query
         const createRes = await run(
             [
                 ...settings.getEngineCmd(),
-                ...this.cc.getRunCreateCmd(
-                    imageName,
-                    this.getContainerName(),
-                    ["-p", `${DEVCONTAINER_SERVER_LISTEN_PORT}`],
-                ),
+                ...this.cc.getRunCreateCmd(imageName, this.getContainerName(), opts),
             ], this.workspaceFolder, {},
         );
 

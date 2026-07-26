@@ -123,7 +123,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         ].filter(Boolean);
     }
 
-    public getRunCreateCmd(imageName: string, containerName: string, extraArgs: string[] = []): string[] {
+    public getRunCreateCmd(imageName: string, containerName: string, opts: { relabel?: boolean, extraArgs?: string[] }): string[] {
         // TODO: handle overrideCmd
         return [
             "run",
@@ -133,15 +133,14 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             ...this.addContainerUser(),
             ...this.addAppPorts(),
             ...this.addMounts(),
-            ...this.addWorkspaceMount(),
+            ...this.addWorkspaceMount(opts.relabel ?? true),
             ...this.addContainerEnv(),
-            ...this.addRunArgs(),
             ...this.addCaps(),
             ...this.addSecurityOpts(),
             ...this.addLabels(),
-            ...extraArgs,
             ...(this.cfg.privileged ? ["--privileged"] : []),
             ...(this.cfg.init ? ["--init"] : []),
+            ...this.addRunArgs(opts.extraArgs ?? []),
             "--entrypoint",
             this.getShell(),
             imageName,
@@ -293,8 +292,8 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         return this.cfg.capAdd.flatMap(c => ["--cap-add", c]);
     }
 
-    private addRunArgs(): string[] {
-        return this.cfg.runArgs;
+    private addRunArgs(extraArgs: string[]): string[] {
+        return [...extraArgs, ...this.cfg.runArgs];
     }
 
     public getRemoteMountDir(): string {
@@ -302,9 +301,9 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         return schema.extractWorkspaceMount(this.cfg.workspaceMount)[0];
     }
 
-    private addWorkspaceMount(): string[] {
+    private addWorkspaceMount(relabel: boolean): string[] {
         if (!this.cfg.workspaceMount) { throw new InternalError("getDefaultWorkspaceMount should've set defaults."); }
-        return ["--mount", this.cfg.workspaceMount];
+        return ["--mount", `${this.cfg.workspaceMount}${relabel ? ",relabel=shared" : ""}`];
     }
 
     private addMounts(): string[] {
