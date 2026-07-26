@@ -30,6 +30,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     public readonly workspaceFolder: string;
     private readonly cfgPath: string;
     private readonly localEnv: NodeJS.ProcessEnv;
+    private readonly inferredMounts: InferredWorkspace;
 
     private constructor(workspaceFolder: string, cfgPath: string, cfg: T, localEnv: NodeJS.ProcessEnv) {
         this.cfg = cfg;
@@ -39,9 +40,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
 
         // TODO: normalize mount
 
-        const { remoteWorkspace, workspaceMount } = ContainerConfig.getDefaultWorkspaceMount(this.cfg, this.workspaceFolder);
-        this.cfg.workspaceFolder = remoteWorkspace;
-        this.cfg.workspaceMount = workspaceMount;
+        this.inferredMounts = ContainerConfig.getDefaultWorkspaceMount(this.cfg, this.workspaceFolder);
     }
 
     public static getDefaultWorkspaceMount(cfg: schema.Config, localWsf: string): InferredWorkspace {
@@ -123,7 +122,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         ].filter(Boolean);
     }
 
-    public getRunCreateCmd(imageName: string, containerName: string, opts: { relabel?: boolean, extraArgs?: string[] }): string[] {
+    public getRunCreateCmd(imageName: string, containerName: string, opts: { relabel?: boolean, extraArgs?: string[] } = { relabel: true, extraArgs: [] }): string[] {
         // TODO: handle overrideCmd
         return [
             "run",
@@ -297,13 +296,14 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     }
 
     public getRemoteMountDir(): string {
-        if (!this.cfg.workspaceMount) { throw new InternalError("getDefaultWorkspaceMount should've set defaults."); }
-        return schema.extractWorkspaceMount(this.cfg.workspaceMount)[0];
+        return schema.extractWorkspaceMount(
+            this.cfg.workspaceMount ? this.cfg.workspaceMount : this.inferredMounts.workspaceMount,
+        )[0];
     }
 
     private addWorkspaceMount(relabel: boolean): string[] {
-        if (!this.cfg.workspaceMount) { throw new InternalError("getDefaultWorkspaceMount should've set defaults."); }
-        return ["--mount", `${this.cfg.workspaceMount}${relabel ? ",relabel=shared" : ""}`];
+        if (!this.cfg.workspaceMount) { return ["--mount", `${this.inferredMounts.workspaceMount}${relabel ? ",relabel=shared" : ""}`]; }
+        else { return ["--mount", this.cfg.workspaceMount]; }
     }
 
     private addMounts(): string[] {

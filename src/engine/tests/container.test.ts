@@ -57,12 +57,13 @@ describe("ContainerConfig tests", async () => {
     });
 
     describe("workspace mounts", () => {
-        test("neither set: defaults", () => {
-            const cfg = withDefaults({
-                name: "test",
-                image: "ubuntu:24.04",
-            });
+        const commonCfg = withDefaults({
+            name: "test",
+            image: "ubuntu:24.04",
+        });
 
+        test("neither set: defaults", () => {
+            const cfg = commonCfg;
             const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
 
             expect(cc.isImageBased()).toBe(true);
@@ -70,8 +71,8 @@ describe("ContainerConfig tests", async () => {
                 const createArgs = cc.getRunCreateCmd(cfg.image, "foobar");
 
                 expect(cc.getRemoteMountDir()).eq("/workspaces/dir");
-                expect(cc.cfg.workspaceFolder).eq("/workspaces/dir");
-                expect(cc.cfg.workspaceMount).eq(`source=${localWsf},target=/workspaces/dir,type=bind`);
+                expect(cc.cfg.workspaceFolder).toBeUndefined();
+                expect(cc.cfg.workspaceMount).toBeUndefined();
                 expect(createArgs.join(" ")).includes(`--mount source=${localWsf},target=/workspaces/dir,type=bind`);
             }
         });
@@ -79,8 +80,7 @@ describe("ContainerConfig tests", async () => {
         test("both set: passthrough", () => {
             for (const dir of ["/custom/dir", "/custom/dir/subdir"]) {
                 const cfg = withDefaults({
-                    name: "test",
-                    image: "ubuntu:24.04",
+                    ...commonCfg,
                     workspaceFolder: dir,
                     workspaceMount: "source=${localWorkspaceFolder}/sub-folder,target=/custom/dir,type=bind,consistency=cached",
                 });
@@ -105,8 +105,7 @@ describe("ContainerConfig tests", async () => {
 
         test("only workspaceFolder: infer mount", () => {
             const cfg = withDefaults({
-                name: "test",
-                image: "ubuntu:24.04",
+                ...commonCfg,
                 workspaceFolder: "/workspaces/myproject/src",
             });
 
@@ -114,14 +113,13 @@ describe("ContainerConfig tests", async () => {
 
             expect(cc.isImageBased()).toBe(true);
             expect(cc.cfg.workspaceFolder).eq("/workspaces/myproject/src");
-            expect(cc.cfg.workspaceMount).eq(`source=${localWsf},target=/workspaces/dir,type=bind`);
+            expect(cc.cfg.workspaceMount).toBeUndefined();
             expect(cc.getRemoteMountDir()).eq("/workspaces/dir");
         });
 
         test("only workspaceFolder: monorepo subfolder", () => {
             const cfg = withDefaults({
-                name: "test",
-                image: "ubuntu:24.04",
+                ...commonCfg,
                 workspaceFolder: "/workspaces/dir/frontend",
             });
 
@@ -129,7 +127,7 @@ describe("ContainerConfig tests", async () => {
 
             expect(cc.isImageBased()).toBe(true);
             expect(cc.cfg.workspaceFolder).eq("/workspaces/dir/frontend");
-            expect(cc.cfg.workspaceMount).eq(`source=${localWsf},target=/workspaces/dir,type=bind`);
+            expect(cc.cfg.workspaceMount).toBeUndefined();
             expect(cc.getRemoteMountDir()).eq("/workspaces/dir");
             expect(cc.getRunCreateCmd(cfg.image, "foobar").join(" "))
                 .not.contains(cfg.workspaceFolder);
@@ -137,14 +135,13 @@ describe("ContainerConfig tests", async () => {
 
         test("only workspaceMount: infer folder", () => {
             const cfg = withDefaults({
-                name: "test",
-                image: "ubuntu:24.04",
+                ...commonCfg,
                 workspaceMount: "source=${localWorkspaceFolder}/sub-folder,target=/workspaces/dir,type=bind,consistency=cached",
             });
 
             const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
 
-            expect(cc.cfg.workspaceFolder).eq("/workspaces/dir");
+            expect(cc.cfg.workspaceFolder).toBeUndefined();
             expect(cc.getRemoteMountDir()).eq("/workspaces/dir");
 
             expect(cc.isImageBased()).toBe(true);
