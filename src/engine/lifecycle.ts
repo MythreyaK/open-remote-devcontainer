@@ -89,7 +89,7 @@ export class ContainerState {
         let containerId: string | undefined;
 
         if (opts !== BuildOpts.Default && containerExists !== undefined) {
-            throw new EngineError(`Failed to stop and remove container ${containerExists.Id}`);
+            throw new EngineError(`Failed to stop and remove container: ${containerExists.Id}`);
         }
 
         let lifecycleCmds = true;
@@ -132,10 +132,10 @@ export class ContainerState {
         ], this.workspaceFolder, {});
 
         if (res.exit === 0) {
-            getLogSink().info(`InitializeCmd[host]: OK: ${formatCmdErr(res)}`);
+            getLogSink().info(`InitializeCmd[host]: OK :: ${formatCmdErr(res)}`);
         }
         else {
-            getLogSink().info(`InitializeCmd[host]: ERROR: ${formatCmdErr(res)}`);
+            getLogSink().info(`InitializeCmd[host]: ERROR :: ${formatCmdErr(res)}`);
         }
     }
 
@@ -224,7 +224,7 @@ export class ContainerState {
                     ], this.workspaceFolder, {});
 
                     if (pullRes.exit !== 0) {
-                        throw new EngineError(`Failed to pull image ${stage1Image}. Image '${stage1Image}' does not exist on host.`);
+                        throw new EngineError(`Failed to pull image ${stage1Image}. Image '${stage1Image}' does not exist on host :: ${formatCmdErr(pullRes)}`);
                     }
                     // pull was successful, image hash is whatever pull has
                     return pullRes.stdout.trim();
@@ -284,7 +284,7 @@ export class ContainerState {
             const output = ret.stdout.trim() + ret.stderr.trim();
             const errMsg = Array.from(output.matchAll(STAGE2_ERR_MSG_REGEX));
             getLogSink().error(JSON.stringify(errMsg));
-            if (errMsg.length < 1 || errMsg[0].length < 2) {
+            if (errMsg.length !== 1 || errMsg[0].length < 2) {
                 throw new Error(`Could not build stage2 image with unknown error :: ${formatCmdErr(ret)}`);
             }
             else {
@@ -309,7 +309,7 @@ export class ContainerState {
         ], this.workspaceFolder, {});
 
         if (ret.exit !== 0) {
-            throw new EngineError(`Failed to start container: ${formatCmdErr(ret)}`);
+            throw new EngineError(`Failed to start container :: ${formatCmdErr(ret)}`);
         }
         else {
             return ret.stdout.trim();
@@ -330,7 +330,7 @@ export class ContainerState {
         const ret = await this.tryStopContainer(opts);
 
         if (ret.exit !== 0) {
-            throw new EngineError(`Could not stop container: ${formatCmdErr(ret)}`);
+            throw new EngineError(`Could not stop container :: ${formatCmdErr(ret)}`);
         }
 
         return ret.stdout.trim();
@@ -370,7 +370,7 @@ export class ContainerState {
         );
 
         if (res.exit !== 0) {
-            throw new EngineError(`Could not inspect container '${identifier}': ${formatCmdErr(res)}`);
+            throw new EngineError(`Could not inspect container '${identifier}' :: ${formatCmdErr(res)}`);
         }
         else {
             return JSON.parse(res.stdout.trim()) as ContainerInspectResult;
@@ -481,7 +481,7 @@ export class ContainerState {
             const containerEnvs: Record<string, string> = parseEnv(out.stdout);
             return containerEnvs;
         }
-        else { throw new EngineError("Could not run exec to probe container environment"); }
+        else { throw new EngineError(`Could not run exec to probe container environment :: ${formatCmdErr(out)}`); }
     }
 
     public getImageHash(name: string) {
@@ -505,7 +505,7 @@ export class ContainerState {
         ], this.workspaceFolder, {});
 
         if (ret.exit !== 0) {
-            throw new EngineError(`Could not build stage1 image ${formatCmdErr(ret)}`);
+            throw new EngineError(`Could not build stage1 image :: ${formatCmdErr(ret)}`);
         }
         else {
             // docker and podman output differs, some to stdout, some to stderr
@@ -614,7 +614,7 @@ export class ContainerState {
         ], this.workspaceFolder, {});
 
         if (portCmdRes.exit !== 0) {
-            throw new EngineError(`Failed to query host port: ${formatCmdErr(portCmdRes)}`);
+            throw new EngineError(`Failed to query host port :: ${formatCmdErr(portCmdRes)}`);
         }
         else {
             const allParts = portCmdRes.stdout.trim().split(":");
