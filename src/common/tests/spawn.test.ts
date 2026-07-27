@@ -50,7 +50,7 @@ describe.skipIf(!ENGINE)("cmd spawn tests", () => {
 
         try {
             const exec = await spawn(engine, ["exec", create.stdout.trim(), "cat", "/etc/os-release"], getcwd(), {}, log);
-            expect(exec.stdout.trim().includes("Ubuntu 24.04")).toBe(true);
+            expect(exec.stdout.trim()).toContain("Ubuntu 24.04");
             expect(exec.exit).eq(0);
 
             const inspect = await spawn(engine, ["inspect", containerId, ...jsonFormat], getcwd(), {}, log);

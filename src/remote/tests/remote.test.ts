@@ -134,12 +134,12 @@ describe("Install script", () => {
         const updatedScript = install.updateScript(script, info, true);
 
         expect(countSubstring(updatedScript, "export")).eq(0);
-        expect(updatedScript.includes("0xf00ba4")).toBe(true);
-        expect(updatedScript.includes("--install-extension")).toBe(false);
-        expect(updatedScript.includes('CODIUM_FORCE_REINSTALL_SERVER="false"')).toBe(true);
-        expect(updatedScript.includes('CODIUM_NEW_INSTALL_VERSION="1.2.345"')).toBe(true);
-        expect(updatedScript.includes('CODIUM_SERVER_LISTEN_PORT="6543"')).toBe(true);
-        expect(updatedScript.includes("localhost/${CODIUM_OS_PLATFORM}-${CODIUM_ARCH}")).toBe(true);
+        expect(updatedScript).toContain("0xf00ba4");
+        expect(updatedScript).not.toContain("--install-extension");
+        expect(updatedScript).toContain('CODIUM_FORCE_REINSTALL_SERVER="false"');
+        expect(updatedScript).toContain('CODIUM_NEW_INSTALL_VERSION="1.2.345"');
+        expect(updatedScript).toContain('CODIUM_SERVER_LISTEN_PORT="6543"');
+        expect(updatedScript).toContain("localhost/${CODIUM_OS_PLATFORM}-${CODIUM_ARCH}");
 
         // await fs.writeFile("out.sh", updatedScript, { encoding: 'utf-8', mode: 0o700 });
     });
@@ -157,12 +157,12 @@ describe("Install script", () => {
         const script = await fs.readFile(install.INSTALL_SCRIPT_LOCATION, { encoding: "utf-8" });
         const updatedScript = install.updateScript(script, info, true);
 
-        expect(updatedScript.includes("0xf00ba4")).toBe(true);
-        expect(updatedScript.includes("--install-extension pub1.ext1 --install-extension pub2.ext1")).toBe(true);
-        expect(updatedScript.includes('CODIUM_FORCE_REINSTALL_SERVER="false"')).toBe(true);
-        expect(updatedScript.includes('CODIUM_NEW_INSTALL_VERSION="1.2.345"')).toBe(true);
-        expect(updatedScript.includes('CODIUM_SERVER_LISTEN_PORT="6543"')).toBe(true);
-        expect(updatedScript.includes("localhost/${CODIUM_OS_PLATFORM}-${CODIUM_ARCH}")).toBe(true);
+        expect(updatedScript).toContain("0xf00ba4");
+        expect(updatedScript).toContain("--install-extension pub1.ext1 --install-extension pub2.ext1");
+        expect(updatedScript).toContain('CODIUM_FORCE_REINSTALL_SERVER="false"');
+        expect(updatedScript).toContain('CODIUM_NEW_INSTALL_VERSION="1.2.345"');
+        expect(updatedScript).toContain('CODIUM_SERVER_LISTEN_PORT="6543"');
+        expect(updatedScript).toContain("localhost/${CODIUM_OS_PLATFORM}-${CODIUM_ARCH}");
 
         // await fs.writeFile("out.sh", updatedScript, { encoding: 'utf-8', mode: 0o700 });
     });
