@@ -288,6 +288,38 @@ describe("ContainerConfig tests", async () => {
         }
     });
 
+    describe("containerEnv interpolation", () => {
+        test("localEnv and workspace vars are resolved", () => {
+            const env = { HOME: "/home/dev" } as NodeJS.ProcessEnv;
+            const cfg = withDefaults({
+                image: "ubuntu:24.04",
+                containerEnv: {
+                    PLAIN: "literal",
+                    WITH_LOCAL_ENV: "${localEnv:HOME}/bin",
+                    WITH_WSF: "${localWorkspaceFolder}",
+                    WITH_REMOTE: "${containerWorkspaceFolder}",
+                    COMBINED: "${localEnv:HOME}:${localWorkspaceFolder}",
+                    WITH_DEFAULT: "${localEnv:MISSING:/fallback}",
+                },
+            });
+            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, env);
+            const resolved = cc.getResolvedContainerEnv();
+
+            expect(resolved["PLAIN"]).toBe("literal");
+            expect(resolved["WITH_LOCAL_ENV"]).toBe("/home/dev/bin");
+            expect(resolved["WITH_WSF"]).toBe(localWsf);
+            expect(resolved["WITH_REMOTE"]).toBe(remoteWsf);
+            expect(resolved["COMBINED"]).toBe(`/home/dev:${localWsf}`);
+            expect(resolved["WITH_DEFAULT"]).toBe("/fallback");
+        });
+
+        test("no containerEnv returns empty record", () => {
+            const cfg = withDefaults({ image: "ubuntu:24.04" });
+            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+            expect(cc.getResolvedContainerEnv()).toStrictEqual({});
+        });
+    });
+
     test("exec unset null remoteEnv envs from devcontainer.json", () => {
         const newCfg = {
             ...imgCfg,
@@ -671,17 +703,52 @@ describe("ContainerConfig tests", async () => {
         expect(args).not.includes("env -u");
     });
 
-    test("getResolvedRemoteEnv excludes null values", () => {
-        const cfg = withDefaults({
-            image: "ubuntu",
-            remoteEnv: { KEEP: "yes", DROP: null, ALSO_KEEP: "yep" },
-        });
-        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
-        const resolved = cc.getResolvedRemoteEnv({});
+    describe("getResolvedRemoteEnv", () => {
+        test("excludes null values", () => {
+            const cfg = withDefaults({
+                image: "ubuntu",
+                remoteEnv: { KEEP: "yes", DROP: null, ALSO_KEEP: "yep" },
+            });
+            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+            const resolved = cc.getResolvedRemoteEnv({});
 
-        expect("KEEP" in resolved).toBe(true);
-        expect("ALSO_KEEP" in resolved).toBe(true);
-        expect("DROP" in resolved).toBe(false);
+            expect("KEEP" in resolved).toBe(true);
+            expect("ALSO_KEEP" in resolved).toBe(true);
+            expect("DROP" in resolved).toBe(false);
+        });
+
+        test("interpolates localEnv, containerEnv, and workspace vars", () => {
+            const env = { HOME: "/home/dev" } as NodeJS.ProcessEnv;
+            const containerProbe = { CONTAINER_VAR: "from-container" } as NodeJS.ProcessEnv;
+            const cfg = withDefaults({
+                image: "ubuntu",
+                remoteEnv: {
+                    PLAIN: "literal",
+                    WITH_LOCAL: "${localEnv:HOME}/bin",
+                    WITH_CONTAINER: "${containerEnv:CONTAINER_VAR}/data",
+                    WITH_WSF: "${localWorkspaceFolder}",
+                    WITH_REMOTE: "${containerWorkspaceFolder}",
+                    WITH_DEFAULT: "${localEnv:MISSING:/fallback}",
+                    COMBINED: "${localEnv:HOME}:${containerEnv:CONTAINER_VAR}:${containerWorkspaceFolder}",
+                },
+            });
+            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, env);
+            const resolved = cc.getResolvedRemoteEnv(containerProbe);
+
+            expect(resolved["PLAIN"]).toBe("literal");
+            expect(resolved["WITH_LOCAL"]).toBe("/home/dev/bin");
+            expect(resolved["WITH_CONTAINER"]).toBe("from-container/data");
+            expect(resolved["WITH_WSF"]).toBe(localWsf);
+            expect(resolved["WITH_REMOTE"]).toBe(remoteWsf);
+            expect(resolved["WITH_DEFAULT"]).toBe("/fallback");
+            expect(resolved["COMBINED"]).toBe(`/home/dev:from-container:${remoteWsf}`);
+        });
+
+        test("returns empty record when no remoteEnv", () => {
+            const cfg = withDefaults({ image: "ubuntu" });
+            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+            expect(cc.getResolvedRemoteEnv({})).toStrictEqual({});
+        });
     });
 
     test("getUnsetRemoteEnvArgs returns empty when no nulls", () => {

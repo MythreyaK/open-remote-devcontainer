@@ -405,13 +405,17 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         return ret;
     }
 
-    private addContainerEnv(): string[] {
-        const ret: string[] = [];
-
+    public getResolvedContainerEnv(): Record<string, string> {
+        const ret: Record<string, string> = {};
         for (const [k, v] of Object.entries(this.cfg.containerEnv ?? {})) {
-            ret.push("--env", `${k}=${v}`);
+            ret[k] = interpolateLocal(v, this.workspaceFolder, this.getRemoteMountDir(), this.localEnv);
         }
         return ret;
+    }
+
+    private addContainerEnv(): string[] {
+        return Object.entries(this.getResolvedContainerEnv())
+            .flatMap(([k, v]) => ["--env", `${k}=${v}`]);
     }
 
     private getShell(): string {
