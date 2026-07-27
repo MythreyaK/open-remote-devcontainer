@@ -4,8 +4,8 @@ import { describe, expect, test } from "vitest";
 import * as schema from "../../parser/schema";
 import { ContainerConfig, interpolateVars, interpolateLocal, interpolateContainer } from "../container";
 
-import { initMocks } from "../../tests/common";
 import { sanityCheck, withDefaults } from "./common";
+import { initMocks } from "../../tests/common";
 
 initMocks();
 

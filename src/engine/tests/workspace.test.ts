@@ -22,14 +22,12 @@ describe("workspace mounts", () => {
         const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
 
         expect(cc.isImageBased()).toBe(true);
-        if (cc.isImageBased()) {
-            const createArgs = cc.getRunCreateCmd(cfg.image, "foobar");
+        const createArgs = cc.getRunCreateCmd(cfg.image, "foobar");
 
-            expect(cc.getRemoteMountDir()).eq("/workspaces/dir");
-            expect(cc.cfg.workspaceFolder).toBeUndefined();
-            expect(cc.cfg.workspaceMount).toBeUndefined();
-            expect(createArgs.join(" ")).includes(`--mount source=${localWsf},target=/workspaces/dir,type=bind`);
-        }
+        expect(cc.getRemoteMountDir()).eq("/workspaces/dir");
+        expect(cc.cfg.workspaceFolder).toBeUndefined();
+        expect(cc.cfg.workspaceMount).toBeUndefined();
+        expect(createArgs.join(" ")).includes(`--mount source=${localWsf},target=/workspaces/dir,type=bind`);
     });
 
     test("both set: passthrough", () => {
@@ -46,15 +44,13 @@ describe("workspace mounts", () => {
             expect(cc.getRemoteMountDir()).eq("/custom/dir");
 
             expect(cc.isImageBased()).toBe(true);
-            if (cc.isImageBased()) {
-                const createArgs = cc.getRunCreateCmd(cfg.image, "foobar");
+            const createArgs = cc.getRunCreateCmd(cfg.image, "foobar");
 
-                expect(cfg.workspaceMount).toBeDefined();
-                expect(createArgs.join(" "))
-                    .contains(` --mount ${cfg.workspaceMount?.replace("${localWorkspaceFolder}", localWsf)} `)
-                    .not.contains("${localWorkspaceFolder}")
-                    .not.contains("/custom/dir/subdir");
-            }
+            expect(cfg.workspaceMount).toBeDefined();
+            expect(createArgs.join(" "))
+                .contains(` --mount ${cfg.workspaceMount?.replace("${localWorkspaceFolder}", localWsf)} `)
+                .not.contains("${localWorkspaceFolder}")
+                .not.contains("/custom/dir/subdir");
         }
     });
 
@@ -100,11 +96,9 @@ describe("workspace mounts", () => {
         expect(cc.getRemoteMountDir()).eq("/workspaces/dir");
 
         expect(cc.isImageBased()).toBe(true);
-        if (cc.isImageBased()) {
-            const createArgs = cc.getRunCreateCmd(cfg.image, "foobar");
-            expect(createArgs)
-                .contains(`${cfg.workspaceMount?.replace("${localWorkspaceFolder}", localWsf)}`)
-                .not.contains("${localWorkspaceFolder}");
-        }
+        const createArgs = cc.getRunCreateCmd(cfg.image, "foobar");
+        expect(createArgs)
+            .contains(`${cfg.workspaceMount?.replace("${localWorkspaceFolder}", localWsf)}`)
+            .not.contains("${localWorkspaceFolder}");
     });
 });

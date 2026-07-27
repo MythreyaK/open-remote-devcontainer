@@ -3,12 +3,10 @@ import { describe, expect, test } from "vitest";
 
 import * as schema from "../../parser/schema";
 import { ContainerConfig } from "../container";
-import { getLogSink } from "../../extension/log";
-import { getHostUserInfo, HostUserInfo } from "../../common/utils";
+import { getWorkspaceId } from "../../extension/workspace";
 
 import { sanityCheck, withDefaults } from "./common";
 import { initMocks } from "../../tests/common";
-import { getWorkspaceId } from "../../extension/workspace";
 
 initMocks();
 
@@ -41,23 +39,11 @@ const common = {
     securityOpt: ["seccomp=unconfined", "no-new-privileges=true"],
 };
 
-let _hostUserInfo: HostUserInfo | undefined;
-
-test("hostUserInfo", async () => {
-    _hostUserInfo = await (async () => {
-        try {
-            return await getHostUserInfo();
-        }
-        catch (e) {
-            getLogSink().error(`Could not query host info! ${JSON.stringify(e)}`);
-            return {
-                uid: 1000,
-                gid: 1000,
-                name: "username",
-            };
-        }
-    })();
-});
+const hostUserInfo = {
+    uid: 1000,
+    gid: 1000,
+    name: "username",
+};
 
 describe("lifecycle: image", () => {
     const localWsf = "/tmp/dir";
@@ -74,19 +60,17 @@ describe("lifecycle: image", () => {
         expect(cc.isImageBased()).toBe(true);
         expect(cc.isDockerfileBased()).toBe(false);
 
-        if (cc.isImageBased()) {
-            const createArgs = cc.getRunCreateCmd(imgCfg.image, "foobar").join(" ");
-            expect(createArgs)
-                .includes("run -d ")
-                .includes("-u foo ")
-                .includes("-p 100 -p 123:456 -p 5040:5012 ")
-                .includes(`-v ${localWsf}:${localEnv.HOME}/projects/${localWsfBase} `)
-                .includes("--mount source=/tmp/dir/sub-folder,target=/workspace/dir,type=bind,consistency=cached ")
-                .includes("--env MY_ENV1=MY_VAL1=/foo/bar --env HOME=/foo/bar ")
-                .includes("--device /dev/kfd --pid host ")
-                .includes("--cap-add CAP_BPF --cap-add CAP_CHOWN ")
-                .includes("--security-opt seccomp=unconfined --security-opt no-new-privileges=true ");
-        }
+        const createArgs = cc.getRunCreateCmd(imgCfg.image, "foobar").join(" ");
+        expect(createArgs)
+            .includes("run -d ")
+            .includes("-u foo ")
+            .includes("-p 100 -p 123:456 -p 5040:5012 ")
+            .includes(`-v ${localWsf}:${localEnv.HOME}/projects/${localWsfBase} `)
+            .includes("--mount source=/tmp/dir/sub-folder,target=/workspace/dir,type=bind,consistency=cached ")
+            .includes("--env MY_ENV1=MY_VAL1=/foo/bar --env HOME=/foo/bar ")
+            .includes("--device /dev/kfd --pid host ")
+            .includes("--cap-add CAP_BPF --cap-add CAP_CHOWN ")
+            .includes("--security-opt seccomp=unconfined --security-opt no-new-privileges=true ");
     });
 
     test("create cmd: single (non-array) appPort", () => {
@@ -135,18 +119,16 @@ describe("lifecycle: dockerfile", () => {
         expect(cc.isImageBased()).toBe(false);
         expect(cc.isDockerfileBased()).toBe(true);
 
-        if (cc.isDockerfileBased()) {
-            const buildArgs = cc.getBuildCmd().join(" ");
-            expect(buildArgs)
-                .includes("build ")
-                .includes(`--build-arg ARG1=VAL1 --build-arg ARG2=${localWsfBase} --build-arg HOMEDIR=${localWsf}`)
-                .includes(" -f /tmp/dir/.devcontainer/dockerfile ");
+        const buildArgs = cc.getBuildCmd().join(" ");
+        expect(buildArgs)
+            .includes("build ")
+            .includes(`--build-arg ARG1=VAL1 --build-arg ARG2=${localWsfBase} --build-arg HOMEDIR=${localWsf}`)
+            .includes(" -f /tmp/dir/.devcontainer/dockerfile ");
 
-            expect(buildArgs.endsWith(" /tmp/dir/.devcontainer")).toBe(true);
+        expect(buildArgs.endsWith(" /tmp/dir/.devcontainer")).toBe(true);
 
-            expect(buildArgs).not.includes("--pull");
-            expect(buildArgs).not.includes("--no-cache");
-        }
+        expect(buildArgs).not.includes("--pull");
+        expect(buildArgs).not.includes("--no-cache");
     });
 
     test("build image cmd (noCache)", () => {
@@ -155,35 +137,30 @@ describe("lifecycle: dockerfile", () => {
         const cfgPath = path.join(localWsf, ".devcontainer.json");
         sanityCheck(localWsf, cfgPath);
 
-        expect(_hostUserInfo).toBeDefined();
-        const hostUserInfo = _hostUserInfo!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
-
         const cc = ContainerConfig.create(localWsf, cfgPath, dockerfileCfg, localEnv);
         expect(cc.isImageBased()).toBe(false);
         expect(cc.isDockerfileBased()).toBe(true);
 
-        if (cc.isDockerfileBased()) {
-            const stage1 = cc.getBuildCmd({ noCache: true }).join(" ");
-            expect(stage1)
-                .includes("build ")
-                .includes(`--build-arg ARG1=VAL1 --build-arg ARG2=${localWsfBase} --build-arg HOMEDIR=${localWsf}`)
-                .includes(" --pull ")
-                .includes(" --no-cache ")
-                .includes(`-f ${localWsf}/dockerfile`);
+        const stage1 = cc.getBuildCmd({ noCache: true }).join(" ");
+        expect(stage1)
+            .includes("build ")
+            .includes(`--build-arg ARG1=VAL1 --build-arg ARG2=${localWsfBase} --build-arg HOMEDIR=${localWsf}`)
+            .includes(" --pull ")
+            .includes(" --no-cache ")
+            .includes(`-f ${localWsf}/dockerfile`);
 
-            expect(stage1.endsWith(` ${__dirname}`)).toBe(true);
+        expect(stage1.endsWith(` ${__dirname}`)).toBe(true);
 
-            const stage2 = cc.getStage2BuildCmd(hostUserInfo, "root", { noCache: true }).join(" ");
-            expect(stage2)
-                .includes("build ")
-                .includes(" --no-cache ");
+        const stage2 = cc.getStage2BuildCmd(hostUserInfo, "root", { noCache: true }).join(" ");
+        expect(stage2)
+            .includes("build ")
+            .includes(" --no-cache ");
 
-            // stage2 source is always local
-            expect(stage2)
-                .not.includes(" --pull ");
+        // stage2 source is always local
+        expect(stage2)
+            .not.includes(" --pull ");
 
-            expect(stage2.endsWith(` ${__dirname}`)).toBe(true);
-        }
+        expect(stage2.endsWith(` ${__dirname}`)).toBe(true);
     });
 
     test("build cmd: --target flag", () => {
@@ -296,9 +273,6 @@ describe("lifecycle", () => {
     });
 
     test("getStage2BuildCmd includes configId and workspaceId labels", () => {
-        expect(_hostUserInfo).toBeDefined();
-        const hostUserInfo = _hostUserInfo!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
-
         const cfgPath = path.join(localWsf, ".devcontainer.json");
         const cfg = withDefaults({
             build: { dockerfile: "Dockerfile" },
@@ -314,9 +288,6 @@ describe("lifecycle", () => {
     });
 
     test("getStage2BuildCmd uses stage1 image as BASE_IMAGE for dockerfile configs", () => {
-        expect(_hostUserInfo).toBeDefined();
-        const hostUserInfo = _hostUserInfo!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
-
         const cfgPath = path.join(localWsf, ".devcontainer.json");
         const cfg = withDefaults({
             build: { dockerfile: "Dockerfile" },
