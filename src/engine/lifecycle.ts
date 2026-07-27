@@ -6,13 +6,12 @@ import { run } from "../common/cmd";
 import { getLogSink } from "../extension/log";
 import { formatCmdErr } from "../common/spawn";
 import { parseEnv, getHostUserInfo } from "../common/utils";
-import { ContainerConfig, LifecycleCmd } from "./container";
+import { ContainerConfig, ContainerEngine, LifecycleCmd } from "./container";
 import { EngineError, InstallError, InternalError } from "../extension/error";
 import { getWorkspaceId, NotificationLevel, showNotification } from "../extension/workspace";
 
 import * as settings from "../extension/settings";
 import * as server from "../remote/installServer";
-import { getContainerEngine } from "../extension/settings";
 import { EXTENSION_ID } from "../common/constants";
 
 const DEVCONTAINER_SERVER_LISTEN_PORT = 65432;
@@ -249,7 +248,7 @@ export class ContainerState {
         }
 
         const imageUser = (() => {
-            const parsed = fixDockerImageInspect(imgUser.stdout.trim());
+            const parsed = fixDockerImageInspect(this.cc.engine, imgUser.stdout.trim());
             if (!parsed.User) { return undefined; }
             else { return parsed.User; }
         })();
@@ -386,7 +385,7 @@ export class ContainerState {
             return undefined;
         }
         else {
-            return fixDockerImageInspect(res.stdout.trim());
+            return fixDockerImageInspect(this.cc.engine, res.stdout.trim());
         }
     }
 
@@ -647,7 +646,7 @@ function getInstallError(data: string) {
     }
 }
 
-function fixDockerImageInspect(json: string): ImageInspectResult {
+function fixDockerImageInspect(engine: ContainerEngine, json: string): ImageInspectResult {
     interface DockerImageInspectResult {
         Config: {
             User: string,
@@ -656,7 +655,7 @@ function fixDockerImageInspect(json: string): ImageInspectResult {
 
     const data = JSON.parse(json.trim()) as unknown;
     const parsed = data as ImageInspectResult;
-    if (getContainerEngine() === "docker") {
+    if (engine === ContainerEngine.docker) {
         parsed.User = (data as DockerImageInspectResult).Config.User;
     }
     return parsed;
