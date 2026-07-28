@@ -19,5 +19,4 @@
         "exactOptionalPropertyTypes": true
     },
     "include": ["src/**/*"],
-    "exclude": ["**/*.test.ts"]
 }

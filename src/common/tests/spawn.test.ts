@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import { spawn } from "../spawn";
 import { getLogSink } from "../../extension/log";
