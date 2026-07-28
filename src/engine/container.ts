@@ -507,6 +507,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         if (!args || (Array.isArray(args) && args.length === 0)) { return {}; }
 
         if (typeof args === "string") {
+            if (args === "") { return {}; }
             return { string: ["/bin/sh", "-c", args] };
         }
         else if (Array.isArray(args)) {
@@ -514,14 +515,14 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         }
         else {
             const entries = Object.entries(args);
-            const mapped = entries.map(([k, v]) =>
+            const mapped = entries
+                .filter(([, v]) => v !== "" && !(Array.isArray(v) && v.length === 0))
                 // get a [key, transformed(value)] so that we
                 // can pair them back again in the end with fromEntries
-                [
+                .map(([k, v]) => [
                     k,
                     Object.values(this.normalizeLifecycleCmd(v))[0],
-                ],
-            );
+                ]);
             return Object.fromEntries(mapped) as Record<string, string[]>;
         }
     }

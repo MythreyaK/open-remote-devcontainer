@@ -467,4 +467,32 @@ describe("normalizeLifecycleCmd", () => {
             test: ["vitest", "run"],
         });
     });
+
+    test("record filters out empty string values", () => {
+        const result = ContainerConfig.normalizeLifecycleCmd({
+            real: "echo foobar",
+            empty: "",
+        });
+        expect(result).toStrictEqual({
+            real: ["/bin/sh", "-c", "echo foobar"],
+        });
+    });
+
+    test("record filters out empty array values", () => {
+        const result = ContainerConfig.normalizeLifecycleCmd({
+            real: ["echo", "foobar"],
+            empty: [],
+        });
+        expect(result).toStrictEqual({
+            real: ["echo", "foobar"],
+        });
+    });
+
+    test("record with all empty values returns empty", () => {
+        const result = ContainerConfig.normalizeLifecycleCmd({
+            a: "",
+            c: [],
+        });
+        expect(result).toStrictEqual({});
+    });
 });
