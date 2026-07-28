@@ -305,6 +305,7 @@ describe("config interpolation", () => {
             { ...base, postStartCommand: "echo start" },
             { ...base, postAttachCommand: "echo attach" },
             { ...base, workspaceFolder: "/custom", workspaceMount: "source=/a,target=/custom" },
+            { ...base, workspaceMount: "" },
             { ...base, mounts: [{ type: "bind" as const, source: "/a", target: "/b" }] },
             { ...base, containerEnv: { FOO: "bar" } },
             { ...base, containerUser: "nobody" },

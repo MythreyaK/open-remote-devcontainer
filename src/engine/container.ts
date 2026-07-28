@@ -66,6 +66,14 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         const wsMount = cfg.workspaceMount;
         const remoteWsFolder = cfg.workspaceFolder;
 
+        // if empty, don't mount workspace
+        if (wsMount === "") {
+            return {
+                remoteWorkspace: remoteWsFolder ?? `/workspaces/${path.parse(localWsf).base}`,
+                workspaceMount: "",
+            };
+        }
+
         if (remoteWsFolder && !wsMount) {
             // remote location could be a subfolder of the standard mount
             // so don't update workspaceMount or workspaceFolder
@@ -319,12 +327,14 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     }
 
     public getRemoteMountDir(): string {
+        if (this.cfg.workspaceMount === "") { return this.inferredMounts.remoteWorkspace; }
         return schema.extractWorkspaceMount(
             this.cfg.workspaceMount ? this.cfg.workspaceMount : this.inferredMounts.workspaceMount,
         )[0];
     }
 
     private addWorkspaceMount(relabel: boolean): string[] {
+        if (this.cfg.workspaceMount === "") { return []; }
         if (!this.cfg.workspaceMount) { return ["--mount", `${this.inferredMounts.workspaceMount}${relabel ? ",relabel=shared" : ""}`]; }
         else { return ["--mount", this.cfg.workspaceMount]; }
     }
@@ -438,7 +448,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             this.cfg.name ?? "",
             this.cfg.runArgs,
             this.cfg.workspaceFolder ?? "",
-            this.cfg.workspaceMount ?? "",
+            this.cfg.workspaceMount,
             this.cfg.mounts ?? "",
             this.cfg.containerEnv ?? "",
             this.cfg.containerUser ?? "",

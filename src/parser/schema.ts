@@ -75,7 +75,7 @@ export const NonComposeBase_z = z.object({
     shutdownAction: z._default(z.optional(ShutdownAction), "stopContainer"),
     overrideCommand: z._default(z.optional(z.boolean()), true),
     workspaceFolder: z.optional(minString),
-    workspaceMount: z.optional(minString),
+    workspaceMount: z.optional(z.string()),
 });
 
 export const ImageContainer_z = z.object({

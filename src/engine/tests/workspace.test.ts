@@ -100,4 +100,51 @@ describe("workspace mounts", () => {
             .contains(`${cfg.workspaceMount?.replace("${localWorkspaceFolder}", localWsf)}`)
             .not.contains("${localWorkspaceFolder}");
     });
+
+    test("empty workspaceMount: schema parse works", () => {
+        const cfg = withDefaults({ image: "ubuntu:24.04", workspaceMount: "" });
+        expect(cfg.workspaceMount).toBe("");
+    });
+
+    test("empty workspaceMount: skips mount in getRunCreateCmd()", () => {
+        const cfg = withDefaults({ image: "ubuntu:24.04", workspaceMount: "" });
+        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+        const cmd = cc.getRunCreateCmd(cfg.image, "tmp");
+
+        expect(cc.getRemoteMountDir()).toBe("/workspaces/dir");
+        expect(cmd).not.toContain("--mount");
+    });
+
+    test("empty workspaceMount: default workspaceFolder", () => {
+        const cfg = withDefaults({ image: "ubuntu:24.04", workspaceMount: "" });
+        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+        const cmd = cc.getRunCreateCmd(cfg.image, "tmp");
+
+        expect(cc.getRemoteMountDir()).toBe("/workspaces/dir");
+        expect(cmd).not.toContain("--mount");
+    });
+
+    test("empty workspaceMount: explicit workspaceFolder", () => {
+        const cfg = withDefaults({
+            image: "ubuntu:24.04",
+            workspaceMount: "",
+            workspaceFolder: "/home/user/workspace",
+        });
+
+        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+        const cmd = cc.getRunCreateCmd(cfg.image, "tmp");
+
+        expect(cc.getRemoteMountDir()).toBe("/home/user/workspace");
+        expect(cmd).not.toContain("--mount");
+    });
+
+    test("empty workspaceMount: configId is not same as unspecified", () => {
+        const cfg_a = withDefaults({ image: "ubuntu:24.04", workspaceMount: "" });
+        const cc_a = ContainerConfig.create(localWsf, cfgPath, cfg_a);
+
+        const cfg_b = withDefaults({ image: "ubuntu:24.04" });
+        const cc_b = ContainerConfig.create(localWsf, cfgPath, cfg_b);
+
+        expect(cc_a.getConfigId()).not.eq(cc_b.getConfigId());
+    });
 });
