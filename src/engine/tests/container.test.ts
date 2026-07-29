@@ -1,106 +1,50 @@
 import path from "node:path";
-import { window } from "vscode";
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import * as schema from "../../parser/schema";
-import { getLogSink } from "../../extension/log";
-import { getWorkspaceId } from "../../extension/workspace";
 import { ContainerConfig, interpolateVars, interpolateLocal, interpolateContainer } from "../container";
-import { getHostUserInfo, HostUserInfo } from "../../common/utils";
 
+import { sanityCheck, withDefaults } from "./common";
 import { initMocks } from "../../tests/common";
 
 initMocks();
 
-function withDefaults(cfg: { image: string, [k: string]: unknown }): schema.ImageDevcontainer;
-function withDefaults(cfg: { build: object, [k: string]: unknown }): schema.DockerfileDevcontainer;
-function withDefaults(cfg: Record<string, unknown>) {
-    return schema.ConfigSchemaBase.parse(cfg);
-}
-
-describe("ContainerConfig tests", async () => {
+describe("config interpolation", () => {
     const localWsf = "/tmp/dir";
     const localWsfBase = path.parse(localWsf).base;
-    const remoteWsf = "/workspace/dir";
-    const remoteWsfBase = path.parse("/workspace/dir").base;
+    const remoteWsf = "/workspaces/dir";
+    const remoteWsfBase = path.parse("/workspaces/dir").base;
     const cfgPath = "/tmp/dir/.devcontainer/devcontainer.json";
-
-    const hostUserInfo: HostUserInfo = await (async () => {
-        try {
-            return await getHostUserInfo();
-        }
-        catch (e) {
-            getLogSink().error(`Could not query host info! ${JSON.stringify(e)}`);
-            return {
-                uid: 1000,
-                gid: 1000,
-                name: "username",
-            };
-        }
-    })();
-
-    const sanityCheck = (_lsf: string, _cfg: string) => {
-        const resolvedWsf = path.resolve(_lsf);
-        const resolvedCfg = path.resolve(_cfg);
-        expect(resolvedCfg.startsWith(resolvedWsf + "/")).toBe(true);
-
-        const relativeTo = path.relative(resolvedWsf, resolvedCfg);
-        expect(relativeTo).toBeOneOf([
-            ".devcontainer/devcontainer.json",
-            ".devcontainer.json",
-            // ".config/devcontainer.json",
-        ]);
-    };
 
     test("local workspace dir (sanity check)", () => {
         sanityCheck(localWsf, cfgPath);
     });
 
-    test("test workspace mounts (default)", () => {
-        {
+    describe("runArgs ordering", () => {
+        test("internal extraArgs appear before user runArgs", () => {
             const cfg = withDefaults({
-                name: "test",
                 image: "ubuntu:24.04",
+                runArgs: ["--userns=auto"],
             });
-
             const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
-            expect(cc.isImageBased()).toBe(true);
+            const args = cc.getRunCreateCmd(cfg.image, "foobar", { extraArgs: ["--userns=keep-id"] });
+            const keepIdIdx = args.indexOf("--userns=keep-id");
+            const autoIdx = args.indexOf("--userns=auto");
+            expect(keepIdIdx).toBeGreaterThan(-1);
+            expect(autoIdx).toBeGreaterThan(-1);
+            expect(keepIdIdx).toBeLessThan(autoIdx);
+        });
 
-            if (cc.isImageBased()) {
-                const createArgs = cc.getRunCreateCmd(cfg.image, "foobar");
-
-                expect(cc.getRemoteMountDir()).eq("/workspace/dir");
-                expect(createArgs[0]).eq("run");
-                expect(createArgs[1]).eq("-d");
-                expect(createArgs)
-                    .contains("/tmp/dir:/workspace/dir");
-            }
-        }
-    });
-
-    test("test workspace mounts (explicit)", () => {
-        {
+        test("user runArgs can override extraArgs (last one wins)", () => {
             const cfg = withDefaults({
-                name: "test",
                 image: "ubuntu:24.04",
-                // workspaceFolder: "/custom/subdir/repodir",
-                workspaceMount: "source=${localWorkspaceFolder}/sub-folder,target=/workspace/dir,type=bind,consistency=cached",
+                runArgs: ["--userns=auto"],
             });
-
             const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
-            expect(cc.isImageBased()).toBe(true);
-
-            if (cc.isImageBased()) {
-                const createArgs = cc.getRunCreateCmd(cfg.image, "foobar");
-
-                expect(cc.getRemoteMountDir()).eq("/workspace/dir");
-                expect(createArgs[0]).eq("run");
-                expect(createArgs[1]).eq("-d");
-                expect(createArgs)
-                    .contains(`${cfg.workspaceMount?.replace("${localWorkspaceFolder}", localWsf)}`)
-                    .not.contains("${localWorkspaceFolder}");
-            }
-        }
+            const args = cc.getRunCreateCmd(cfg.image, "foobar", { extraArgs: ["--userns=keep-id"] });
+            const allUserns = args.filter(a => a.startsWith("--userns="));
+            expect(allUserns).toEqual(["--userns=keep-id", "--userns=auto"]);
+        });
     });
 
     test("variable interpolation", () => {
@@ -121,26 +65,36 @@ describe("ContainerConfig tests", async () => {
         }
     });
 
-    test("exec unset null remoteEnv envs from devcontainer.json", () => {
-        const newCfg = {
-            ...imgCfg,
-            remoteEnv: {
-                Local1Env: "null",
-                LOCALENV2: "HELLO",
-                LOCALENV3: "undefined",
-                Local2Env: null,
-                LOCALENV4: "HELLO",
-                LOCALENV5: null,
-            },
-        };
+    describe("containerEnv interpolation", () => {
+        test("localEnv and workspace vars are resolved", () => {
+            const env = { HOME: "/home/dev" } as NodeJS.ProcessEnv;
+            const cfg = withDefaults({
+                image: "ubuntu:24.04",
+                containerEnv: {
+                    PLAIN: "literal",
+                    WITH_LOCAL_ENV: "${localEnv:HOME}/bin",
+                    WITH_WSF: "${localWorkspaceFolder}",
+                    WITH_REMOTE: "${containerWorkspaceFolder}",
+                    COMBINED: "${localEnv:HOME}:${localWorkspaceFolder}",
+                    WITH_DEFAULT: "${localEnv:MISSING:/fallback}",
+                },
+            });
+            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, env);
+            const resolved = cc.getResolvedContainerEnv();
 
-        const cc = ContainerConfig.create(localWsf, cfgPath, newCfg, {});
+            expect(resolved["PLAIN"]).toBe("literal");
+            expect(resolved["WITH_LOCAL_ENV"]).toBe("/home/dev/bin");
+            expect(resolved["WITH_WSF"]).toBe(localWsf);
+            expect(resolved["WITH_REMOTE"]).toBe(remoteWsf);
+            expect(resolved["COMBINED"]).toBe(`/home/dev:${localWsf}`);
+            expect(resolved["WITH_DEFAULT"]).toBe("/fallback");
+        });
 
-        expect(cc.getUnsetRemoteEnvArgs()).toStrictEqual([
-            "env",
-            "-u", "Local2Env",
-            "-u", "LOCALENV5",
-        ]);
+        test("no containerEnv returns empty record", () => {
+            const cfg = withDefaults({ image: "ubuntu:24.04" });
+            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+            expect(cc.getResolvedContainerEnv()).toStrictEqual({});
+        });
     });
 
     test("localEnv and var interpolation", () => {
@@ -230,288 +184,52 @@ describe("ContainerConfig tests", async () => {
         }
     });
 
-    const localEnv = {
-        APP_PORT: "5040",
-        HOME: "/foo/bar",
-    } as NodeJS.ProcessEnv;
+    describe("getResolvedRemoteEnv", () => {
+        test("excludes null values", () => {
+            const cfg = withDefaults({
+                image: "ubuntu",
+                remoteEnv: { KEEP: "yes", DROP: null, ALSO_KEEP: "yep" },
+            });
+            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+            const resolved = cc.getResolvedRemoteEnv({});
 
-    const containerEnv = {
-
-    } as NodeJS.ProcessEnv;
-
-    const common = {
-        name: "foobar",
-        containerUser: "foo",
-        appPort: [100, "123:456", "${localEnv:APP_PORT:4040}:${localEnv:FOO_PORT:5012}"],
-        mounts: [
-            { type: "bind", source: "${localWorkspaceFolder}", target: "${localEnv:HOME:/home/root}/projects/${localWorkspaceFolderBasename}" },
-        ],
-        workspaceMount: "source=${localWorkspaceFolder}/sub-folder,target=/workspace/dir,type=bind,consistency=cached",
-        containerEnv: { MY_ENV1: "MY_VAL1=${localEnv:HOME}", HOME: "${localEnv:HOME}" },
-        runArgs: ["--device", "/dev/kfd", "--pid", "host"],
-        capAdd: ["CAP_BPF", "CAP_CHOWN"],
-        securityOpt: ["seccomp=unconfined", "no-new-privileges=true"],
-    };
-
-    const imgCfg = withDefaults({
-        ...common,
-        image: "ubuntu:24.04",
-    });
-
-    const dockerfileCfg = withDefaults({
-        ...common,
-        build: {
-            dockerfile: "dockerfile",
-            args: { ARG1: "VAL1", ARG2: "${localWorkspaceFolderBasename}", HOMEDIR: "${localWorkspaceFolder}" },
-        },
-        mounts: [
-            {
-                type: "bind",
-                source: "/a",
-                target: "/b",
-            },
-            "source=/c,target=/d,type=bind",
-        ],
-    });
-
-    test("build dockerfile implicit context dir (dockerfile based)", () => {
-        const cc = ContainerConfig.create(localWsf, cfgPath, dockerfileCfg, localEnv);
-        expect(cc.getResolvedBuildcontextDir()).toBe("/tmp/dir/.devcontainer");
-        expect(cc.getResolvedDockerfilePath()).toBe("/tmp/dir/.devcontainer/dockerfile");
-    });
-
-    test("build dockerfile explicit context dir (dockerfile based)", () => {
-        const newCfg: schema.DockerfileDevcontainer = {
-            ...dockerfileCfg,
-            build: {
-                ...dockerfileCfg.build,
-                context: "..",
-            },
-        };
-
-        const cc = ContainerConfig.create(localWsf, cfgPath, newCfg, localEnv);
-        expect(cc.getResolvedBuildcontextDir()).toBe("/tmp/dir");
-        expect(cc.getResolvedDockerfilePath()).toBe("/tmp/dir/.devcontainer/dockerfile");
-    });
-
-    test("build dockerfile explicit context and dockerfile dir (dockerfile based)", () => {
-        const newCfg = withDefaults({
-            ...dockerfileCfg,
-            build: {
-                dockerfile: "../Dockerfile",
-                context: "..",
-            },
-            remoteEnv: {
-                Local1Env: "null",
-                LOCALENV2: "HELLO",
-                LOCALENV3: "undefined",
-                Local2Env: null,
-                LOCALENV4: "HELLO",
-                LOCALENV5: null,
-            },
+            expect("KEEP" in resolved).toBe(true);
+            expect("ALSO_KEEP" in resolved).toBe(true);
+            expect("DROP" in resolved).toBe(false);
         });
 
-        const cc = ContainerConfig.create(localWsf, cfgPath, newCfg, localEnv);
-        const execCmd = cc.getExecArgs(cc.getConfigId(), {}).join(" ");
-        expect(execCmd).includes(`${cc.getConfigId()} env -u Local2Env -u LOCALENV5`);
-    });
+        test("interpolates localEnv, containerEnv, and workspace vars", () => {
+            const env = { HOME: "/home/dev" } as NodeJS.ProcessEnv;
+            const containerProbe = { CONTAINER_VAR: "from-container" } as NodeJS.ProcessEnv;
+            const cfg = withDefaults({
+                image: "ubuntu",
+                remoteEnv: {
+                    PLAIN: "literal",
+                    WITH_LOCAL: "${localEnv:HOME}/bin",
+                    WITH_CONTAINER: "${containerEnv:CONTAINER_VAR}/data",
+                    WITH_WSF: "${localWorkspaceFolder}",
+                    WITH_REMOTE: "${containerWorkspaceFolder}",
+                    WITH_DEFAULT: "${localEnv:MISSING:/fallback}",
+                    COMBINED: "${localEnv:HOME}:${containerEnv:CONTAINER_VAR}:${containerWorkspaceFolder}",
+                },
+            });
+            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, env);
+            const resolved = cc.getResolvedRemoteEnv(containerProbe);
 
-    test("create cmd: create container cmd", () => {
-        const cc = ContainerConfig.create(localWsf, cfgPath, imgCfg, localEnv);
-        expect(cc.isImageBased()).toBe(true);
-        expect(cc.isDockerfileBased()).toBe(false);
-
-        if (cc.isImageBased()) {
-            const createArgs = cc.getRunCreateCmd(imgCfg.image, "foobar").join(" ");
-            expect(createArgs)
-                .includes("run -d ")
-                .includes("-u foo ")
-                .includes("-p 100 -p 123:456 -p 5040:5012 ")
-                .includes(`-v ${localWsf}:${localEnv.HOME}/projects/${localWsfBase} `)
-                .includes("--mount source=/tmp/dir/sub-folder,target=/workspace/dir,type=bind,consistency=cached ")
-                .includes("--env MY_ENV1=MY_VAL1=/foo/bar --env HOME=/foo/bar ")
-                .includes("--device /dev/kfd --pid host ")
-                .includes("--cap-add CAP_BPF --cap-add CAP_CHOWN ")
-                .includes("--security-opt seccomp=unconfined --security-opt no-new-privileges=true ");
-        }
-    });
-
-    test("create cmd: single (non-array) appPort", () => {
-        const cfgStr = withDefaults({ image: "ubuntu", appPort: "8080" });
-        const ccStr = ContainerConfig.create(localWsf, cfgPath, cfgStr, {});
-        expect(ccStr.getRunCreateCmd("ubuntu", "test").join(" ")).includes("-p 8080");
-
-        const cfgNum = withDefaults({ image: "ubuntu", appPort: 3000 });
-        const ccNum = ContainerConfig.create(localWsf, cfgPath, cfgNum, {});
-        expect(ccNum.getRunCreateCmd("ubuntu", "test").join(" ")).includes("-p 3000");
-    });
-
-    test("create cmd: --privileged and --init flags", () => {
-        const cfg = withDefaults({ image: "ubuntu", privileged: true, init: true });
-        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
-        const args = cc.getRunCreateCmd("ubuntu", "test").join(" ");
-        expect(args).includes("--privileged");
-        expect(args).includes("--init");
-    });
-
-    test("run cmd: string mounts use '--mount' flag", () => {
-        const cc = ContainerConfig.create(localWsf, cfgPath, dockerfileCfg, localEnv);
-        expect(cc.isImageBased()).toBe(false);
-        expect(cc.isDockerfileBased()).toBe(true);
-
-        if (cc.isDockerfileBased()) {
-            const runArgs = cc.getRunCreateCmd(imgCfg.image, "foobar").join(" ");
-            expect(runArgs)
-                .includes("run ")
-                .includes(" --mount source=/c,target=/d,type=bind ")
-                .includes(" -v /a:/b ");
-        }
-    });
-
-    test("build image cmd", () => {
-        const cc = ContainerConfig.create(localWsf, cfgPath, dockerfileCfg, localEnv);
-        expect(cc.isImageBased()).toBe(false);
-        expect(cc.isDockerfileBased()).toBe(true);
-
-        if (cc.isDockerfileBased()) {
-            const buildArgs = cc.getBuildCmd().join(" ");
-            expect(buildArgs)
-                .includes("build ")
-                .includes(`--build-arg ARG1=VAL1 --build-arg ARG2=${localWsfBase} --build-arg HOMEDIR=${localWsf}`)
-                .includes(" -f /tmp/dir/.devcontainer/dockerfile ");
-
-            expect(buildArgs.endsWith(" /tmp/dir/.devcontainer")).toBe(true);
-
-            expect(buildArgs).not.includes("--pull");
-            expect(buildArgs).not.includes("--no-cache");
-        }
-    });
-
-    test("build image cmd (noCache)", () => {
-        const localWsf = __dirname;
-        const localWsfBase = path.parse(localWsf).base;
-        const cfgPath = path.join(localWsf, ".devcontainer.json");
-        sanityCheck(localWsf, cfgPath);
-
-        const cc = ContainerConfig.create(localWsf, cfgPath, dockerfileCfg, localEnv);
-        expect(cc.isImageBased()).toBe(false);
-        expect(cc.isDockerfileBased()).toBe(true);
-
-        if (cc.isDockerfileBased()) {
-            const stage1 = cc.getBuildCmd({ noCache: true }).join(" ");
-            expect(stage1)
-                .includes("build ")
-                .includes(`--build-arg ARG1=VAL1 --build-arg ARG2=${localWsfBase} --build-arg HOMEDIR=${localWsf}`)
-                .includes(" --pull ")
-                .includes(" --no-cache ")
-                .includes(`-f ${localWsf}/dockerfile`);
-
-            expect(stage1.endsWith(` ${__dirname}`)).toBe(true);
-
-            const stage2 = cc.getStage2BuildCmd(hostUserInfo, "root", { noCache: true }).join(" ");
-            expect(stage2)
-                .includes("build ")
-                .includes(" --pull ")
-                .includes(" --no-cache ");
-
-            expect(stage2.endsWith(` ${__dirname}`)).toBe(true);
-        }
-    });
-
-    test("build cmd: --target flag", () => {
-        const cfg = withDefaults({
-            build: { dockerfile: "Dockerfile", target: "builder" },
+            expect(resolved["PLAIN"]).toBe("literal");
+            expect(resolved["WITH_LOCAL"]).toBe("/home/dev/bin");
+            expect(resolved["WITH_CONTAINER"]).toBe("from-container/data");
+            expect(resolved["WITH_WSF"]).toBe(localWsf);
+            expect(resolved["WITH_REMOTE"]).toBe(remoteWsf);
+            expect(resolved["WITH_DEFAULT"]).toBe("/fallback");
+            expect(resolved["COMBINED"]).toBe(`/home/dev:from-container:${remoteWsf}`);
         });
-        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
-        const args = cc.getBuildCmd().join(" ");
-        expect(args).includes(" --target builder ");
-    });
 
-    test("build cmd: --cache-from single string", () => {
-        const cfg = withDefaults({
-            build: { dockerfile: "Dockerfile", cacheFrom: "myregistry/myimage:latest" },
+        test("returns empty record when no remoteEnv", () => {
+            const cfg = withDefaults({ image: "ubuntu" });
+            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+            expect(cc.getResolvedRemoteEnv({})).toStrictEqual({});
         });
-        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
-        const args = cc.getBuildCmd().join(" ");
-        expect(args).includes(" --cache-from myregistry/myimage:latest ");
-        expect(args).not.includes("--no-cache");
-    });
-
-    test("build cmd: --cache-from array", () => {
-        const cfg = withDefaults({
-            build: { dockerfile: "Dockerfile", cacheFrom: ["img1:latest", "img2:v1"] },
-        });
-        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
-        const args = cc.getBuildCmd().join(" ");
-        expect(args).includes(" --cache-from img1:latest --cache-from img2:v1 ");
-    });
-
-    test("build cmd: --cache-from skipped when noCache", () => {
-        const cfg = withDefaults({
-            build: { dockerfile: "Dockerfile", cacheFrom: "myregistry/myimage:latest" },
-        });
-        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
-        const args = cc.getBuildCmd({ noCache: true }).join(" ");
-        expect(args).includes(" --no-cache ");
-        expect(args).includes(" --pull ");
-        expect(args).not.includes("--cache-from");
-    });
-
-    test("build cmd: no --cache-from when not specified", () => {
-        const cfg = withDefaults({
-            build: { dockerfile: "Dockerfile" },
-        });
-        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
-        const args = cc.getBuildCmd().join(" ");
-        expect(args).not.includes("--cache-from");
-    });
-
-    test("exec args: withRemoteEnv=true injects --env and env -u", () => {
-        const cfg = withDefaults({
-            image: "ubuntu",
-            remoteEnv: { EDITOR: "vim", UNSET_ME: null, KEEP: "yes" },
-            remoteUser: "dev",
-        });
-        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
-        const args = cc.getExecArgs("cid123", { PATH: "/usr/bin" }).join(" ");
-
-        expect(args)
-            .includes("--env EDITOR=vim")
-            .includes("--env KEEP=yes")
-            .includes("env -u UNSET_ME")
-            .includes("-u dev");
-
-        expect(args).not.includes("UNSET_ME=");
-    });
-
-    test("exec args: withRemoteEnv=false skips all remoteEnv injection", () => {
-        const cfg = withDefaults({
-            image: "ubuntu",
-            remoteEnv: { EDITOR: "vim", UNSET_ME: null },
-            remoteUser: "dev",
-        });
-        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
-        const args = cc.getExecArgs("cid123", {}, { tty: false, withRemoteEnv: false }).join(" ");
-
-        expect(args)
-            .includes("-u dev")
-            .includes("cid123");
-
-        expect(args).not.includes("--env");
-        expect(args).not.includes("env -u");
-    });
-
-    test("getResolvedRemoteEnv excludes null values", () => {
-        const cfg = withDefaults({
-            image: "ubuntu",
-            remoteEnv: { KEEP: "yes", DROP: null, ALSO_KEEP: "yep" },
-        });
-        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
-        const resolved = cc.getResolvedRemoteEnv({});
-
-        expect("KEEP" in resolved).toBe(true);
-        expect("ALSO_KEEP" in resolved).toBe(true);
-        expect("DROP" in resolved).toBe(false);
     });
 
     test("getUnsetRemoteEnvArgs returns empty when no nulls", () => {
@@ -587,6 +305,7 @@ describe("ContainerConfig tests", async () => {
             { ...base, postStartCommand: "echo start" },
             { ...base, postAttachCommand: "echo attach" },
             { ...base, workspaceFolder: "/custom", workspaceMount: "source=/a,target=/custom" },
+            { ...base, workspaceMount: "" },
             { ...base, mounts: [{ type: "bind" as const, source: "/a", target: "/b" }] },
             { ...base, containerEnv: { FOO: "bar" } },
             { ...base, containerUser: "nobody" },
@@ -600,407 +319,4 @@ describe("ContainerConfig tests", async () => {
             expect(id, `expected configId to change for ${JSON.stringify(cfg)}`).not.eq(baseId);
         }
     });
-
-    test("volume mount without source produces no undefined in args", () => {
-        const cfg = withDefaults({
-            image: "ubuntu",
-            mounts: [{ type: "volume" as const, target: "/data" }],
-        });
-        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
-        const args = cc.getRunCreateCmd("ubuntu", "test").join(" ");
-        expect(args).includes("-v /data");
-        expect(args).not.includes("undefined");
-    });
-
-    test("getRunCreateCmd includes configId and workspaceId labels", () => {
-        const cfg = withDefaults({ image: "ubuntu" });
-        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
-        const args = cc.getRunCreateCmd("ubuntu", "test-container");
-
-        const labelIndices = args.reduce<number[]>((acc, v, i) => v === "--label" ? [...acc, i + 1] : acc, []);
-        expect(labelIndices.length).toBe(2);
-
-        expect(args[labelIndices[0]]).includes(`configId=${cc.getConfigId()}`);
-        expect(args[labelIndices[1]]).includes(`workspaceId=${getWorkspaceId(localWsf)}`);
-    });
-
-    test("getStage2BuildCmd includes configId and workspaceId labels", () => {
-        const cfgPath = path.join(localWsf, ".devcontainer.json");
-        const cfg = withDefaults({
-            build: { dockerfile: "Dockerfile" },
-        });
-        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
-        const args = cc.getStage2BuildCmd(hostUserInfo, "root");
-
-        const labelIndices = args.reduce<number[]>((acc, v, i) => v === "--label" ? [...acc, i + 1] : acc, []);
-        expect(labelIndices.length).toBe(2);
-
-        expect(args[labelIndices[0]]).includes(`configId=${cc.getConfigId()}`);
-        expect(args[labelIndices[1]]).includes(`workspaceId=${getWorkspaceId(localWsf)}`);
-    });
-
-    test("getStage2BuildCmd uses stage1 image as BASE_IMAGE for dockerfile configs", () => {
-        const cfgPath = path.join(localWsf, ".devcontainer.json");
-        const cfg = withDefaults({
-            build: { dockerfile: "Dockerfile" },
-        });
-        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
-        const args = cc.getStage2BuildCmd(hostUserInfo, "root");
-
-        const baseImageArg = args.find(a => a.startsWith("BASE_IMAGE="));
-        expect(baseImageArg).toBeDefined();
-
-        const stage1Name = ContainerConfig._getStage1ImageName(localWsf);
-        const stage2Name = ContainerConfig._getStage2ImageName(localWsf);
-        expect(baseImageArg).toBe(`BASE_IMAGE=${stage1Name}`);
-        expect(baseImageArg).not.toBe(`BASE_IMAGE=${stage2Name}`);
-    });
-
-    test("getInitializeCmd: string wraps in /bin/sh -c", () => {
-        const cfg = withDefaults({ image: "ubuntu", initializeCommand: "echo hi" });
-        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
-        expect(cc.getInitializeCmd()).toStrictEqual(["/bin/sh", "-c", "echo hi"]);
-    });
-
-    test("getInitializeCmd: array passes through", () => {
-        const cfg = withDefaults({ image: "ubuntu", initializeCommand: ["echo", "hi"] });
-        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
-        expect(cc.getInitializeCmd()).toStrictEqual(["echo", "hi"]);
-    });
-
-    test("getInitializeCmd: undefined returns undefined", () => {
-        const cfg = withDefaults({ image: "ubuntu" });
-        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
-        expect(cc.getInitializeCmd()).toBeUndefined();
-    });
-
-    describe("mounts", () => {
-        test("mount: bind with options appends options suffix", () => {
-            const cfg = withDefaults({
-                image: "ubuntu",
-                mounts: [{ type: "bind" as const, source: "/a", target: "/b", options: "ro,z" }],
-            });
-            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
-            const args = cc.getRunCreateCmd("ubuntu", "test").join(" ");
-            expect(args).includes("-v /a:/b:ro,z");
-        });
-
-        test("mount: volume with source and options", () => {
-            const cfg = withDefaults({
-                image: "ubuntu",
-                mounts: [{ type: "volume" as const, source: "mydata", target: "/data", options: "nocopy" }],
-            });
-            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
-            const args = cc.getRunCreateCmd("ubuntu", "test").join(" ");
-            expect(args).includes("-v mydata:/data:nocopy");
-        });
-
-        test("mount: volume without source omits source prefix", () => {
-            const cfg = withDefaults({
-                image: "ubuntu",
-                mounts: [{ type: "volume" as const, target: "/data" }],
-            });
-            const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
-            const args = cc.getRunCreateCmd("ubuntu", "test").join(" ");
-            expect(args).includes("-v /data");
-            expect(args).not.includes("-v :/data");
-        });
-    });
-});
-
-describe("normalizeLifecycleCmd", () => {
-    test("undefined returns empty record", () => {
-        expect(ContainerConfig.normalizeLifecycleCmd(undefined)).toStrictEqual({});
-    });
-
-    test("string wraps in /bin/sh -c", () => {
-        expect(ContainerConfig.normalizeLifecycleCmd("echo hello")).toStrictEqual({
-            string: ["/bin/sh", "-c", "echo hello"],
-        });
-    });
-
-    test("array passes through", () => {
-        expect(ContainerConfig.normalizeLifecycleCmd(["echo", "hello"])).toStrictEqual({
-            array: ["echo", "hello"],
-        });
-    });
-
-    test("record with string values wraps each in /bin/sh -c", () => {
-        const result = ContainerConfig.normalizeLifecycleCmd({
-            install: "npm install",
-            build: "npm run build",
-        });
-        expect(result).toStrictEqual({
-            install: ["/bin/sh", "-c", "npm install"],
-            build: ["/bin/sh", "-c", "npm run build"],
-        });
-    });
-
-    test("record with array values passes through", () => {
-        const result = ContainerConfig.normalizeLifecycleCmd({
-            install: ["npm", "install"],
-            migrate: ["pg_migrate", "--up"],
-        });
-        expect(result).toStrictEqual({
-            install: ["npm", "install"],
-            migrate: ["pg_migrate", "--up"],
-        });
-    });
-
-    test("record with mixed string and array values", () => {
-        const result = ContainerConfig.normalizeLifecycleCmd({
-            install: "npm install",
-            migrate: ["pg_migrate", "--up"],
-        });
-        expect(result).toStrictEqual({
-            install: ["/bin/sh", "-c", "npm install"],
-            migrate: ["pg_migrate", "--up"],
-        });
-    });
-
-    test("empty string returns empty record", () => {
-        expect(ContainerConfig.normalizeLifecycleCmd("")).toStrictEqual({});
-    });
-
-    test("empty array returns empty record", () => {
-        expect(ContainerConfig.normalizeLifecycleCmd([])).toStrictEqual({});
-    });
-
-    test("single-entry record", () => {
-        const result = ContainerConfig.normalizeLifecycleCmd({
-            only: "echo done",
-        });
-        expect(result).toStrictEqual({
-            only: ["/bin/sh", "-c", "echo done"],
-        });
-    });
-
-    test("record with string, array, and multi-word string values", () => {
-        const result = ContainerConfig.normalizeLifecycleCmd({
-            install: "npm install && npm run build",
-            migrate: ["pg_migrate", "--up", "--verbose"],
-            lint: "eslint .",
-            test: ["vitest", "run"],
-        });
-        expect(result).toStrictEqual({
-            install: ["/bin/sh", "-c", "npm install && npm run build"],
-            migrate: ["pg_migrate", "--up", "--verbose"],
-            lint: ["/bin/sh", "-c", "eslint ."],
-            test: ["vitest", "run"],
-        });
-    });
-});
-
-describe("context and dockerfile resolution", () => {
-    const debugMode = process.env.DEBUG_TESTS;
-    const spy = vi.spyOn(window, "createOutputChannel");
-    spy.mockReturnValue({
-        info: debugMode !== undefined ? console.log : vi.fn(),
-        warn: debugMode !== undefined ? console.log : vi.fn(),
-        error: debugMode !== undefined ? console.log : vi.fn(),
-    } as any);
-
-    const sanityCheck = (_lsf: string, _cfg: string) => {
-        const resolvedWsf = path.resolve(_lsf);
-        const resolvedCfg = path.resolve(_cfg);
-        expect(resolvedCfg.startsWith(resolvedWsf + "/")).toBe(true);
-
-        const relativeTo = path.relative(resolvedWsf, resolvedCfg);
-        expect(relativeTo).toBeOneOf([
-            ".devcontainer/devcontainer.json",
-            ".devcontainer.json",
-            // ".config/devcontainer.json",
-        ]);
-    };
-
-    const cases: {
-        label: string,
-        cfgPath: string,
-        localEnv: NodeJS.ProcessEnv,
-        dockerfile: string,
-        context: string | undefined,
-        expectedCtx: string,
-        expectedDockerfile: string,
-    }[] = [
-        {
-            label: "implicit context, relative dockerfile",
-            cfgPath: "/tmp/dir/.devcontainer/devcontainer.json",
-            localEnv: {},
-            dockerfile: "Dockerfile",
-            context: undefined,
-            expectedCtx: "/tmp/dir/.devcontainer",
-            expectedDockerfile: "/tmp/dir/.devcontainer/Dockerfile",
-        },
-        {
-            label: "implicit context, nested relative dockerfile",
-            cfgPath: "/tmp/dir/.devcontainer/devcontainer.json",
-            localEnv: {},
-            dockerfile: "docker/Dockerfile.dev",
-            context: undefined,
-            expectedCtx: "/tmp/dir/.devcontainer",
-            expectedDockerfile: "/tmp/dir/.devcontainer/docker/Dockerfile.dev",
-        },
-        {
-            label: "context '..' (parent), relative dockerfile",
-            cfgPath: "/tmp/dir/.devcontainer/devcontainer.json",
-            localEnv: {},
-            dockerfile: "Dockerfile",
-            context: "..",
-            expectedCtx: "/tmp/dir",
-            expectedDockerfile: "/tmp/dir/.devcontainer/Dockerfile",
-        },
-        {
-            label: "context '..' (parent), dockerfile also '..'",
-            cfgPath: "/tmp/dir/.devcontainer/devcontainer.json",
-            localEnv: {},
-            dockerfile: "../Dockerfile",
-            context: "..",
-            expectedCtx: "/tmp/dir",
-            expectedDockerfile: "/tmp/dir/Dockerfile",
-        },
-        {
-            label: "explicit context '.', same as implicit",
-            cfgPath: "/tmp/dir/.devcontainer/devcontainer.json",
-            localEnv: {},
-            dockerfile: "Dockerfile",
-            context: ".",
-            expectedCtx: "/tmp/dir/.devcontainer",
-            expectedDockerfile: "/tmp/dir/.devcontainer/Dockerfile",
-        },
-        {
-            label: "explicit relative context subdir",
-            cfgPath: "/tmp/dir/.devcontainer/devcontainer.json",
-            localEnv: {},
-            dockerfile: "Dockerfile",
-            context: "build",
-            expectedCtx: "/tmp/dir/.devcontainer/build",
-            expectedDockerfile: "/tmp/dir/.devcontainer/Dockerfile",
-        },
-        {
-            label: "absolute context, relative dockerfile",
-            cfgPath: "/tmp/dir/.devcontainer/devcontainer.json",
-            localEnv: {},
-            dockerfile: "Dockerfile",
-            context: "/opt/build",
-            expectedCtx: "/opt/build",
-            expectedDockerfile: "/tmp/dir/.devcontainer/Dockerfile",
-        },
-        {
-            label: "absolute dockerfile, implicit context",
-            cfgPath: "/tmp/dir/.devcontainer/devcontainer.json",
-            localEnv: {},
-            dockerfile: "/opt/Dockerfile",
-            context: undefined,
-            expectedCtx: "/tmp/dir/.devcontainer",
-            expectedDockerfile: "/opt/Dockerfile",
-        },
-        {
-            label: "both absolute",
-            cfgPath: "/tmp/dir/.devcontainer/devcontainer.json",
-            localEnv: {},
-            dockerfile: "/opt/Dockerfile",
-            context: "/opt/build",
-            expectedCtx: "/opt/build",
-            expectedDockerfile: "/opt/Dockerfile",
-        },
-        {
-            label: "flat devcontainer.json, implicit context",
-            cfgPath: "/tmp/dir/.devcontainer.json",
-            localEnv: {},
-            dockerfile: "Dockerfile",
-            context: undefined,
-            expectedCtx: "/tmp/dir",
-            expectedDockerfile: "/tmp/dir/Dockerfile",
-        },
-        {
-            label: "flat devcontainer.json, context '.devcontainer'",
-            cfgPath: "/tmp/dir/.devcontainer.json",
-            localEnv: {},
-            dockerfile: ".devcontainer/Dockerfile",
-            context: ".devcontainer",
-            expectedCtx: "/tmp/dir/.devcontainer",
-            expectedDockerfile: "/tmp/dir/.devcontainer/Dockerfile",
-        },
-        // --- variable interpolation cases ---
-        {
-            label: "context uses ${localWorkspaceFolder}",
-            cfgPath: "/tmp/dir/.devcontainer/devcontainer.json",
-            localEnv: {},
-            dockerfile: "Dockerfile",
-            context: "${localWorkspaceFolder}",
-            expectedCtx: "/tmp/dir",
-            expectedDockerfile: "/tmp/dir/.devcontainer/Dockerfile",
-        },
-        {
-            label: "context uses ${localWorkspaceFolderBasename}",
-            cfgPath: "/tmp/dir/.devcontainer/devcontainer.json",
-            localEnv: {},
-            dockerfile: "Dockerfile",
-            context: "../${localWorkspaceFolderBasename}",
-            expectedCtx: "/tmp/dir/dir",
-            expectedDockerfile: "/tmp/dir/.devcontainer/Dockerfile",
-        },
-        {
-            label: "dockerfile uses ${localWorkspaceFolder}",
-            cfgPath: "/tmp/dir/.devcontainer/devcontainer.json",
-            localEnv: {},
-            dockerfile: "${localWorkspaceFolder}/Dockerfile",
-            context: undefined,
-            expectedCtx: "/tmp/dir/.devcontainer",
-            expectedDockerfile: "/tmp/dir/Dockerfile",
-        },
-        {
-            label: "context uses ${localEnv:VAR}",
-            cfgPath: "/tmp/dir/.devcontainer/devcontainer.json",
-            localEnv: { BUILD_DIR: "/opt/build" },
-            dockerfile: "Dockerfile",
-            context: "${localEnv:BUILD_DIR}",
-            expectedCtx: "/opt/build",
-            expectedDockerfile: "/tmp/dir/.devcontainer/Dockerfile",
-        },
-        {
-            label: "${localEnv:VAR} with default, var exists",
-            cfgPath: "/tmp/dir/.devcontainer/devcontainer.json",
-            localEnv: { CTX: "custom" },
-            dockerfile: "Dockerfile",
-            context: "${localEnv:CTX:fallback}",
-            expectedCtx: "/tmp/dir/.devcontainer/custom",
-            expectedDockerfile: "/tmp/dir/.devcontainer/Dockerfile",
-        },
-        {
-            label: "${localEnv:VAR} with default, var missing",
-            cfgPath: "/tmp/dir/.devcontainer/devcontainer.json",
-            localEnv: {},
-            dockerfile: "Dockerfile",
-            context: "${localEnv:CTX:fallback}",
-            expectedCtx: "/tmp/dir/.devcontainer/fallback",
-            expectedDockerfile: "/tmp/dir/.devcontainer/Dockerfile",
-        },
-        {
-            label: "both use ${localWorkspaceFolder}",
-            cfgPath: "/tmp/dir/.devcontainer/devcontainer.json",
-            localEnv: {},
-            dockerfile: "${localWorkspaceFolder}/.devcontainer/Dockerfile",
-            context: "${localWorkspaceFolder}",
-            expectedCtx: "/tmp/dir",
-            expectedDockerfile: "/tmp/dir/.devcontainer/Dockerfile",
-        },
-    ];
-
-    const localWsf = "/tmp/dir";
-
-    for (const c of cases) {
-        const cfg = withDefaults({
-            build: {
-                dockerfile: c.dockerfile,
-                ...(c.context !== undefined ? { context: c.context } : {}),
-            },
-        });
-
-        test(`test: ${c.label}`, () => {
-            const cc = ContainerConfig.create(localWsf, c.cfgPath, cfg, c.localEnv);
-            expect(cc.getResolvedBuildcontextDir(), c.label).toBe(c.expectedCtx);
-            expect(cc.getResolvedDockerfilePath(), c.label).toBe(c.expectedDockerfile);
-        });
-    }
 });

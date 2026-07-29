@@ -32,6 +32,7 @@ export function spawn(
         const finalEnv = {
             ...process.env,
             ...env,
+            BUILDKIT_PROGRESS: "plain",
         };
 
         const proc = chproc.spawn(cmd, args, {

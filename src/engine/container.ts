@@ -2,10 +2,12 @@ import * as path from "node:path";
 import * as crypto from "node:crypto";
 
 import * as schema from "../parser/schema";
-import { ConfigError, InternalError } from "../extension/error";
+import { ConfigError, InternalError, ParseError } from "../extension/error";
 import { HostUserInfo } from "../common/utils";
 import { EXTENSION_ID } from "../common/constants";
 import { getWorkspaceId } from "../extension/workspace";
+
+const USERNS_CONFLICT_FLAGS = ["--userns", "--uidmap", "--gidmap"];
 
 export interface ExecOpts {
     tty?: boolean,
@@ -20,22 +22,94 @@ export enum LifecycleCmd {
     postAttach = "postAttachCommand",
 }
 
+export enum UserNsOpt {
+    auto = "auto",
+    host = "host",
+    keepId = "keep-id",
+    nomap = "nomap",
+};
+
+interface InferredWorkspace {
+    remoteWorkspace: string,
+    workspaceMount: string,
+};
+
+export enum ContainerEngine {
+    none = "none",
+    podman = "podman",
+    docker = "docker",
+};
+
 export class ContainerConfig<T extends schema.Config = schema.Config> {
     public readonly cfg: T;
     public readonly workspaceFolder: string;
+    public readonly engine: ContainerEngine;
     private readonly cfgPath: string;
     private readonly localEnv: NodeJS.ProcessEnv;
+    private readonly inferredMounts: InferredWorkspace;
 
-    private constructor(workspaceFolder: string, cfgPath: string, cfg: T, localEnv: NodeJS.ProcessEnv) {
+    private constructor(workspaceFolder: string, cfgPath: string, cfg: T, localEnv: NodeJS.ProcessEnv, opts: { engine: ContainerEngine } = { engine: ContainerEngine.none }) {
         this.cfg = cfg;
         this.workspaceFolder = workspaceFolder;
         this.cfgPath = cfgPath;
+        this.engine = opts.engine;
         this.localEnv = localEnv;
-        // normalize mount
+
+        // TODO: normalize mount
+
+        this.inferredMounts = ContainerConfig.getDefaultWorkspaceMount(this.cfg, this.workspaceFolder);
     }
 
-    static create<T extends schema.Config>(workspacePath: string, cfgPath: string, cfg: T, localEnv: NodeJS.ProcessEnv = process.env): ContainerConfig<T> {
-        return new ContainerConfig(workspacePath, cfgPath, cfg, localEnv);
+    public static getDefaultWorkspaceMount(cfg: schema.Config, localWsf: string): InferredWorkspace {
+        // if one of workspaceFolder and workspaceMount or neither are set, use
+        // defaults or infer the other
+        const wsMount = cfg.workspaceMount;
+        const remoteWsFolder = cfg.workspaceFolder;
+
+        // if empty, don't mount workspace
+        if (wsMount === "") {
+            return {
+                remoteWorkspace: remoteWsFolder ?? `/workspaces/${path.parse(localWsf).base}`,
+                workspaceMount: "",
+            };
+        }
+
+        if (remoteWsFolder && !wsMount) {
+            // remote location could be a subfolder of the standard mount
+            // so don't update workspaceMount or workspaceFolder
+            const wsBasename = path.parse(localWsf).base;
+            return {
+                remoteWorkspace: remoteWsFolder,
+                workspaceMount: `source=${localWsf},target=/workspaces/${wsBasename},type=bind`,
+            };
+        }
+        else if (wsMount && !remoteWsFolder) {
+            const remoteWsf = schema.extractWorkspaceMount(wsMount);
+            if (remoteWsf.length !== 1) {
+                throw new ParseError("Invalid schema: expected exactly one source and target in workspaceMount");
+            }
+            return {
+                remoteWorkspace: remoteWsf[0],
+                workspaceMount: wsMount,
+            };
+        }
+        else if (wsMount && remoteWsFolder) {
+            return {
+                workspaceMount: wsMount,
+                remoteWorkspace: remoteWsFolder,
+            };
+        }
+        else {
+            const wsBasename = path.parse(localWsf).base;
+            return {
+                remoteWorkspace: `/workspaces/${wsBasename}`,
+                workspaceMount: `source=${localWsf},target=/workspaces/${wsBasename},type=bind`,
+            };
+        }
+    }
+
+    static create<T extends schema.Config>(workspacePath: string, cfgPath: string, cfg: T, localEnv: NodeJS.ProcessEnv = process.env, opts: { engine: ContainerEngine } = { engine: ContainerEngine.none }): ContainerConfig<T> {
+        return new ContainerConfig(workspacePath, cfgPath, cfg, localEnv, opts);
     }
 
     public isImageBased(): this is ContainerConfig<schema.ImageDevcontainer> {
@@ -63,7 +137,8 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     public getStage2BuildCmd(hostUserInfo: HostUserInfo, imgUser: string | undefined, opts: { noCache: boolean } = { noCache: false }): string[] {
         return [
             "build",
-            ...(opts.noCache ? ["--pull", "--no-cache"] : []),
+            // stage2 source is always local, so no --pull here
+            ...(opts.noCache ? ["--no-cache"] : []),
             ...this.getStage2BuildArgs(hostUserInfo, imgUser),
             ...this.addLabels(),
             "-t", this.getStage2ImageName(),
@@ -72,7 +147,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         ].filter(Boolean);
     }
 
-    public getRunCreateCmd(imageName: string, containerName: string, extraArgs: string[] = []): string[] {
+    public getRunCreateCmd(imageName: string, containerName: string, opts: { extraArgs?: string[], remoteUser?: string } = {}): string[] {
         // TODO: handle overrideCmd
         return [
             "run",
@@ -82,23 +157,28 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             ...this.addContainerUser(),
             ...this.addAppPorts(),
             ...this.addMounts(),
-            ...this.addWorkspaceMount(),
+            ...this.addWorkspaceMount(this.engine === ContainerEngine.podman),
             ...this.addContainerEnv(),
-            ...this.addRunArgs(),
             ...this.addCaps(),
             ...this.addSecurityOpts(),
             ...this.addLabels(),
-            ...extraArgs,
             ...(this.cfg.privileged ? ["--privileged"] : []),
             ...(this.cfg.init ? ["--init"] : []),
+            ...this.addUserNsOpts(this.engine === ContainerEngine.podman, opts.remoteUser),
             "--entrypoint",
             this.getShell(),
+            ...this.addRunArgs(opts.extraArgs ?? []), // must come last, so user can apply overrides
             imageName,
             //
             "-c",
             'trap "echo Got signal, exiting...; exit 0" SIGINT SIGTERM; while sleep 60 & wait $! ; do : ; done',
         ].filter(Boolean)
             .map(e => interpolateLocal(e, this.workspaceFolder, this.getRemoteMountDir(), this.localEnv));
+    }
+
+    private addUserNsOpts(isPodman: boolean, remoteUser?: string) {
+        const conflictFlags = (this.cfg.runArgs.some(a => USERNS_CONFLICT_FLAGS.some(f => a.startsWith(f))));
+        return [isPodman && remoteUser !== "root" && !conflictFlags ? `--userns=${UserNsOpt.keepId}` : ""];
     }
 
     public getConfigLabel(): string {
@@ -242,23 +322,21 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         return this.cfg.capAdd.flatMap(c => ["--cap-add", c]);
     }
 
-    private addRunArgs(): string[] {
-        return this.cfg.runArgs;
+    private addRunArgs(extraArgs: string[]): string[] {
+        return [...extraArgs, ...this.cfg.runArgs];
     }
 
     public getRemoteMountDir(): string {
-        if (this.cfg.workspaceMount) {
-            return schema.extractWorkspaceMount(this.cfg.workspaceMount)[0];
-        }
-        else {
-            const basename = path.parse(this.workspaceFolder).base;
-            return `/workspace/${basename}`;
-        }
+        if (this.cfg.workspaceMount === "") { return this.inferredMounts.remoteWorkspace; }
+        return schema.extractWorkspaceMount(
+            this.cfg.workspaceMount ? this.cfg.workspaceMount : this.inferredMounts.workspaceMount,
+        )[0];
     }
 
-    private addWorkspaceMount(): string[] {
-        if (this.cfg.workspaceMount) { return ["--mount", this.cfg.workspaceMount]; }
-        else { return ["-v", `${this.workspaceFolder}:${this.getRemoteMountDir()}`]; }
+    private addWorkspaceMount(relabel: boolean): string[] {
+        if (this.cfg.workspaceMount === "") { return []; }
+        if (!this.cfg.workspaceMount) { return ["--mount", `${this.inferredMounts.workspaceMount}${relabel ? ",relabel=shared" : ""}`]; }
+        else { return ["--mount", this.cfg.workspaceMount]; }
     }
 
     private addMounts(): string[] {
@@ -337,13 +415,17 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         return ret;
     }
 
-    private addContainerEnv(): string[] {
-        const ret: string[] = [];
-
+    public getResolvedContainerEnv(): Record<string, string> {
+        const ret: Record<string, string> = {};
         for (const [k, v] of Object.entries(this.cfg.containerEnv ?? {})) {
-            ret.push("--env", `${k}=${v}`);
+            ret[k] = interpolateLocal(v, this.workspaceFolder, this.getRemoteMountDir(), this.localEnv);
         }
         return ret;
+    }
+
+    private addContainerEnv(): string[] {
+        return Object.entries(this.getResolvedContainerEnv())
+            .flatMap(([k, v]) => ["--env", `${k}=${v}`]);
     }
 
     private getShell(): string {
@@ -366,7 +448,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             this.cfg.name ?? "",
             this.cfg.runArgs,
             this.cfg.workspaceFolder ?? "",
-            this.cfg.workspaceMount ?? "",
+            this.cfg.workspaceMount,
             this.cfg.mounts ?? "",
             this.cfg.containerEnv ?? "",
             this.cfg.containerUser ?? "",
@@ -435,6 +517,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         if (!args || (Array.isArray(args) && args.length === 0)) { return {}; }
 
         if (typeof args === "string") {
+            if (args === "") { return {}; }
             return { string: ["/bin/sh", "-c", args] };
         }
         else if (Array.isArray(args)) {
@@ -442,14 +525,14 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         }
         else {
             const entries = Object.entries(args);
-            const mapped = entries.map(([k, v]) =>
+            const mapped = entries
+                .filter(([, v]) => v !== "" && !(Array.isArray(v) && v.length === 0))
                 // get a [key, transformed(value)] so that we
                 // can pair them back again in the end with fromEntries
-                [
+                .map(([k, v]) => [
                     k,
                     Object.values(this.normalizeLifecycleCmd(v))[0],
-                ],
-            );
+                ]);
             return Object.fromEntries(mapped) as Record<string, string[]>;
         }
     }

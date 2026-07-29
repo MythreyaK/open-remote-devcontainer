@@ -98,41 +98,6 @@ describe("Parser tests", () => {
         }
     });
 
-    test("Both workspaceFolder and workspaceMount must be set/unset", () => {
-        const jsondata = {
-            name: "devc",
-            build: {
-                dockerfile: "ubuntu",
-                args: {
-                    ARG1: "VAL1",
-                },
-            },
-        };
-
-        {
-            const o = parser.ConfigSchema.safeParse(jsondata);
-            expect(o.success).toBe(true);
-        }
-        {
-            const o = parser.ConfigSchema.safeParse({
-                ...jsondata,
-                workspaceFolder: "a",
-                workspaceMount: "source=b,target=c",
-            });
-            expect(o.success).toBe(true);
-        }
-        {
-            const jsondata1 = { ...jsondata, workspaceFolder: "a" };
-            const jsondata2 = { ...jsondata, workspaceMount: "source=/b,target=/b" };
-            const o1 = parser.ConfigSchema.safeParse(jsondata1);
-            const o2 = parser.ConfigSchema.safeParse(jsondata2);
-            expect(o1.success).toBe(false);
-            expect(o2.success).toBe(false);
-            expect(o1.error?.message.search("must be (un)?set")).greaterThan(0);
-            expect(o2.error?.message.search("must be (un)?set")).greaterThan(0);
-        }
-    });
-
     test("Extract remote workspace mount dest from workspaceMount", () => {
         {
             // restricting it to just one is handled in the parser

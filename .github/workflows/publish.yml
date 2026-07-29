@@ -1,0 +1,83 @@
+name: Publish
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+      pre_release:
+        type: boolean
+        default: true
+        required: true
+      vsix_file:
+        type: string
+        required: true
+      vsix_sha256:
+        type: string
+        required: true
+      artifact_name:
+        type: string
+        required: true
+      publish_ovsx:
+        type: boolean
+        default: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # environment: publish
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: npm
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install npm packages
+        shell: bash
+        run: npm ci
+
+      - uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: ${{ inputs.artifact_name }}
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TAG: ${{ inputs.tag }}
+          GH_SHA: ${{ github.sha }}
+          PRE_RELEASE: ${{ inputs.pre_release }}
+          VSIX_FILE: ${{ inputs.vsix_file }}
+          VSIX_SHA256: ${{ inputs.vsix_sha256 }}
+        run: |
+          set -e
+          FLAGS=""
+          if [ "$PRE_RELEASE" = "true" ]; then FLAGS="--prerelease"; fi
+          gh release create "$GH_TAG" $FLAGS --target "$GH_SHA" --notes "" "$VSIX_FILE" "$VSIX_SHA256"
+
+      - name: Publish to Open VSX
+        if: inputs.publish_ovsx
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+          VSIX_FILE: ${{ inputs.vsix_file }}
+          PRE_RELEASE: ${{ inputs.pre_release }}
+        run: |
+          set -e
+          if [ -z "$OVSX_PAT" ]; then
+            echo "::warning::Skipping open-vsx publish: OVSX_PAT secret is not set"
+            exit 0
+          fi
+          FLAGS=""
+          if [ "$PRE_RELEASE" = "true" ]; then FLAGS="--pre-release"; fi
+          npx ovsx publish $FLAGS --packagePath "$VSIX_FILE"

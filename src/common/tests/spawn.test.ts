@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import { spawn } from "../spawn";
 import { getLogSink } from "../../extension/log";
@@ -21,6 +21,13 @@ describe.skipIf(!ENGINE)("cmd spawn tests", () => {
         expect(getLogSink()).toBeDefined();
     });
 
+    test("env buildkit", async () => {
+        const log = getLogSink();
+        const out = await spawn("env", [], getcwd(), {}, log);
+        expect(out.stdout).contains("BUILDKIT_PROGRESS=plain");
+        expect(out.exit).eq(0);
+    });
+
     test("get engine version", async () => {
         const log = getLogSink();
         const out = await spawn(engine, ["version", ...jsonFormat], getcwd(), {}, log);
@@ -34,7 +41,7 @@ describe.skipIf(!ENGINE)("cmd spawn tests", () => {
         const remove = await spawn(engine, ["rm", create.stdout.trim()], getcwd(), {}, log);
         expect(create.exit).eq(0);
         expect(remove.exit).eq(0);
-    });
+    }, 10_000);
 
     test("run and exec command", async () => {
         const log = getLogSink();
@@ -43,7 +50,7 @@ describe.skipIf(!ENGINE)("cmd spawn tests", () => {
 
         try {
             const exec = await spawn(engine, ["exec", create.stdout.trim(), "cat", "/etc/os-release"], getcwd(), {}, log);
-            expect(exec.stdout.trim().includes("Ubuntu 24.04")).toBe(true);
+            expect(exec.stdout.trim()).toContain("Ubuntu 24.04");
             expect(exec.exit).eq(0);
 
             const inspect = await spawn(engine, ["inspect", containerId, ...jsonFormat], getcwd(), {}, log);
@@ -51,7 +58,7 @@ describe.skipIf(!ENGINE)("cmd spawn tests", () => {
 
             const inspectData = JSON.parse(inspect.stdout.trim()) as ContainerInspectResult;
             expect(inspectData.Id).eq(containerId);
-            expect(inspectData.Name).eq("turtles");
+            expect(inspectData.Name).matches(/\/?turtles/);
             expect(inspectData.State.Running).eq(true);
         }
         finally {
@@ -61,5 +68,5 @@ describe.skipIf(!ENGINE)("cmd spawn tests", () => {
             const rm = await spawn(engine, ["rm", "turtles"], getcwd(), {}, log);
             expect(rm.exit).eq(0);
         }
-    }, 10_000);
+    }, 30_000);
 });

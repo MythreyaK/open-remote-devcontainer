@@ -12,15 +12,22 @@ import { parseDevcontainerFile } from "../parser/parser";
 import { ContainerConfig } from "../engine/container";
 import * as server from "../remote/installServer";
 
-const DEBUG_TESTS = process.env.DEBUG_TESTS;
+const DEBUG_TESTS: boolean = process.env.DEBUG_TESTS !== undefined
+  && ["true", "on", "t", "1"].includes(process.env.DEBUG_TESTS.toLowerCase());
 let cached: string | undefined;
 
 export function getEngine() {
     if (process.env.SKIP_ENGINE_TESTS) { return undefined; }
 
     const runCheck = () => {
-        const engines = ["podman", "docker"];
+        const explicit = process.env.CONTAINER_ENGINE;
+        if (explicit) {
+            const res = spawnSync(explicit, ["version"], { stdio: "pipe", env: process.env });
+            if (!res.error) { return explicit; }
+            throw new Error(`CONTAINER_ENGINE="${explicit}" is set but not found on PATH`);
+        }
 
+        const engines = ["podman", "docker"];
         for (const engine of engines) {
             const res = spawnSync(engine, ["version"], { stdio: "pipe", env: process.env });
             if (!res.error) {
@@ -47,9 +54,9 @@ export const TEST_CODIUM_INFO: server.ServerInfo = {
 export const initMocks = () => {
     const spyCreateOutput = vi.spyOn(window, "createOutputChannel");
     spyCreateOutput.mockReturnValue({
-        info: DEBUG_TESTS !== undefined ? console.log : vi.fn(),
-        warn: DEBUG_TESTS !== undefined ? console.log : vi.fn(),
-        error: DEBUG_TESTS !== undefined ? console.log : vi.fn(),
+        info: DEBUG_TESTS ? console.log : vi.fn(),
+        warn: DEBUG_TESTS ? console.log : vi.fn(),
+        error: DEBUG_TESTS ? console.log : vi.fn(),
     } as any);
 
     const spySettings = vi.spyOn(workspace, "getConfiguration");

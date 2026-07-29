@@ -75,7 +75,7 @@ export const NonComposeBase_z = z.object({
     shutdownAction: z._default(z.optional(ShutdownAction), "stopContainer"),
     overrideCommand: z._default(z.optional(z.boolean()), true),
     workspaceFolder: z.optional(minString),
-    workspaceMount: z.optional(minString),
+    workspaceMount: z.optional(z.string()),
 });
 
 export const ImageContainer_z = z.object({
@@ -199,21 +199,8 @@ export type Config = z.infer<typeof ConfigSchema>;
 
 function postparseCheck(c: z.core.ParsePayload<z.infer<typeof ConfigSchemaBase>>) {
     const val = c.value;
-    /* eslint-disable @typescript-eslint/no-unnecessary-condition */
-    const hasMount = (val.workspaceMount !== undefined)
-      && (val.workspaceMount !== null);
-    const hasFolder = (val.workspaceFolder !== undefined)
-      && (val.workspaceFolder !== null);
-    /* eslint-enable @typescript-eslint/no-unnecessary-condition */
-
-    // TODO: relax this requirement, and set mount to /workspace if unset?
-    if (hasMount !== hasFolder) {
-        c.issues.push({
-            code: "custom",
-            input: val,
-            message: "Both workspaceFolder and workspaceMount must be set, or both must be unset",
-        });
-    }
+    // spec claims both workspaceFolder and workspaceMount must be set, or both must be unset
+    // defaults handled in ContainerConfig
 
     if (val.workspaceMount) {
         const targets = extractWorkspaceMount(val.workspaceMount);

@@ -181,6 +181,7 @@ function download_and_install_server() {
     source "${CODIUM_VERSION_FILE}"
 
     rm -f /tmp/codium.tar.gz || true
+    ln -sf "${CODIUM_SERVER_ROOT_DIR}/bin/remote-cli/codium" "${CODIUM_SERVER_ROOT_DIR}/bin/remote-cli/code"
 }
 
 function wait_for_server_running() {

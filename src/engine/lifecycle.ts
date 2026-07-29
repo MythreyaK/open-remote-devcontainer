@@ -6,19 +6,22 @@ import { run } from "../common/cmd";
 import { getLogSink } from "../extension/log";
 import { formatCmdErr } from "../common/spawn";
 import { parseEnv, getHostUserInfo } from "../common/utils";
-import { ContainerConfig, LifecycleCmd } from "./container";
+import { ContainerConfig, ContainerEngine, LifecycleCmd } from "./container";
 import { EngineError, InstallError, InternalError } from "../extension/error";
 import { getWorkspaceId, NotificationLevel, showNotification } from "../extension/workspace";
 
 import * as settings from "../extension/settings";
 import * as server from "../remote/installServer";
-import { getContainerEngine } from "../extension/settings";
 import { EXTENSION_ID } from "../common/constants";
 
 const DEVCONTAINER_SERVER_LISTEN_PORT = 65432;
 const UUID_TOKEN_LEN = 36;
 
 const jsonFormat = ["--format", "{{json .}}"];
+
+export const STAGE2_INFO_MSG_REGEX = /{{DEVCONTAINER_STAGE2 INFO: (.*?)}}/g;
+export const STAGE2_WARN_MSG_REGEX = /{{DEVCONTAINER_STAGE2 WARNING: (.*?)}}/g;
+export const STAGE2_ERR_MSG_REGEX = /{{DEVCONTAINER_STAGE2 ERROR: (.*?)}}/g;
 
 export interface ContainerInspectResult {
     Id: string,
@@ -71,6 +74,7 @@ export class ContainerState {
     }
 
     public static async create(workspaceFolder: string, cc: ContainerConfig, opts: BuildOpts = BuildOpts.Default): Promise<ContainerState> {
+        getLogSink().info(`Using compat/convenience options for '${cc.engine}'`);
         // mmm more spaghetti ... TODO: could use some cleanup
         const ret = new ContainerState(workspaceFolder, cc, opts);
         await ret.runInitializeCmd();
@@ -85,7 +89,7 @@ export class ContainerState {
         let containerId: string | undefined;
 
         if (opts !== BuildOpts.Default && containerExists !== undefined) {
-            throw new EngineError(`Failed to stop and remove container ${containerExists.Id}`);
+            throw new EngineError(`Failed to stop and remove container: ${containerExists.Id}`);
         }
 
         let lifecycleCmds = true;
@@ -128,10 +132,10 @@ export class ContainerState {
         ], this.workspaceFolder, {});
 
         if (res.exit === 0) {
-            getLogSink().info(`InitializeCmd[host]: OK: ${formatCmdErr(res)}`);
+            getLogSink().info(`InitializeCmd[host]: OK :: ${formatCmdErr(res)}`);
         }
         else {
-            getLogSink().info(`InitializeCmd[host]: ERROR: ${formatCmdErr(res)}`);
+            getLogSink().info(`InitializeCmd[host]: ERROR :: ${formatCmdErr(res)}`);
         }
     }
 
@@ -185,11 +189,11 @@ export class ContainerState {
     }
 
     private async createContainer() {
-        const name = await this.buildFinalImage();
-        return await this.runCreate(name);
+        const { image, remoteUser } = await this.buildFinalImage();
+        return await this.runCreate(image, remoteUser);
     }
 
-    private async buildFinalImage(): Promise<string> {
+    private async buildFinalImage(): Promise<{ image: string, remoteUser: string }> {
         let stage1Image: string | undefined;
 
         if (this.cc.isDockerfileBased()) {
@@ -213,7 +217,7 @@ export class ContainerState {
                     ], this.workspaceFolder, {});
 
                     if (pullRes.exit !== 0) {
-                        throw new EngineError(`Failed to pull image ${stage1Image}. Image '${stage1Image}' does not exist on host.`);
+                        throw new EngineError(`Failed to pull image ${stage1Image}. Image '${stage1Image}' does not exist on host :: ${formatCmdErr(pullRes)}`);
                     }
                     // pull was successful, image hash is whatever pull has
                     return pullRes.stdout.trim();
@@ -230,7 +234,7 @@ export class ContainerState {
         return await this.buildStage2(stage1Image);
     }
 
-    private async buildStage2(stage1Image: string): Promise<string> {
+    private async getEffectiveUser(stage1Image: string): Promise<{ imageUser: string | undefined, remoteUser: string }> {
         const imgUser = await run([
             ...settings.getEngineCmd(),
             "image",
@@ -244,12 +248,17 @@ export class ContainerState {
         }
 
         const imageUser = (() => {
-            const parsed = fixDockerImageInspect(imgUser.stdout.trim());
+            const parsed = fixDockerImageInspect(this.cc.engine, imgUser.stdout.trim());
             if (!parsed.User) { return undefined; }
             else { return parsed.User; }
         })();
 
         const remoteUser = this.cc.getResolvedRemoteUser(imageUser);
+        return { imageUser, remoteUser };
+    }
+
+    private async buildStage2(stage1Image: string): Promise<{ image: string, remoteUser: string }> {
+        const { imageUser, remoteUser } = await this.getEffectiveUser(stage1Image);
 
         if (remoteUser === "root") {
             const msg = "Warning: remote user not specified, using 'root'. This may cause permission issues.";
@@ -264,16 +273,19 @@ export class ContainerState {
         ], this.workspaceFolder, {});
 
         if (ret.exit !== 0) {
-            const errMsg = Array.from(ret.stderr.trim().matchAll(/{{DEVCONTAINER_STAGE2 ERROR: (.*?)}}/g));
+            // docker and podman output differs, some to stdout, some to stderr
+            const output = ret.stdout.trim() + ret.stderr.trim();
+            const errMsg = Array.from(output.matchAll(STAGE2_ERR_MSG_REGEX));
+            getLogSink().error(JSON.stringify(errMsg));
             if (errMsg.length !== 1 || errMsg[0].length < 2) {
-                throw new Error(`Could not build stage2 image with unknown error: ${formatCmdErr(ret)}`);
+                throw new Error(`Could not build stage2 image with unknown error :: ${formatCmdErr(ret)}`);
             }
             else {
                 throw new EngineError(`Could not build stage2 image: ${errMsg[0][1]}`);
             }
         }
         else {
-            return this.cc.getStage2ImageName();
+            return { image: this.cc.getStage2ImageName(), remoteUser };
         }
     }
 
@@ -290,7 +302,7 @@ export class ContainerState {
         ], this.workspaceFolder, {});
 
         if (ret.exit !== 0) {
-            throw new EngineError(`Failed to start container: ${formatCmdErr(ret)}`);
+            throw new EngineError(`Failed to start container :: ${formatCmdErr(ret)}`);
         }
         else {
             return ret.stdout.trim();
@@ -311,7 +323,7 @@ export class ContainerState {
         const ret = await this.tryStopContainer(opts);
 
         if (ret.exit !== 0) {
-            throw new EngineError(`Could not stop container: ${formatCmdErr(ret)}`);
+            throw new EngineError(`Could not stop container :: ${formatCmdErr(ret)}`);
         }
 
         return ret.stdout.trim();
@@ -351,7 +363,7 @@ export class ContainerState {
         );
 
         if (res.exit !== 0) {
-            throw new EngineError(`Could not inspect container '${identifier}': ${formatCmdErr(res)}`);
+            throw new EngineError(`Could not inspect container '${identifier}' :: ${formatCmdErr(res)}`);
         }
         else {
             return JSON.parse(res.stdout.trim()) as ContainerInspectResult;
@@ -373,7 +385,7 @@ export class ContainerState {
             return undefined;
         }
         else {
-            return fixDockerImageInspect(res.stdout.trim());
+            return fixDockerImageInspect(this.cc.engine, res.stdout.trim());
         }
     }
 
@@ -424,16 +436,16 @@ export class ContainerState {
         }
     }
 
-    private async runCreate(imageName: string): Promise<string> {
-        // TODO: auto-assign free port and query
+    private async runCreate(imageName: string, remoteUser: string): Promise<string> {
         const createRes = await run(
             [
                 ...settings.getEngineCmd(),
-                ...this.cc.getRunCreateCmd(
-                    imageName,
-                    this.getContainerName(),
-                    ["-p", `${DEVCONTAINER_SERVER_LISTEN_PORT}`],
-                ),
+                ...this.cc.getRunCreateCmd(imageName, this.getContainerName(), {
+                    extraArgs: [
+                        "-p", `${DEVCONTAINER_SERVER_LISTEN_PORT}`,
+                    ],
+                    remoteUser: remoteUser,
+                }),
             ], this.workspaceFolder, {},
         );
 
@@ -466,7 +478,7 @@ export class ContainerState {
             const containerEnvs: Record<string, string> = parseEnv(out.stdout);
             return containerEnvs;
         }
-        else { throw new EngineError("Could not run exec to probe container environment"); }
+        else { throw new EngineError(`Could not run exec to probe container environment :: ${formatCmdErr(out)}`); }
     }
 
     public getImageHash(name: string) {
@@ -490,10 +502,11 @@ export class ContainerState {
         ], this.workspaceFolder, {});
 
         if (ret.exit !== 0) {
-            throw new EngineError(`Could not build stage1 image ${formatCmdErr(ret)}`);
+            throw new EngineError(`Could not build stage1 image :: ${formatCmdErr(ret)}`);
         }
         else {
-            const output = ret.stdout.trim();
+            // docker and podman output differs, some to stdout, some to stderr
+            const output = ret.stdout.trim() + ret.stderr.trim();
 
             // expect image name to be in the generated name output
             if (!output.includes(this.cc.getStage1ImageName())) {
@@ -598,7 +611,7 @@ export class ContainerState {
         ], this.workspaceFolder, {});
 
         if (portCmdRes.exit !== 0) {
-            throw new EngineError(`Failed to query host port: ${formatCmdErr(portCmdRes)}`);
+            throw new EngineError(`Failed to query host port :: ${formatCmdErr(portCmdRes)}`);
         }
         else {
             const allParts = portCmdRes.stdout.trim().split(":");
@@ -633,7 +646,7 @@ function getInstallError(data: string) {
     }
 }
 
-function fixDockerImageInspect(json: string): ImageInspectResult {
+function fixDockerImageInspect(engine: ContainerEngine, json: string): ImageInspectResult {
     interface DockerImageInspectResult {
         Config: {
             User: string,
@@ -642,7 +655,7 @@ function fixDockerImageInspect(json: string): ImageInspectResult {
 
     const data = JSON.parse(json.trim()) as unknown;
     const parsed = data as ImageInspectResult;
-    if (getContainerEngine() === "docker") {
+    if (engine === ContainerEngine.docker) {
         parsed.User = (data as DockerImageInspectResult).Config.User;
     }
     return parsed;

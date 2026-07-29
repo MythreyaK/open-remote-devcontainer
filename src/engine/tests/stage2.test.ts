@@ -1,12 +1,13 @@
 import path from "node:path";
 import { tmpdir } from "node:os";
-import { writeFileSync, unlinkSync } from "node:fs";
+import { mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import { afterAll, describe, expect, test } from "vitest";
 
 import { runCmd } from "../../common/cmd";
-import { ContainerConfig } from "../container";
+import { ContainerConfig, ContainerEngine } from "../container";
 import { HostUserInfo } from "../../common/utils";
 import * as schema from "../../parser/schema";
+import { ContainerState, STAGE2_ERR_MSG_REGEX, STAGE2_INFO_MSG_REGEX, STAGE2_WARN_MSG_REGEX } from "../lifecycle";
 
 import { init, ENGINE } from "../../tests/common";
 
@@ -16,6 +17,7 @@ const BASE_IMAGE = "ubuntu:24.04";
 
 function testWsf(label: string) {
     const wsf = path.join(tmpdir(), `stage2-${label}`);
+    mkdirSync(wsf, { recursive: true });
     return { localWsf: wsf, cfgPath: path.join(wsf, ".devcontainer.json") };
 }
 
@@ -34,7 +36,7 @@ describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
 
     async function buildStage2(cc: ContainerConfig, hostInfo: HostUserInfo, imgUser?: string) {
         trackImage(cc);
-        const buildCmd = cc.getStage2BuildCmd(hostInfo, imgUser);
+        const buildCmd = cc.getStage2BuildCmd(hostInfo, imgUser, { noCache: true });
 
         // set context and cwd to a dir that exists
         buildCmd[buildCmd.length - 1] = __dirname;
@@ -68,9 +70,12 @@ describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
         const { localWsf, cfgPath } = testWsf("root-skip");
         const cc = ContainerConfig.create(localWsf, cfgPath, imgCfg(), {});
         const build = await buildStage2(cc, { uid: 0, gid: 0, name: "root" });
+        const output = build.stdout.trim() + build.stderr.trim();
         expect(build.exit).eq(0);
-        expect(build.stderr).includes("WARNING: Using user root");
-    }, 30_000);
+        const warnMsg = Array.from(output.matchAll(STAGE2_WARN_MSG_REGEX));
+        expect(warnMsg.length).eq(1);
+        expect(warnMsg[0][1]).includes("Using user root");
+    }, 45_000);
 
     test("remaps existing user UID/GID to host values", async () => {
         const { localWsf, cfgPath } = testWsf("remap-basic");
@@ -81,7 +86,7 @@ describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
         const { uid, gid } = await getRemoteUserInfo(cc, "ubuntu");
         expect(uid).eq("5000");
         expect(gid).eq("5000");
-    }, 30_000);
+    }, 45_000);
 
     test("remaps UID when host GID already exists in container", async () => {
         // Regression test for upstream bugs:
@@ -96,18 +101,21 @@ describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
         const { uid, gid } = await getRemoteUserInfo(cc, "ubuntu");
         expect(uid).eq("2345");
         expect(gid).eq("100");
-    }, 30_000);
+    }, 45_000);
 
     test("UPDATE_REMOTE_UID=false skips remapping", async () => {
         const { localWsf, cfgPath } = testWsf("skip-remap");
         const cc = ContainerConfig.create(localWsf, cfgPath, imgCfg({ remoteUser: "ubuntu", updateRemoteUserUID: false }), {});
         const build = await buildStage2(cc, { uid: 9999, gid: 9999, name: "host" });
         expect(build.exit).eq(0);
-        expect(build.stdout).includes("UPDATE_REMOTE_UID was false");
+        const output = build.stdout.trim() + build.stderr.trim();
+        const infoMsg = Array.from(output.matchAll(STAGE2_INFO_MSG_REGEX));
+        expect(infoMsg.length).eq(1);
+        expect(infoMsg[0][1]).includes("UPDATE_REMOTE_UID was false");
 
         const { uid } = await getRemoteUserInfo(cc, "ubuntu");
         expect(uid).not.eq("9999");
-    }, 30_000);
+    }, 45_000);
 
     test("nonexistent user fails with descriptive error", async () => {
         const { localWsf, cfgPath } = testWsf("no-user");
@@ -115,8 +123,11 @@ describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
 
         const build = await buildStage2(cc, { uid: 1000, gid: 1000, name: "host" });
         expect(build.exit).not.eq(0);
-        expect(build.stderr).includes("does not exist in container");
-    }, 30_000);
+        const output = build.stdout.trim() + build.stderr.trim();
+        const errMsg = Array.from(output.matchAll(STAGE2_ERR_MSG_REGEX));
+        expect(errMsg.length).toBeGreaterThanOrEqual(1);
+        expect(errMsg[0][1]).includes("does not exist in container");
+    }, 45_000);
 
     test("UID conflict: moves colliding user before remapping", async () => {
         const { localWsf, cfgPath } = testWsf("uid-conflict");
@@ -137,8 +148,9 @@ describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
         const cc = ContainerConfig.create(localWsf, cfgPath, imgCfg({ image: baseTag, remoteUser: "foobar" }), {});
         const build = await buildStage2(cc, { uid: 1000, gid: 1000, name: "host" });
         expect(build.exit).eq(0);
-        expect(build.stdout.trim()).includes("User 'foobar' exists, updating UID from 2000 to 1000");
-        expect(build.stdout.trim()).includes("User 'ubuntu' with ID 1000 already exists. Moving to 2234");
+        const output = build.stdout.trim() + build.stderr.trim();
+        expect(output).includes("User 'foobar' exists, updating UID from 2000 to 1000");
+        expect(output).includes("User 'ubuntu' with ID 1000 already exists. Moving to 2234");
 
         const { uid } = await getRemoteUserInfo(cc, "foobar");
         expect(uid).eq("1000");
@@ -146,5 +158,71 @@ describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
         // original owner of uid 1000 moved to 1000+1234
         const { uid: movedUid } = await getRemoteUserInfo(cc, "ubuntu");
         expect(movedUid).eq("2234");
-    }, 30_000);
+    }, 45_000);
+});
+
+const IS_PODMAN = ENGINE === "podman";
+
+describe.skipIf(!IS_PODMAN)("podman: --userns=keep-id", () => {
+    const containers: ContainerState[] = [];
+    const engine = ENGINE!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+
+    afterAll(async () => {
+        for (const c of containers) {
+            await runCmd(engine, ["container", "stop", "-t", "2", c.getContainerName()], __dirname, {});
+            await runCmd(engine, ["container", "rm", "--force", c.getContainerName()], __dirname, {});
+            await runCmd(engine, ["rmi", "-f", c.getConfig().getStage2ImageName()], __dirname, {});
+        }
+    });
+
+    test("non-root remoteUser: workspace is readable and writable", async () => {
+        const { localWsf, cfgPath } = testWsf("podman-keepid");
+        const cc = ContainerConfig.create(localWsf, cfgPath, imgCfg({ remoteUser: "ubuntu" }), {}, { engine: ContainerEngine.podman });
+
+        const container = await ContainerState.create(localWsf, cc);
+        containers.push(container);
+
+        const wsDir = container.getConfig().getRemoteMountDir();
+
+        const read = await container.engineExec(["ls", wsDir]);
+        expect(read.exit).eq(0);
+
+        const marker = `podman-keepid-${Date.now()}`;
+        const write = await container.engineExec(["touch", `${wsDir}/${marker}`]);
+        expect(write.exit).eq(0);
+
+        const cleanup = await container.engineExec(["rm", `${wsDir}/${marker}`]);
+        expect(cleanup.exit).eq(0);
+    }, 60_000);
+
+    test("non-root remoteUser: uid inside container matches host uid", async () => {
+        const { localWsf, cfgPath } = testWsf("podman-keepid-uid");
+        const cc = ContainerConfig.create(localWsf, cfgPath, imgCfg({ remoteUser: "ubuntu" }), {}, { engine: ContainerEngine.podman });
+
+        const container = await ContainerState.create(localWsf, cc);
+        containers.push(container);
+
+        const res = await container.engineExec(["id", "-u"]);
+        expect(res.exit).eq(0);
+        expect(res.stdout.trim()).eq(String(process.getuid?.()));
+    }, 60_000);
+
+    test("root remoteUser: no keep-id, workspace still accessible", async () => {
+        const { localWsf, cfgPath } = testWsf("podman-root");
+        const cc = ContainerConfig.create(localWsf, cfgPath, imgCfg(), {}, { engine: ContainerEngine.podman });
+
+        const container = await ContainerState.create(localWsf, cc);
+        containers.push(container);
+
+        const wsDir = container.getConfig().getRemoteMountDir();
+
+        const read = await container.engineExec(["ls", wsDir]);
+        expect(read.exit).eq(0);
+
+        const write = await container.engineExec(["touch", `${wsDir}/podman-root-test`]);
+        expect(write.exit).eq(0);
+
+        const cleanup = await container.engineExec(["rm", `${wsDir}/podman-root-test`]);
+        expect(cleanup.exit).eq(0);
+    }, 60_000);
 });

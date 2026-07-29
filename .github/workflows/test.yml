@@ -1,0 +1,52 @@
+name: Tests
+
+on:
+  workflow_call:
+
+jobs:
+  test:
+    name: "${{ matrix.engine }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [docker, podman]
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Install packages
+        shell: bash
+        run: |
+          set -e
+          apt update && apt install -y git python3
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: npm
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install npm packages
+        shell: bash
+        run: npm ci && npm run dts && npm run compile
+
+      - name: Unit tests
+        env:
+          DEBUG_TESTS: ${{ github.run_attempt != '1' && '1' || '' }}
+        run: npm run test:noengine
+
+      - name: Integration tests
+        # well ... integration-ish. UI stuff isn't tested
+        env:
+          CONTAINER_ENGINE: ${{ matrix.engine }}
+          DEBUG_TESTS: ${{ github.run_attempt != '1' && '1' || '' }}
+        run: npm run test:engine
