@@ -382,8 +382,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
 
         for (const [k, v] of Object.entries(this.cfg.remoteEnv ?? {})) {
             if (v === null) {
-                // TODO: can't unset env from here ... part of lifecycle script?
-                /* ret.push("--env", k); */
+                // Note: can't unset env from here ... handled with env -u in exec
             }
             else {
                 ret[k] = interpolateContainer(v, this.workspaceFolder, this.getRemoteMountDir(), this.localEnv, remoteEnvsProbe);

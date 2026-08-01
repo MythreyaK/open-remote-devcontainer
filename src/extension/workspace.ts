@@ -84,18 +84,24 @@ export function showNotification(level: NotificationLevel, msg: string) {
     }
 }
 
+export function updateHasConfigContext(hasConfig: boolean) {
+    vscode.commands.executeCommand("setContext", "open-remote-devcontainer.hasConfig", hasConfig);
+}
+
 export function createDevcontainerConfigWatcher(ctx: vscode.ExtensionContext) {
     let configPath: string | undefined;
 
     try {
         const workspace = getLocalWorkspaceFolder();
         configPath = findDevcontainerJson(workspace);
+        updateHasConfigContext(true);
 
         if (!isRemoteSession()) {
             onOpenNotify(workspace);
         }
     }
     catch (e) {
+        updateHasConfigContext(false);
         if (e instanceof Error) {
             getLogSink().error(`Watcher: No workspace or config found: ${e.message}`);
         }
@@ -116,6 +122,8 @@ export function createDevcontainerConfigWatcher(ctx: vscode.ExtensionContext) {
             cmds.remotePromptRebuildIfStale(ctx);
         }
     });
+    watcher.onDidCreate(() => { updateHasConfigContext(true); });
+    watcher.onDidDelete(() => { updateHasConfigContext(false); });
 
     return watcher;
 }

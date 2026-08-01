@@ -63,7 +63,7 @@ export const initMocks = () => {
     spySettings.mockReturnValue({
         get: (key: string) => {
             const config: Record<string, string | undefined> = {
-                engine: ENGINE,
+                dockerPath: ENGINE,
             };
             return config[key];
         },

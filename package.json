@@ -6,6 +6,7 @@
   "version": "0.7.0",
   "license": "AGPL-3.0-only",
   "homepage": "https://github.com/mythreyak/open-remote-devcontainer#readme",
+  "icon": "assets/icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/mythreyak/open-remote-devcontainer.git"
@@ -61,11 +62,6 @@
       {
         "command": "open-remote-devcontainer.openLocal",
         "category": "Remote - Devcontainer",
-        "title": "Reopen workspace locally"
-      },
-      {
-        "command": "open-remote-devcontainer.openLocal",
-        "category": "Remote - Devcontainer",
         "title": "Close remote (reopen locally)"
       },
       {
@@ -79,18 +75,93 @@
         "title": "Show log file"
       }
     ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "open-remote-devcontainer.showDevcontainerFile"
+        },
+        {
+          "command": "open-remote-devcontainer.openRemote"
+        },
+        {
+          "command": "open-remote-devcontainer.rebuildOpenRemote"
+        },
+        {
+          "command": "open-remote-devcontainer.rebuildNoCacheOpenRemote"
+        },
+        {
+          "command": "open-remote-devcontainer.showLog"
+        },
+        {
+          "command": "open-remote-devcontainer.openLocal",
+          "when": "remoteName == devcontainer-remote"
+        }
+      ],
+      "statusBar/remoteIndicator": [
+        {
+          "command": "open-remote-devcontainer.showDevcontainerFile",
+          "group": "remote_30_devcontainer_3local@1",
+          "when": "!remoteName && open-remote-devcontainer.hasConfig"
+        },
+        {
+          "command": "open-remote-devcontainer.openRemote",
+          "group": "remote_30_devcontainer_3local@2",
+          "when": "!remoteName && open-remote-devcontainer.hasConfig"
+        },
+        {
+          "command": "open-remote-devcontainer.rebuildOpenRemote",
+          "group": "remote_30_devcontainer_3local@3",
+          "when": "!remoteName && open-remote-devcontainer.hasConfig"
+        },
+        {
+          "command": "open-remote-devcontainer.rebuildNoCacheOpenRemote",
+          "group": "remote_30_devcontainer_3local@4",
+          "when": "!remoteName && open-remote-devcontainer.hasConfig"
+        },
+        {
+          "command": "open-remote-devcontainer.showLog",
+          "group": "remote_30_devcontainer_3local@5"
+        },
+        {
+          "command": "open-remote-devcontainer.rebuildOpenRemote",
+          "group": "remote_30_devcontainer_3remote@1",
+          "when": "remoteName == devcontainer-remote"
+        },
+        {
+          "command": "open-remote-devcontainer.rebuildNoCacheOpenRemote",
+          "group": "remote_30_devcontainer_3remote@2",
+          "when": "remoteName == devcontainer-remote"
+        },
+        {
+          "command": "open-remote-devcontainer.openLocal",
+          "group": "remote_30_devcontainer_3remote@3",
+          "when": "remoteName == devcontainer-remote"
+        }
+      ]
+    },
     "configuration": {
       "title": "Remote - Devcontainer",
       "properties": {
-        "remote.devcontainer.engine": {
+        "dev.containers.dockerPath": {
           "type": "string",
           "default": "docker",
-          "description": "Path to the container executable engine. E.g., 'docker', 'podman'. Default: docker"
+          "markdownDescription": "Path to the container executable engine. E.g., `docker`, `podman`. Default: `docker`"
         },
-        "remote.devcontainer.extraArgs": {
+        "dev.containers.extraArgs": {
           "type": "array",
+          "items": {
+            "type": "string"
+          },
           "default": [],
-          "description": "Extra runtime parameters to pass to the executable. E.g., ['--root', '/custom/storage']"
+          "markdownDescription": "Extra runtime parameters to pass to the executable. E.g., `['--root', '/custom/storage']`"
+        },
+        "dev.containers.defaultExtensions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Extensions to install in every devcontainer. E.g., `['llvm-vs-code-extensions.vscode-clangd']`"
         }
       }
     }
