@@ -125,7 +125,7 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
                     label: "${path}",
                     separator: "/",
                     tildify: true,
-                    workspaceSuffix: `📦 ${localWsfBasename} [${containerId.slice(0, 8)}]`,
+                    workspaceSuffix: `📦 ${localWsfBasename} (${containerId.slice(0, 8)})`,
                 },
             });
 
