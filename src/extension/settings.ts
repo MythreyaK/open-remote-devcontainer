@@ -2,11 +2,11 @@ import * as vscode from "vscode";
 
 // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
 export function getConfig<T>(key: string): T | undefined {
-    return vscode.workspace.getConfiguration("remote.devcontainer").get<T>(key);
+    return vscode.workspace.getConfiguration("dev.containers").get<T>(key);
 }
 
 export function getContainerEngine(): string {
-    return getConfig<string>("engine") ?? "docker";
+    return getConfig<string>("dockerPath") ?? "docker";
 }
 
 /**
