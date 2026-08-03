@@ -12,9 +12,7 @@ import { getWorkspaceId, NotificationLevel, showNotification } from "../extensio
 
 import * as settings from "../extension/settings";
 import * as server from "../remote/installServer";
-import { EXTENSION_ID } from "../common/constants";
-
-const DEVCONTAINER_SERVER_LISTEN_PORT = 65432;
+import { EXTENSION_ID, DEVCONTAINER_SERVER_LISTEN_PORT } from "../common/constants";
 const UUID_TOKEN_LEN = 36;
 
 const jsonFormat = ["--format", "{{json .}}"];
