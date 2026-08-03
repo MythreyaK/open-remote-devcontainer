@@ -149,6 +149,18 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
         vscode.commands.executeCommand("setContext", "forwardedPortsViewEnabled", true);
         vscode.commands.executeCommand("setContext", "forwardedPortsFeaturesEnabled", true);
 
+        for (const p of parsedConfig.forwardPorts) {
+            if (typeof p === "string") {
+                getLogSink().warn(`Skipping forwardPorts entry '${p}' (host:port compose format not supported)`);
+                continue;
+            }
+            else {
+                const remotePort = p;
+                getLogSink().info(`Forwarding remote port ${remotePort} -> to local http://localhost:${remotePort}`);
+                vscode.env.asExternalUri(vscode.Uri.parse(`http://localhost:${remotePort}`));
+            }
+        }
+
         return new vscode.ResolvedAuthority(host, port, ctkn);
     }
 
@@ -159,7 +171,9 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
     // tunnelFactory?: (tunnelOptions: vscode.TunnelOptions, tunnelCreationOptions: vscode.TunnelCreationOptions) => Thenable<vscode.Tunnel> | undefined;
 
     showCandidatePort(host: string, port: number, detail: string): Thenable<boolean> {
-        getLogSink().info(`showCandidatePort: detected port ${host}:${port} detail: ${detail}`);
+        const prettyDetail = detail.split("\0").map(e => e.trim()).filter(e => !!e).map(e => `'${e}'`).join(", ");
+        getLogSink().info(`showCandidatePort: detected port ${host}:${port} detail: [${prettyDetail}]`);
+
         if (port === DEVCONTAINER_SERVER_LISTEN_PORT || port === this.serverHostPort) {
             return Promise.resolve(false);
         }

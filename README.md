@@ -47,7 +47,7 @@ These features are not supported, but might be added in the future.
 
 - Compose
 - config: `features`
-- config: `forwardPorts` / `portsAttributes`
+- config: `portsAttributes`
 - config: `customizations.vscode.settings`
 - config: `shutdownAction` (parsed but not enforced)
 - config: `hostRequirements`
