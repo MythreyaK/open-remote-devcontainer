@@ -8,7 +8,7 @@ import { encodeRemoteAuthority } from "../remote/resolver";
 import { findDevcontainerJson, getLocalWorkspaceFolder, isRemoteSession, NotificationLevel, showNotification } from "./workspace";
 import { BuildOpts, queryContainerConfigId } from "../engine/lifecycle";
 import { BuildOptIntent } from "../common/globalState";
-import { getLogfilePath } from "./log";
+import { getLogfilePath, getLogSink } from "./log";
 import { EXTENSION_ID } from "../common/constants";
 import { InternalError } from "./error";
 
@@ -184,4 +184,11 @@ function toBuildOpts(userOpt: RebuildPrompt | undefined) {
         case RebuildPrompt.RebuildNoCache: return BuildOpts.RebuildNoCache;
         default: return undefined;
     };
+}
+
+export function clearGlobalState(ctx: vscode.ExtensionContext) {
+    ctx.globalState.keys().forEach((k) => {
+        getLogSink().info(`Clearing globalState '${k}'`);
+        void ctx.globalState.update(k, undefined);
+    });
 }

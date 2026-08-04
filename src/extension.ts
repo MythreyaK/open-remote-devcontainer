@@ -5,6 +5,7 @@ import { BuildOpts } from "./engine/lifecycle";
 import { initLogs } from "./extension/log";
 import { AUTHORITY_BASE, DevContainerResolver } from "./remote/resolver";
 import { createDevcontainerConfigWatcher, isRemoteSession } from "./extension/workspace";
+import { checkVersionAndNotify } from "./extension/releaseNotes";
 
 export function activate(ctx: vscode.ExtensionContext) {
     const logger = initLogs(ctx);
@@ -23,6 +24,7 @@ export function activate(ctx: vscode.ExtensionContext) {
         vscode.commands.registerCommand(cmds.getCmd("showDevcontainerFile"), () => { cmds.showDevcontainerFile(); }),
         vscode.commands.registerCommand(cmds.getCmd("openLocal"), async () => { await cmds.openLocal(); }),
         vscode.commands.registerCommand(cmds.getCmd("showLog"), () => { cmds.showLogFile(); }),
+        vscode.commands.registerCommand(cmds.getCmd("clearGlobalState"), () => { cmds.clearGlobalState(ctx); }),
         configWatcher,
         logger,
     );
@@ -33,6 +35,8 @@ export function activate(ctx: vscode.ExtensionContext) {
             cmds.remotePromptRebuildIfStale(ctx);
         });
     }
+
+    checkVersionAndNotify(ctx);
 }
 
 export function deactivate() { }
