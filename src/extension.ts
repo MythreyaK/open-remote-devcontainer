@@ -6,6 +6,7 @@ import { initLogs } from "./extension/log";
 import { AUTHORITY_BASE, DevContainerResolver } from "./remote/resolver";
 import { createDevcontainerConfigWatcher, isRemoteSession } from "./extension/workspace";
 import { checkVersionAndNotify } from "./extension/releaseNotes";
+import { checkLegacySettings } from "./extension/settings";
 
 export function activate(ctx: vscode.ExtensionContext) {
     const logger = initLogs(ctx);
@@ -37,6 +38,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     }
 
     checkVersionAndNotify(ctx);
+    checkLegacySettings();
 }
 
 export function deactivate() { }
