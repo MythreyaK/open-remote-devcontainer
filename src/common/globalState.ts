@@ -14,13 +14,28 @@ export function getLocalWsfExtensionKey(key: string) {
     return `${EXTENSION_ID}.${wsfId.slice(0, 8)}.${key}`;
 }
 
+export function setGlobalState(ctx: vscode.ExtensionContext, key: string, val: unknown) {
+    getLogSink().info(`setGlobalState: '${key}': ${JSON.stringify(val)}`);
+    ctx.globalState.update(getExtensionKey(key), val);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
+export function getGlobalState<T>(ctx: vscode.ExtensionContext, key: string): T | undefined {
+    const ret = ctx.globalState.get<T>(getExtensionKey(key));
+    getLogSink().info(`getGlobalState: '${key}': ${JSON.stringify(ret)}`);
+    return ret;
+}
+
 export function setLocalWsfGlobalState(ctx: vscode.ExtensionContext, key: string, val: unknown) {
+    getLogSink().info(`setLocalWsfGlobalState: '${key}': ${JSON.stringify(val)}`);
     ctx.globalState.update(getLocalWsfExtensionKey(key), val);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
 export function getLocalWsfGlobalState<T>(ctx: vscode.ExtensionContext, key: string): T | undefined {
-    return ctx.globalState.get<T>(getLocalWsfExtensionKey(key));
+    const ret = ctx.globalState.get<T>(getLocalWsfExtensionKey(key));
+    getLogSink().info(`getLocalWsfGlobalState: '${key}': ${JSON.stringify(ret)}`);
+    return ret;
 }
 
 interface DataStore<T> {

@@ -73,6 +73,11 @@
         "command": "open-remote-devcontainer.showLog",
         "category": "Remote - Devcontainer",
         "title": "Show log file"
+      },
+      {
+        "command": "open-remote-devcontainer.clearGlobalState",
+        "category": "Remote - Devcontainer",
+        "title": "Clear extension preferences"
       }
     ],
     "menus": {
