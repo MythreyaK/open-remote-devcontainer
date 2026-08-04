@@ -6,7 +6,10 @@ Devcontainer support for [VSCodium](https://github.com/VSCodium/vscodium). Build
 
 > [!Important]  
 > You need to enable the proposed resolver API for this extension to work. 
-
+> 
+> Update settings keys since `v0.7.0`: 
+>   - `remote.devcontainer.engine` -> `dev.containers.dockerPath`
+>   - `remote.devcontainer.extraArgs` -> `dev.containers.extraArgs`
 
 ```jsonc
 {
