@@ -7,10 +7,6 @@ export interface RunOpts {
     stdin?: string | undefined,
 }
 
-export async function runCmd(cmd: string, args: string[], opts: RunOpts) {
-    return await common.spawn(cmd, args, { cwd: opts.cwd, env: opts.env ?? {}, stdin: opts.stdin, log: getLogSink() });
-}
-
 export async function run(cmdArgs: string[], opts: RunOpts) {
     return await common.spawn(cmdArgs[0], cmdArgs.slice(1), { cwd: opts.cwd, env: opts.env ?? {}, stdin: opts.stdin, log: getLogSink() });
 }

@@ -1,4 +1,4 @@
-import { runCmd } from "../common/cmd";
+import { run } from "../common/cmd";
 import { formatCmdErr } from "../common/spawn";
 import { SpawnError } from "../extension/error";
 import { getLocalWorkspaceFolder } from "../extension/workspace";
@@ -29,7 +29,7 @@ export function parseEnv(envStdout: string) {
 }
 
 export async function getHostUserInfo(cwd: string = getLocalWorkspaceFolder()): Promise<HostUserInfo> {
-    const userName = await runCmd("/bin/sh", ["-c", "id -n -u $UID"], { cwd });
+    const userName = await run(["/bin/sh", "-c", "id -n -u $UID"], { cwd });
     /* eslint-disable @typescript-eslint/no-non-null-assertion */
     if (userName.exit === 0) {
         return {

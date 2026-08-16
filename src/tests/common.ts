@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
-import { runCmd } from "../common/cmd";
+import { run } from "../common/cmd";
 import { _initLog } from "../extension/log";
 import { findDevcontainerJson } from "../extension/workspace";
 import { parseDevcontainerFile } from "../parser/parser";
@@ -101,18 +101,18 @@ export function setupFixture(opts: { name: string, testDir: string }) {
 
     afterAll(async () => {
         if (DEBUG_TESTS) { console.info(`Stopping and removing container ${containerName}`); }
-        const proc1 = await runCmd(ENGINE, ["container", "stop", containerName], { cwd: testDir });
-        const proc2 = await runCmd(ENGINE, ["container", "rm", containerName], { cwd: testDir });
+        const proc1 = await run([ENGINE, "container", "stop", containerName], { cwd: testDir });
+        const proc2 = await run([ENGINE, "container", "rm", containerName], { cwd: testDir });
 
         if (proc1.exit !== 0) { console.warn("Warning: Containers were not stopped cleanly. Maybe a bug?"); }
         if (proc2.exit !== 0) { console.warn("Warning: Containers were not removed cleanly. Maybe a bug?"); }
 
-        if (proc1.exit !== 0 || proc2.exit !== 0) { await runCmd(ENGINE, ["container", "rm", "--force", containerName], { cwd: testDir }); }
+        if (proc1.exit !== 0 || proc2.exit !== 0) { await run([ENGINE, "container", "rm", "--force", containerName], { cwd: testDir }); }
 
         const stg1 = ContainerConfig._getStage1ImageName(testDir);
         const stg2 = ContainerConfig._getStage2ImageName(testDir);
         if (DEBUG_TESTS) { console.info(`Removing images [${stg1}, ${stg2}]`); }
-        await runCmd(ENGINE, ["image", "rm", stg1, stg2], { cwd: testDir });
+        await run([ENGINE, "image", "rm", stg1, stg2], { cwd: testDir });
     });
 
     return { localWsf: testDir, localWsfBasename: path.parse(testDir).base, config: config };

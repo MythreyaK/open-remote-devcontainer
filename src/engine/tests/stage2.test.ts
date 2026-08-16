@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import { afterAll, describe, expect, test } from "vitest";
 
-import { runCmd } from "../../common/cmd";
+import { run } from "../../common/cmd";
 import { ContainerConfig, ContainerEngine } from "../container";
 import { HostUserInfo } from "../../common/utils";
 import * as schema from "../../parser/schema";
@@ -40,11 +40,11 @@ describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
 
         // set context and cwd to a dir that exists
         buildCmd[buildCmd.length - 1] = __dirname;
-        return await runCmd(engine, buildCmd, { cwd: __dirname });
+        return await run([engine, ...buildCmd], { cwd: __dirname });
     }
 
     async function runInImage(cc: ContainerConfig, cmd: string[]) {
-        return await runCmd(engine, ["run", "--rm", cc.getStage2ImageName(), ...cmd], { cwd: __dirname });
+        return await run([engine, "run", "--rm", cc.getStage2ImageName(), ...cmd], { cwd: __dirname });
     }
 
     async function getRemoteUserInfo(cc: ContainerConfig, username: string) {
@@ -62,7 +62,7 @@ describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
 
     afterAll(async () => {
         for (const img of images) {
-            await runCmd(engine, ["rmi", "-f", img], { cwd: __dirname });
+            await run([engine, "rmi", "-f", img], { cwd: __dirname });
         }
     });
 
@@ -139,8 +139,8 @@ describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
         const tmpDockerfile = path.join(tmpdir(), "stage2-test-conflict.Dockerfile");
         writeFileSync(tmpDockerfile, `FROM ${BASE_IMAGE}\nRUN useradd -m -u 2000 foobar\n`);
 
-        const setupBase = await runCmd(engine, [
-            "build", "-t", baseTag, "-f", tmpDockerfile, ".",
+        const setupBase = await run([
+            engine, "build", "-t", baseTag, "-f", tmpDockerfile, ".",
         ], { cwd: __dirname });
         unlinkSync(tmpDockerfile);
         expect(setupBase.exit).eq(0);
@@ -169,9 +169,9 @@ describe.skipIf(!IS_PODMAN)("podman: --userns=keep-id", () => {
 
     afterAll(async () => {
         for (const c of containers) {
-            await runCmd(engine, ["container", "stop", "-t", "2", c.getContainerName()], { cwd: __dirname });
-            await runCmd(engine, ["container", "rm", "--force", c.getContainerName()], { cwd: __dirname });
-            await runCmd(engine, ["rmi", "-f", c.getConfig().getStage2ImageName()], { cwd: __dirname });
+            await run([engine, "container", "stop", "-t", "2", c.getContainerName()], { cwd: __dirname });
+            await run([engine, "container", "rm", "--force", c.getContainerName()], { cwd: __dirname });
+            await run([engine, "rmi", "-f", c.getConfig().getStage2ImageName()], { cwd: __dirname });
         }
     });
 
