@@ -1,6 +1,4 @@
 import path from "node:path";
-import { tmpdir } from "node:os";
-import { mkdirSync, writeFileSync } from "node:fs";
 
 import { run } from "../common/cmd";
 import { getLogSink } from "../extension/log";
@@ -8,7 +6,7 @@ import { formatCmdErr } from "../common/spawn";
 import { parseEnv, getHostUserInfo } from "../common/utils";
 import { ContainerConfig, ContainerEngine, LifecycleCmd } from "./container";
 import { EngineError, InstallError, InternalError } from "../extension/error";
-import { getWorkspaceId, NotificationLevel, showNotification } from "../extension/workspace";
+import { NotificationLevel, showNotification } from "../extension/workspace";
 
 import * as settings from "../extension/settings";
 import * as server from "../remote/installServer";
@@ -55,7 +53,6 @@ export enum BuildOpts {
 export class ContainerState {
     private readonly workspaceFolder: string;
     private readonly cc: ContainerConfig;
-    private readonly tempDir: string;
     private readonly buildOpts: BuildOpts;
 
     private remoteEnvProbe: Record<string, string> = {};
@@ -65,10 +62,6 @@ export class ContainerState {
         this.workspaceFolder = path.resolve(workspaceFolder);
         this.cc = cc;
         this.buildOpts = opts;
-
-        this.tempDir = path.join(tmpdir(), `codium-devcontainer-${getWorkspaceId(this.workspaceFolder)}`);
-        mkdirSync(this.tempDir, { recursive: true });
-        getLogSink().info(`Created / using temp dir at ${this.tempDir}`);
     }
 
     public static async create(workspaceFolder: string, cc: ContainerConfig, opts: BuildOpts = BuildOpts.Default): Promise<ContainerState> {
@@ -562,37 +555,22 @@ export class ContainerState {
         };
 
         const scriptData = await server.generateInstallScript(info, true);
-        const installScriptPath = path.join(this.tempDir, "installScript.sh");
-        writeFileSync(installScriptPath, scriptData, { encoding: "utf-8" });
-
-        const destFile = "/tmp/codium-devcontainer-installScript.sh";
-
-        // copy the script and run it
-        const copyResult = await run(
-            [
-                ...settings.getEngineCmd(),
-                "cp",
-                installScriptPath,
-                `${this.getContainerName()}:${destFile}`,
-            ], { cwd: this.workspaceFolder },
-        );
-
-        if (copyResult.exit !== 0) {
-            throw new InstallError(`Could not copy install script from ${installScriptPath} (host) to ${this.getContainerName()}:${destFile} (container)`);
-        }
 
         const installExecResult = await run(
             [
                 ...settings.getEngineCmd(),
-                ...this.cc.getExecArgs(this.getContainerName(), this.remoteEnvProbe),
+                ...this.cc.getExecArgs(this.getContainerName(), this.remoteEnvProbe, { interactive: true }),
                 "bash",
-                destFile,
-            ], { cwd: this.workspaceFolder },
+            ],
+            {
+                cwd: this.workspaceFolder,
+                stdin: scriptData,
+            },
         );
 
         if (installExecResult.exit !== 0) {
             const err = getInstallError(installExecResult.stdout.trim());
-            throw new InstallError(`Install script at ${this.getContainerName()}:${destFile} failed with code ${installExecResult.exit}: Error: ${err}`);
+            throw new InstallError(`Install script to container ${this.getContainerName()} failed with code ${installExecResult.exit}: Error: ${err}`);
         }
 
         const hostPort = await this.getHostmappedPort();
