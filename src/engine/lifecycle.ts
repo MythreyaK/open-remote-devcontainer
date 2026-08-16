@@ -127,7 +127,7 @@ export class ContainerState {
         getLogSink().info(`InitializeCmd[host]: Executing cmd [${cmd.join(", ")}]`);
         const res = await run([
             ...cmd,
-        ], this.workspaceFolder, {});
+        ], { cwd: this.workspaceFolder });
 
         if (res.exit === 0) {
             getLogSink().info(`InitializeCmd[host]: OK :: ${formatCmdErr(res)}`);
@@ -151,7 +151,7 @@ export class ContainerState {
                         ...settings.getEngineCmd(),
                         ...this.cc.getExecArgs(cname, this.remoteEnvProbe),
                         ...cmd,
-                    ], this.workspaceFolder, {});
+                    ], { cwd: this.workspaceFolder });
                 }));
 
         let allOk = true;
@@ -212,7 +212,7 @@ export class ContainerState {
                         ...settings.getEngineCmd(),
                         "pull",
                         stage1Image,
-                    ], this.workspaceFolder, {});
+                    ], { cwd: this.workspaceFolder });
 
                     if (pullRes.exit !== 0) {
                         throw new EngineError(`Failed to pull image ${stage1Image}. Image '${stage1Image}' does not exist on host :: ${formatCmdErr(pullRes)}`);
@@ -239,7 +239,7 @@ export class ContainerState {
             "inspect",
             stage1Image,
             ...jsonFormat,
-        ], this.workspaceFolder, {});
+        ], { cwd: this.workspaceFolder });
 
         if (imgUser.exit !== 0) {
             throw new EngineError(`Could not query ${stage1Image} User field. ${formatCmdErr(imgUser)}`);
@@ -268,7 +268,7 @@ export class ContainerState {
         const ret = await run([
             ...settings.getEngineCmd(),
             ...this.cc.getStage2BuildCmd(hostUserInfo, imageUser, { noCache: this.buildOpts === BuildOpts.RebuildNoCache }),
-        ], this.workspaceFolder, {});
+        ], { cwd: this.workspaceFolder });
 
         if (ret.exit !== 0) {
             // docker and podman output differs, some to stdout, some to stderr
@@ -297,7 +297,7 @@ export class ContainerState {
             ...settings.getEngineCmd(),
             "start",
             this.getContainerName(),
-        ], this.workspaceFolder, {});
+        ], { cwd: this.workspaceFolder });
 
         if (ret.exit !== 0) {
             throw new EngineError(`Failed to start container :: ${formatCmdErr(ret)}`);
@@ -313,7 +313,7 @@ export class ContainerState {
             "stop",
             ...(opts.force ? ["-t", "1"] : []),
             this.getContainerName(),
-        ], this.workspaceFolder, {});
+        ], { cwd: this.workspaceFolder });
         return ret;
     }
 
@@ -345,7 +345,7 @@ export class ContainerState {
             "rm",
             ...(opts.force ? ["--force"] : []),
             this.getContainerName(),
-        ], this.workspaceFolder, {});
+        ], { cwd: this.workspaceFolder });
         return ret;
     }
 
@@ -357,7 +357,7 @@ export class ContainerState {
                 "inspect",
                 identifier,
                 ...jsonFormat,
-            ], this.workspaceFolder, {},
+            ], { cwd: this.workspaceFolder },
         );
 
         if (res.exit !== 0) {
@@ -376,7 +376,7 @@ export class ContainerState {
                 "inspect",
                 identifier,
                 ...jsonFormat,
-            ], this.workspaceFolder, {},
+            ], { cwd: this.workspaceFolder },
         );
 
         if (res.exit !== 0) {
@@ -395,7 +395,7 @@ export class ContainerState {
                 "inspect",
                 identifier,
                 ...jsonFormat,
-            ], this.workspaceFolder, {},
+            ], { cwd: this.workspaceFolder },
         );
 
         if (res.exit !== 0) {
@@ -421,7 +421,7 @@ export class ContainerState {
                 "bash",
                 "-c",
                 "cat ${HOME}/.vscode-oss-devcontainer/token",
-            ], this.workspaceFolder, {});
+            ], { cwd: this.workspaceFolder });
 
             if (token.exit !== 0 || token.stdout.trim().length !== UUID_TOKEN_LEN) {
                 // TODO: reinstall server? force-restart with new token?
@@ -444,7 +444,7 @@ export class ContainerState {
                     ],
                     remoteUser: remoteUser,
                 }),
-            ], this.workspaceFolder, {},
+            ], { cwd: this.workspaceFolder },
         );
 
         if (createRes.exit !== 0) {
@@ -470,7 +470,7 @@ export class ContainerState {
                 ...this.cc.getUserEnvProbeArgs(),
                 "-c",
                 "env -0",
-            ], this.workspaceFolder, {});
+            ], { cwd: this.workspaceFolder });
 
         if (out.exit === 0) {
             const containerEnvs: Record<string, string> = parseEnv(out.stdout);
@@ -487,7 +487,7 @@ export class ContainerState {
                 "inspect",
                 name,
                 ...jsonFormat,
-            ], this.workspaceFolder, {},
+            ], { cwd: this.workspaceFolder },
         );
     }
 
@@ -497,7 +497,7 @@ export class ContainerState {
         const ret = await run([
             ...settings.getEngineCmd(),
             ...this.cc.getBuildCmd({ noCache: this.buildOpts === BuildOpts.RebuildNoCache }),
-        ], this.workspaceFolder, {});
+        ], { cwd: this.workspaceFolder });
 
         if (ret.exit !== 0) {
             throw new EngineError(`Could not build stage1 image :: ${formatCmdErr(ret)}`);
@@ -520,7 +520,7 @@ export class ContainerState {
                 ...settings.getEngineCmd(),
                 ...this.cc.getExecArgs(this.getContainerName(), this.remoteEnvProbe),
                 ...cmdArgs,
-            ], this.workspaceFolder, {},
+            ], { cwd: this.workspaceFolder },
         );
     }
 
@@ -574,7 +574,7 @@ export class ContainerState {
                 "cp",
                 installScriptPath,
                 `${this.getContainerName()}:${destFile}`,
-            ], this.workspaceFolder, {},
+            ], { cwd: this.workspaceFolder },
         );
 
         if (copyResult.exit !== 0) {
@@ -587,7 +587,7 @@ export class ContainerState {
                 ...this.cc.getExecArgs(this.getContainerName(), this.remoteEnvProbe),
                 "bash",
                 destFile,
-            ], this.workspaceFolder, {},
+            ], { cwd: this.workspaceFolder },
         );
 
         if (installExecResult.exit !== 0) {
@@ -606,7 +606,7 @@ export class ContainerState {
             "port",
             this.getContainerName(),
             `${DEVCONTAINER_SERVER_LISTEN_PORT}`,
-        ], this.workspaceFolder, {});
+        ], { cwd: this.workspaceFolder });
 
         if (portCmdRes.exit !== 0) {
             throw new EngineError(`Failed to query host port :: ${formatCmdErr(portCmdRes)}`);
@@ -672,7 +672,7 @@ export async function queryContainerConfigId(workspaceFolder: string): Promise<s
         ...settings.getEngineCmd(),
         "container", "inspect", containerName,
         "--format", `{{index .Config.Labels "${labelKey}"}}`,
-    ], workspaceFolder, {});
+    ], { cwd: workspaceFolder });
 
     if (res.exit !== 0) { return undefined; }
 

@@ -10,6 +10,10 @@ function getcwd() {
     return __dirname;
 }
 
+function opts() {
+    return { cwd: getcwd(), env: {}, log: getLogSink() };
+}
+
 const bashSleepCmd = ["bash", "-c", "trap 'exit 0' SIGINT SIGTERM; while true; do sleep 1; done"];
 
 if (ENGINE) { init(); }
@@ -22,38 +26,34 @@ describe.skipIf(!ENGINE)("cmd spawn tests", () => {
     });
 
     test("env buildkit", async () => {
-        const log = getLogSink();
-        const out = await spawn("env", [], getcwd(), {}, log);
+        const out = await spawn("env", [], opts());
         expect(out.stdout).contains("BUILDKIT_PROGRESS=plain");
         expect(out.exit).eq(0);
     });
 
     test("get engine version", async () => {
-        const log = getLogSink();
-        const out = await spawn(engine, ["version", ...jsonFormat], getcwd(), {}, log);
+        const out = await spawn(engine, ["version", ...jsonFormat], opts());
         expect(out.exit).eq(0);
     });
 
     test("create and remove container", async () => {
-        const log = getLogSink();
-        const create = await spawn(engine, ["create", "hello-world"], getcwd(), {}, log);
+        const create = await spawn(engine, ["create", "hello-world"], opts());
 
-        const remove = await spawn(engine, ["rm", create.stdout.trim()], getcwd(), {}, log);
+        const remove = await spawn(engine, ["rm", create.stdout.trim()], opts());
         expect(create.exit).eq(0);
         expect(remove.exit).eq(0);
     }, 10_000);
 
     test("run and exec command", async () => {
-        const log = getLogSink();
-        const create = await spawn(engine, ["run", "--name", "turtles", "-d", "ubuntu:24.04", ...bashSleepCmd], getcwd(), {}, log);
+        const create = await spawn(engine, ["run", "--name", "turtles", "-d", "ubuntu:24.04", ...bashSleepCmd], opts());
         const containerId = create.stdout.trim();
 
         try {
-            const exec = await spawn(engine, ["exec", create.stdout.trim(), "cat", "/etc/os-release"], getcwd(), {}, log);
+            const exec = await spawn(engine, ["exec", create.stdout.trim(), "cat", "/etc/os-release"], opts());
             expect(exec.stdout.trim()).toContain("Ubuntu 24.04");
             expect(exec.exit).eq(0);
 
-            const inspect = await spawn(engine, ["inspect", containerId, ...jsonFormat], getcwd(), {}, log);
+            const inspect = await spawn(engine, ["inspect", containerId, ...jsonFormat], opts());
             expect(inspect.exit).eq(0);
 
             const inspectData = JSON.parse(inspect.stdout.trim()) as ContainerInspectResult;
@@ -62,10 +62,10 @@ describe.skipIf(!ENGINE)("cmd spawn tests", () => {
             expect(inspectData.State.Running).eq(true);
         }
         finally {
-            const stop = await spawn(engine, ["stop", "turtles"], getcwd(), {}, log);
+            const stop = await spawn(engine, ["stop", "turtles"], opts());
             expect(stop.exit).eq(0);
 
-            const rm = await spawn(engine, ["rm", "turtles"], getcwd(), {}, log);
+            const rm = await spawn(engine, ["rm", "turtles"], opts());
             expect(rm.exit).eq(0);
         }
     }, 30_000);

@@ -39,9 +39,9 @@ describe.skipIf(!ENGINE)("integration: lifecycle: img-pull", () => {
 
     test("pull image and create container with missing local image", async () => {
         // remove image first, if exists
-        await run([engine, "image", "rm", imageName], localWsf, localEnv);
+        await run([engine, "image", "rm", imageName], { cwd: localWsf, env: localEnv });
 
-        const inspectResult = await run([engine, "inspect", imageName, ...jsonFormat], localWsf, localEnv);
+        const inspectResult = await run([engine, "inspect", imageName, ...jsonFormat], { cwd: localWsf, env: localEnv });
         expect(inspectResult.exit).not.eq(0);
         expect(inspectResult.stdout.trim()).toBe("");
 
@@ -68,7 +68,7 @@ describe.skipIf(!ENGINE)("integration: lifecycle: img-pull", () => {
                 "bash",
                 "-c",
                 "cat ${HOME}/.vscode-oss-devcontainer/token",
-            ], localWsf, localEnv);
+            ], { cwd: localWsf, env: localEnv });
 
             expect(catResult.exit).eq(0);
             expect(catResult.stdout.trim()).eq(token);
@@ -91,7 +91,7 @@ describe.skipIf(!ENGINE)("integration: lifecycle: img-pull", () => {
                 "bash",
                 "-c",
                 "cat ${HOME}/.vscode-oss-devcontainer/token",
-            ], localWsf, localEnv);
+            ], { cwd: localWsf, env: localEnv });
 
             expect(catResult.exit).eq(0);
             expect(catResult.stdout.trim()).eq(token);

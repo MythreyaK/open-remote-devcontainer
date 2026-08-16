@@ -24,7 +24,7 @@ export function getCmd(suffix: string) {
 
 export async function getContainerEngineVersion() {
     const localWsf = getLocalWorkspaceFolder();
-    const { stdout } = await cmd.runCmd(getContainerEngine(), ["--version"], localWsf, {});
+    const { stdout } = await cmd.runCmd(getContainerEngine(), ["--version"], { cwd: localWsf });
     vscode.window.showInformationMessage(`${getContainerEngine()} version: ${stdout}`);
 }
 

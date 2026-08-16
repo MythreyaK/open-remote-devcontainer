@@ -29,7 +29,7 @@ export function parseEnv(envStdout: string) {
 }
 
 export async function getHostUserInfo(cwd: string = getLocalWorkspaceFolder()): Promise<HostUserInfo> {
-    const userName = await runCmd("/bin/sh", ["-c", "id -n -u $UID"], cwd, {});
+    const userName = await runCmd("/bin/sh", ["-c", "id -n -u $UID"], { cwd });
     /* eslint-disable @typescript-eslint/no-non-null-assertion */
     if (userName.exit === 0) {
         return {

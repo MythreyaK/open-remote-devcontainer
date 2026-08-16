@@ -34,7 +34,7 @@ describe.skipIf(!ENGINE)("integration: lifecycle: img-basic", () => {
     }, 60 * 1000);
 
     test("workspace mounts exists", async () => {
-        const inspectResult = await run([engine, "inspect", container.getContainerName(), ...jsonFormat], localWsf, localEnv);
+        const inspectResult = await run([engine, "inspect", container.getContainerName(), ...jsonFormat], { cwd: localWsf, env: localEnv });
         expect(inspectResult.exit).eq(0);
 
         const mounts = (JSON.parse(inspectResult.stdout.trim()) as ContainerInspectResult)["Mounts"];

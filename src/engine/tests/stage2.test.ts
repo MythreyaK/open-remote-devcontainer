@@ -40,11 +40,11 @@ describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
 
         // set context and cwd to a dir that exists
         buildCmd[buildCmd.length - 1] = __dirname;
-        return await runCmd(engine, buildCmd, __dirname, {});
+        return await runCmd(engine, buildCmd, { cwd: __dirname });
     }
 
     async function runInImage(cc: ContainerConfig, cmd: string[]) {
-        return await runCmd(engine, ["run", "--rm", cc.getStage2ImageName(), ...cmd], __dirname, {});
+        return await runCmd(engine, ["run", "--rm", cc.getStage2ImageName(), ...cmd], { cwd: __dirname });
     }
 
     async function getRemoteUserInfo(cc: ContainerConfig, username: string) {
@@ -62,7 +62,7 @@ describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
 
     afterAll(async () => {
         for (const img of images) {
-            await runCmd(engine, ["rmi", "-f", img], __dirname, {});
+            await runCmd(engine, ["rmi", "-f", img], { cwd: __dirname });
         }
     });
 
@@ -141,7 +141,7 @@ describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
 
         const setupBase = await runCmd(engine, [
             "build", "-t", baseTag, "-f", tmpDockerfile, ".",
-        ], __dirname, {});
+        ], { cwd: __dirname });
         unlinkSync(tmpDockerfile);
         expect(setupBase.exit).eq(0);
 
@@ -169,9 +169,9 @@ describe.skipIf(!IS_PODMAN)("podman: --userns=keep-id", () => {
 
     afterAll(async () => {
         for (const c of containers) {
-            await runCmd(engine, ["container", "stop", "-t", "2", c.getContainerName()], __dirname, {});
-            await runCmd(engine, ["container", "rm", "--force", c.getContainerName()], __dirname, {});
-            await runCmd(engine, ["rmi", "-f", c.getConfig().getStage2ImageName()], __dirname, {});
+            await runCmd(engine, ["container", "stop", "-t", "2", c.getContainerName()], { cwd: __dirname });
+            await runCmd(engine, ["container", "rm", "--force", c.getContainerName()], { cwd: __dirname });
+            await runCmd(engine, ["rmi", "-f", c.getConfig().getStage2ImageName()], { cwd: __dirname });
         }
     });
 
