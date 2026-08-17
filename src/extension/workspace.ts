@@ -1,6 +1,5 @@
 import * as vscode from "vscode";
 import path from "node:path";
-import { existsSync } from "node:fs";
 import * as crypto from "node:crypto";
 
 import { getLogSink } from "./log";
@@ -33,10 +32,20 @@ export function getWorkspaceId(localWsp: string): string {
         .slice(0, 16);
 }
 
-export function findDevcontainerJson(dir: string): string {
+async function fileExists(filePath: string): Promise<boolean> {
+    try {
+        await vscode.workspace.fs.stat(vscode.Uri.file(filePath));
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
+
+export async function findDevcontainerJson(dir: string): Promise<string> {
     const filePaths = ConfigPaths(dir);
     for (const f of filePaths) {
-        if (existsSync(f)) {
+        if (await fileExists(f)) {
             getLogSink().info(`Using devcontainer.json at ${f}`);
             return f;
         }
@@ -88,12 +97,12 @@ export function updateHasConfigContext(hasConfig: boolean) {
     vscode.commands.executeCommand("setContext", "open-remote-devcontainer.hasConfig", hasConfig);
 }
 
-export function createDevcontainerConfigWatcher(ctx: vscode.ExtensionContext) {
+export async function createDevcontainerConfigWatcher(ctx: vscode.ExtensionContext) {
     let configPath: string | undefined;
 
     try {
         const workspace = getLocalWorkspaceFolder();
-        configPath = findDevcontainerJson(workspace);
+        configPath = await findDevcontainerJson(workspace);
         updateHasConfigContext(true);
 
         if (!isRemoteSession()) {
@@ -117,9 +126,19 @@ export function createDevcontainerConfigWatcher(ctx: vscode.ExtensionContext) {
     );
     const watcher = vscode.workspace.createFileSystemWatcher(pattern);
 
-    watcher.onDidChange(() => {
+    watcher.onDidChange(async () => {
         if (isRemoteSession()) {
-            cmds.remotePromptRebuildIfStale(ctx);
+            try {
+                await cmds.remotePromptRebuildIfStale(ctx);
+            }
+            catch (e: unknown) {
+                if (e instanceof Error) {
+                    getLogSink().error(`remotePromptRebuildIfStale failed ${e.message}`);
+                }
+                else {
+                    getLogSink().error(`remotePromptRebuildIfStale failed ${JSON.stringify(e)}`);
+                }
+            }
         }
     });
     watcher.onDidCreate(() => { updateHasConfigContext(true); });

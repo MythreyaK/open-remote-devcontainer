@@ -82,7 +82,7 @@ export function init() {
     initMocks();
 }
 
-export function setupFixture(opts: { name: string, testDir: string }) {
+export async function setupFixture(opts: { name: string, testDir: string }) {
     if (!ENGINE) {
         // called not from inside a test() but at describe-scope level, so can't throw
         // it'll be resolved correctly during actual runs
@@ -96,8 +96,8 @@ export function setupFixture(opts: { name: string, testDir: string }) {
     }
 
     const containerName: string = ContainerConfig.getContainerName(testDir);
-    const devcJson = findDevcontainerJson(testDir);
-    const config = parseDevcontainerFile(devcJson);
+    const devcJson = await findDevcontainerJson(testDir);
+    const config = await parseDevcontainerFile(devcJson);
 
     afterAll(async () => {
         if (DEBUG_TESTS) { console.info(`Stopping and removing container ${containerName}`); }

@@ -11,13 +11,13 @@ import { init, setupFixture, jsonFormat, TEST_CODIUM_INFO, ENGINE } from "../../
 
 if (ENGINE) { init(); }
 
-describe.skipIf(!ENGINE)("integration: lifecycle: img-basic", () => {
+describe.skipIf(!ENGINE)("integration: lifecycle: img-basic", async () => {
     const engine = ENGINE!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
 
     let cc: ContainerConfig;
     let container: ContainerState;
 
-    const { localWsf, config } = setupFixture({ name: "image-basic", testDir: __dirname });
+    const { localWsf, config } = await setupFixture({ name: "image-basic", testDir: __dirname });
     const devcPath = path.join(localWsf, ".devcontainer/devcontainer.json");
 
     const localEnv = {

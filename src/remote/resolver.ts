@@ -108,8 +108,8 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
 
         progress.report({ message: "Parsing config...", increment: 5 });
 
-        const devcontainerJson = findDevcontainerJson(this.localWsf);
-        const parsedConfig = parseDevcontainerFile(devcontainerJson);
+        const devcontainerJson = await findDevcontainerJson(this.localWsf);
+        const parsedConfig = await parseDevcontainerFile(devcontainerJson);
 
         const containerConfig = ContainerConfig.create(this.localWsf, devcontainerJson, parsedConfig, process.env, { engine: engine });
 

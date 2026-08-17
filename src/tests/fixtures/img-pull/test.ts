@@ -10,13 +10,13 @@ import { init, setupFixture, jsonFormat, ENGINE } from "../../common";
 
 if (ENGINE) { init(); }
 
-describe.skipIf(!ENGINE)("integration: lifecycle: img-pull", () => {
+describe.skipIf(!ENGINE)("integration: lifecycle: img-pull", async () => {
     const engine = ENGINE!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
 
     let cc: ContainerConfig;
     let container: ContainerState;
 
-    const { localWsf, config } = setupFixture({ name: "image-pull", testDir: __dirname });
+    const { localWsf, config } = await setupFixture({ name: "image-pull", testDir: __dirname });
     const devcPath = path.join(localWsf, ".devcontainer/devcontainer.json");
 
     const localEnv = {

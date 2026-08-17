@@ -19,11 +19,11 @@ function parseLifecycleLog(stdout: string): LifecycleEntry[] {
     return stdout.trim().split("\n").map(line => JSON.parse(line) as LifecycleEntry);
 }
 
-describe.skipIf(!ENGINE)("integration: dockerfile-basic", () => {
+describe.skipIf(!ENGINE)("integration: dockerfile-basic", async () => {
     let cc: ContainerConfig;
     let container: ContainerState;
 
-    const { localWsf, config } = setupFixture({ name: "dockerfile-basic", testDir: __dirname });
+    const { localWsf, config } = await setupFixture({ name: "dockerfile-basic", testDir: __dirname });
     const devcPath = path.join(localWsf, ".devcontainer/devcontainer.json");
 
     const localEnv = {

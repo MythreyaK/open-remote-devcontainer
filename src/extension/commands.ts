@@ -30,8 +30,8 @@ export async function getContainerEngineVersion() {
 
 export async function openRemote(ctx: vscode.ExtensionContext, opts: BuildOpts = BuildOpts.Default) {
     const localWsf = getLocalWorkspaceFolder();
-    const devcontainerJson = findDevcontainerJson(localWsf);
-    const parsedConfig = parseDevcontainerFile(devcontainerJson);
+    const devcontainerJson = await findDevcontainerJson(localWsf);
+    const parsedConfig = await parseDevcontainerFile(devcontainerJson);
     const cc = ContainerConfig.create(localWsf, devcontainerJson, parsedConfig);
 
     if (opts === BuildOpts.Default && await isConfigStale(localWsf, cc)) {
@@ -60,8 +60,8 @@ export async function openLocal() {
     );
 }
 
-export function showDevcontainerFile() {
-    const file = findDevcontainerJson(getLocalWorkspaceFolder());
+export async function showDevcontainerFile() {
+    const file = await findDevcontainerJson(getLocalWorkspaceFolder());
     vscode.commands.executeCommand("vscode.open", vscode.Uri.file(file));
 }
 
@@ -70,10 +70,10 @@ export function showLogFile() {
     vscode.commands.executeCommand("vscode.open", vscode.Uri.file(path));
 }
 
-export function runPostAttachCommand() {
+export async function runPostAttachCommand() {
     const localWsf = getLocalWorkspaceFolder();
-    const devcontainerJson = findDevcontainerJson(localWsf);
-    const parsedConfig = parseDevcontainerFile(devcontainerJson);
+    const devcontainerJson = await findDevcontainerJson(localWsf);
+    const parsedConfig = await parseDevcontainerFile(devcontainerJson);
     const cc = ContainerConfig.create(localWsf, devcontainerJson, parsedConfig);
 
     const cmds = cc.getLifecycleCmd(LifecycleCmd.postAttach);
@@ -142,14 +142,14 @@ export async function isConfigStale(localWsf: string, cc: ContainerConfig): Prom
     return containerConfigId !== cc.getConfigId();
 }
 
-export function remotePromptRebuildIfStale(ctx: vscode.ExtensionContext) {
+export async function remotePromptRebuildIfStale(ctx: vscode.ExtensionContext) {
     if (!isRemoteSession()) {
         throw new InternalError("checkRemoteIsStale: Expected remote session.");
     }
 
     const localWsf = getLocalWorkspaceFolder();
-    const devcontainerJson = findDevcontainerJson(localWsf);
-    const parsedConfig = parseDevcontainerFile(devcontainerJson);
+    const devcontainerJson = await findDevcontainerJson(localWsf);
+    const parsedConfig = await parseDevcontainerFile(devcontainerJson);
     const cc = ContainerConfig.create(localWsf, devcontainerJson, parsedConfig);
 
     isConfigStale(localWsf, cc).then((isStale) => {

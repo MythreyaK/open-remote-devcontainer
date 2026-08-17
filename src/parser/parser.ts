@@ -1,13 +1,14 @@
+import * as vscode from "vscode";
 import * as jc from "jsonc-parser";
-import { readFileSync } from "node:fs";
 
 import * as schema from "./schema";
 import { ParseError } from "../extension/error";
 
-export function parseDevcontainerFile(fspath: string): schema.Config {
-    const file = (() => {
+export async function parseDevcontainerFile(fspath: string): Promise<schema.Config> {
+    const file = await (async () => {
         try {
-            return readFileSync(fspath, { encoding: "utf-8", flag: "r" });
+            const bytes = await vscode.workspace.fs.readFile(vscode.Uri.file(fspath));
+            return new TextDecoder("utf-8").decode(bytes);
         }
         catch (e) {
             throw new ParseError(`Could not read devcontainer.json file at ${fspath}: ${JSON.stringify(e)}`);
