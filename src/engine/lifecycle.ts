@@ -455,7 +455,6 @@ export class ContainerState {
     }
 
     public async getContainerEnv(): Promise<Record<string, string>> {
-        // TODO: tty might cause issues?
         const out = await run(
             [
                 ...settings.getEngineCmd(),

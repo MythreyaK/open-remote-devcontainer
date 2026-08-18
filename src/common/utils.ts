@@ -15,16 +15,24 @@ export interface HostUserInfo {
  * @returns Record<string, string | undefined>
  */
 export function parseEnv(envStdout: string) {
+    const ENV_KEY_REGEX = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
     /* eslint-disable @stylistic/quotes */
     const envs: string[] = envStdout.split('\0').filter(Boolean);
-    const parsesEnvs: Record<string, string> = {};
+    const parsedEnvs: Record<string, string> = {};
 
     for (const env of envs) {
-        const items = env.split('=');
-        const [k, v] = [items[0], items.slice(1).join('=')];
-        parsesEnvs[k] = v;
+        const eqIdx = env.indexOf('=');
+        if (eqIdx === -1) { continue; }
+
+        const k = env.slice(0, eqIdx);
+        const v = env.slice(eqIdx + 1);
+
+        if (!ENV_KEY_REGEX.test(k)) { continue; }
+
+        parsedEnvs[k] = v;
     }
-    return parsesEnvs;
+    return parsedEnvs;
     /* eslint-enable @stylistic/quotes */
 }
 
