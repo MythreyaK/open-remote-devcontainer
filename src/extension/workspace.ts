@@ -4,7 +4,7 @@ import * as crypto from "node:crypto";
 
 import { getLogSink } from "./log";
 import { ConfigError } from "./error";
-import { AUTHORITY_BASE, decodeRemoteAuthority } from "../remote/resolver";
+import { AUTHORITY_BASE, decodeRemoteAuthorityUri } from "../remote/resolver";
 import * as cmds from "../extension/commands";
 
 export enum NotificationLevel {
@@ -13,10 +13,10 @@ export enum NotificationLevel {
     Error,
 };
 
-export const ConfigPaths = (dir: string) => [
-    path.join(dir, ".devcontainer.json"),
-    path.join(dir, ".devcontainer", "devcontainer.json"),
-    // path.join(dir, ".config", ".devcontainer", "devcontainer.json"),
+export const ConfigPaths = (dir: vscode.Uri) => [
+    vscode.Uri.joinPath(dir, ".devcontainer.json"),
+    vscode.Uri.joinPath(dir, ".devcontainer", "devcontainer.json"),
+    // vscode.Uri.joinPath(dir, ".config", ".devcontainer", "devcontainer.json"),
 ];
 
 /**
@@ -32,9 +32,9 @@ export function getWorkspaceId(localWsp: string): string {
         .slice(0, 16);
 }
 
-async function fileExists(filePath: string): Promise<boolean> {
+async function fileExists(filePath: vscode.Uri): Promise<boolean> {
     try {
-        await vscode.workspace.fs.stat(vscode.Uri.file(filePath));
+        await vscode.workspace.fs.stat(filePath);
         return true;
     }
     catch {
@@ -42,37 +42,35 @@ async function fileExists(filePath: string): Promise<boolean> {
     }
 }
 
-export async function findDevcontainerJson(dir: string): Promise<string> {
+export async function findDevcontainerJson(dir: vscode.Uri): Promise<vscode.Uri> {
     const filePaths = ConfigPaths(dir);
     for (const f of filePaths) {
         if (await fileExists(f)) {
-            getLogSink().info(`Using devcontainer.json at ${f}`);
+            getLogSink().info(`Using devcontainer.json at ${f.toString(true)}`);
             return f;
         }
     }
 
-    throw new ConfigError(`devcontainer.json not found. Searched: ${filePaths.join(", ")}`);
+    throw new ConfigError(`devcontainer.json not found. Searched: ${filePaths.map(u => u.toString(true)).join(", ")}`);
 }
 
-export function isRemoteSession() {
-    return vscode.env.remoteAuthority !== undefined;
+export function isRemoteDevcontainerSession(): boolean {
+    return vscode.env.remoteAuthority?.startsWith(AUTHORITY_BASE) ?? false;
 }
 
-export function getLocalWorkspaceFolder(): string {
-    if (isRemoteSession()) {
-        if (vscode.env.remoteAuthority?.startsWith(AUTHORITY_BASE)) {
-            return decodeRemoteAuthority(vscode.env.remoteAuthority);
-        }
-        else {
-            throw new Error("Could not determine remote authority for workspace detection");
-        }
+export function getLocalWorkspaceFolder(): vscode.Uri {
+    const remote = vscode.env.remoteAuthority;
+    if (remote?.startsWith(AUTHORITY_BASE)) {
+        return decodeRemoteAuthorityUri(remote);
     }
+    // for remotes that aren't devcontainer (say, ssh), the workspace
+    // is "local" from extension's pov, so use "local" workspace
     else {
         const wsf = vscode.workspace.workspaceFolders;
         if (!wsf || wsf.length === 0) {
             throw new Error("Open a workspace");
         }
-        return wsf[0].uri.fsPath;
+        return wsf[0].uri;
     }
 }
 
@@ -98,15 +96,15 @@ export function updateHasConfigContext(hasConfig: boolean) {
 }
 
 export async function createDevcontainerConfigWatcher(ctx: vscode.ExtensionContext) {
-    let configPath: string | undefined;
+    let configPath: vscode.Uri | undefined;
 
     try {
         const workspace = getLocalWorkspaceFolder();
         configPath = await findDevcontainerJson(workspace);
         updateHasConfigContext(true);
 
-        if (!isRemoteSession()) {
-            onOpenNotify(workspace);
+        if (!isRemoteDevcontainerSession()) {
+            onOpenNotify(workspace.fsPath);
         }
     }
     catch (e) {
@@ -120,14 +118,13 @@ export async function createDevcontainerConfigWatcher(ctx: vscode.ExtensionConte
         return new vscode.Disposable(() => { });
     }
 
-    const pattern = new vscode.RelativePattern(
-        vscode.Uri.file(path.dirname(configPath)),
-        path.basename(configPath),
-    );
+    const configName = path.posix.basename(configPath.path);
+    const configDir = vscode.Uri.joinPath(configPath, "..");
+    const pattern = new vscode.RelativePattern(configDir, configName);
     const watcher = vscode.workspace.createFileSystemWatcher(pattern);
 
     watcher.onDidChange(async () => {
-        if (isRemoteSession()) {
+        if (isRemoteDevcontainerSession()) {
             try {
                 await cmds.remotePromptRebuildIfStale(ctx);
             }

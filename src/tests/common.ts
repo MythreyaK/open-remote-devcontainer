@@ -8,7 +8,7 @@ import path from "node:path";
 import { run } from "../common/cmd";
 import { _initLog } from "../extension/log";
 import { findDevcontainerJson } from "../extension/workspace";
-import { parseDevcontainerFile } from "../parser/parser";
+import { parseDevcontainer } from "../parser/parser";
 import { ContainerConfig } from "../engine/container";
 import * as server from "../remote/installServer";
 
@@ -54,6 +54,8 @@ export const TEST_CODIUM_INFO: server.ServerInfo = {
 export const initMocks = () => {
     const spyCreateOutput = vi.spyOn(window, "createOutputChannel");
     spyCreateOutput.mockReturnValue({
+        debug: DEBUG_TESTS ? console.log : vi.fn(),
+        trace: DEBUG_TESTS ? console.log : vi.fn(),
         info: DEBUG_TESTS ? console.log : vi.fn(),
         warn: DEBUG_TESTS ? console.log : vi.fn(),
         error: DEBUG_TESTS ? console.log : vi.fn(),
@@ -96,8 +98,8 @@ export async function setupFixture(opts: { name: string, testDir: string }) {
     }
 
     const containerName: string = ContainerConfig.getContainerName(testDir);
-    const devcJson = await findDevcontainerJson(testDir);
-    const config = await parseDevcontainerFile(devcJson);
+    const devcJson = await findDevcontainerJson(vscode.Uri.file(testDir));
+    const config = await parseDevcontainer(devcJson);
 
     afterAll(async () => {
         if (DEBUG_TESTS) { console.info(`Stopping and removing container ${containerName}`); }

@@ -4,7 +4,7 @@ import * as cmds from "./extension/commands";
 import { BuildOpts } from "./engine/lifecycle";
 import { getLogSink, initLogs } from "./extension/log";
 import { AUTHORITY_BASE, DevContainerResolver } from "./remote/resolver";
-import { createDevcontainerConfigWatcher, isRemoteSession } from "./extension/workspace";
+import { createDevcontainerConfigWatcher, isRemoteDevcontainerSession } from "./extension/workspace";
 import { checkVersionAndNotify } from "./extension/releaseNotes";
 import { checkLegacySettings } from "./extension/settings";
 
@@ -33,7 +33,7 @@ export function activate(ctx: vscode.ExtensionContext) {
         getLogSink().error(`createDevcontainerConfigWatcher failed: ${JSON.stringify(e)}`);
     });
 
-    if (isRemoteSession()) {
+    if (isRemoteDevcontainerSession()) {
         void cmds.runPostAttachCommand().catch((e: unknown) => {
             getLogSink().error(`runPostAttachCommand failed: ${JSON.stringify(e)}`);
         });

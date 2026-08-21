@@ -5,9 +5,9 @@ import { getLogSink, getLogfilePath } from "../extension/log";
 import { BuildOpts, ContainerState } from "../engine/lifecycle";
 import { findDevcontainerJson } from "../extension/workspace";
 import { ContainerConfig, ContainerEngine } from "../engine/container";
-import { parseDevcontainerFile } from "../parser/parser";
+import { parseDevcontainer } from "../parser/parser";
 import { BuildOptIntent } from "../common/globalState";
-import { EngineError, InstallError } from "../extension/error";
+import { EngineError, InstallError, InternalError } from "../extension/error";
 import { getExtensionList, getContainerEngine } from "../extension/settings";
 import { DEVCONTAINER_SERVER_LISTEN_PORT } from "../common/constants";
 
@@ -36,9 +36,15 @@ export function decodeRemoteAuthority(authority: string) {
         const decoded = Buffer.from(wsf, ENCODE_SCHEME).toString("utf-8");
         getLogSink().info(`Decoded '${wsf}' = '${decoded}'`);
 
+        // TODO:
         return decoded;
+        // return vscode.Uri.file(decoded);
     }
     else { throw new Error(`Bad remote authority '${authority}'`); }
+}
+
+export function decodeRemoteAuthorityUri(authority: string) {
+    return vscode.Uri.file(decodeRemoteAuthority(authority));
 }
 
 export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vscode.Disposable {
@@ -46,7 +52,7 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
 
     private readonly extensionCtx: vscode.ExtensionContext;
     private containerState: ContainerState | undefined;
-    private localWsf: string = "";
+    private localWsf: vscode.Uri | undefined;
     private serverHostPort: number | undefined;
 
     private statusItemFormatter: vscode.Disposable | undefined;
@@ -59,11 +65,11 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
     }
 
     resolve(authority: string, context: vscode.RemoteAuthorityResolverContext): Thenable<vscode.ResolverResult> {
-        this.localWsf = decodeRemoteAuthority(authority);
+        this.localWsf = decodeRemoteAuthorityUri(authority);
 
-        getLogSink().info(`Starting remote session from ${this.localWsf} (authority ${authority}, attempt #${context.resolveAttempt})...`);
+        getLogSink().info(`Starting remote session from ${this.localWsf.toString(true)} (authority ${authority}, attempt #${context.resolveAttempt})...`);
 
-        const localWsfBasename = path.parse(this.localWsf).base;
+        const localWsfBasename = path.parse(this.localWsf.fsPath).base;
 
         return vscode.window.withProgress(
             {
@@ -108,16 +114,18 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
 
         progress.report({ message: "Parsing config...", increment: 5 });
 
-        const devcontainerJson = await findDevcontainerJson(this.localWsf);
-        const parsedConfig = await parseDevcontainerFile(devcontainerJson);
+        if (!this.localWsf) { throw new InternalError("this.localWsf was undefined"); }
 
-        const containerConfig = ContainerConfig.create(this.localWsf, devcontainerJson, parsedConfig, process.env, { engine: engine });
+        const devcontainerJson = await findDevcontainerJson(this.localWsf);
+        const parsedConfig = await parseDevcontainer(devcontainerJson);
+
+        const containerConfig = ContainerConfig.create(this.localWsf.fsPath, devcontainerJson.fsPath, parsedConfig, process.env, { engine: engine });
 
         progress.report({ message: "Building image and starting container...", increment: 15 });
-        this.containerState = await ContainerState.create(this.localWsf, containerConfig, buildOpt);
+        this.containerState = await ContainerState.create(this.localWsf.fsPath, containerConfig, buildOpt);
 
         const containerId = await this.containerState.getContainerId();
-        const localWsfBasename = path.parse(this.localWsf).base;
+        const localWsfBasename = path.parse(this.localWsf.fsPath).base;
 
         // set status bar item
         this.statusItemFormatter

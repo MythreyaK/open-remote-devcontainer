@@ -8,5 +8,6 @@ export interface RunOpts {
 }
 
 export async function run(cmdArgs: string[], opts: RunOpts) {
+    getLogSink().trace(`cmd.run: [${cmdArgs.join(", ")}]: opts: ${JSON.stringify(opts)}`);
     return await common.spawn(cmdArgs[0], cmdArgs.slice(1), { cwd: opts.cwd, env: opts.env ?? {}, stdin: opts.stdin, log: getLogSink() });
 }

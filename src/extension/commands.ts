@@ -3,9 +3,9 @@ import * as vscode from "vscode";
 import * as cmd from "../common/cmd";
 import { getContainerEngine } from "./settings";
 import { ContainerConfig, LifecycleCmd } from "../engine/container";
-import { parseDevcontainerFile } from "../parser/parser";
+import { parseDevcontainer } from "../parser/parser";
 import { encodeRemoteAuthority } from "../remote/resolver";
-import { findDevcontainerJson, getLocalWorkspaceFolder, isRemoteSession, NotificationLevel, showNotification } from "./workspace";
+import { findDevcontainerJson, getLocalWorkspaceFolder, isRemoteDevcontainerSession, NotificationLevel, showNotification } from "./workspace";
 import { BuildOpts, queryContainerConfigId } from "../engine/lifecycle";
 import { BuildOptIntent } from "../common/globalState";
 import { getLogfilePath, getLogSink } from "./log";
@@ -23,7 +23,7 @@ export function getCmd(suffix: string) {
 }
 
 export async function getContainerEngineVersion() {
-    const localWsf = getLocalWorkspaceFolder();
+    const localWsf = getLocalWorkspaceFolder().fsPath;
     const { stdout } = await cmd.run([getContainerEngine(), "--version"], { cwd: localWsf });
     vscode.window.showInformationMessage(`${getContainerEngine()} version: ${stdout}`);
 }
@@ -31,8 +31,8 @@ export async function getContainerEngineVersion() {
 export async function openRemote(ctx: vscode.ExtensionContext, opts: BuildOpts = BuildOpts.Default) {
     const localWsf = getLocalWorkspaceFolder();
     const devcontainerJson = await findDevcontainerJson(localWsf);
-    const parsedConfig = await parseDevcontainerFile(devcontainerJson);
-    const cc = ContainerConfig.create(localWsf, devcontainerJson, parsedConfig);
+    const parsedConfig = await parseDevcontainer(devcontainerJson);
+    const cc = ContainerConfig.create(localWsf.fsPath, devcontainerJson.fsPath, parsedConfig);
 
     if (opts === BuildOpts.Default && await isConfigStale(localWsf, cc)) {
         const userOpt = await promptBuildOpt();
@@ -52,17 +52,15 @@ export async function openRemote(ctx: vscode.ExtensionContext, opts: BuildOpts =
 }
 
 export async function openLocal() {
-    const localWsf = getLocalWorkspaceFolder();
-
     await vscode.commands.executeCommand(
         "vscode.openFolder",
-        vscode.Uri.file(localWsf),
+        getLocalWorkspaceFolder(),
     );
 }
 
 export async function showDevcontainerFile() {
     const file = await findDevcontainerJson(getLocalWorkspaceFolder());
-    vscode.commands.executeCommand("vscode.open", vscode.Uri.file(file));
+    vscode.commands.executeCommand("vscode.open", file);
 }
 
 export function showLogFile() {
@@ -73,8 +71,8 @@ export function showLogFile() {
 export async function runPostAttachCommand() {
     const localWsf = getLocalWorkspaceFolder();
     const devcontainerJson = await findDevcontainerJson(localWsf);
-    const parsedConfig = await parseDevcontainerFile(devcontainerJson);
-    const cc = ContainerConfig.create(localWsf, devcontainerJson, parsedConfig);
+    const parsedConfig = await parseDevcontainer(devcontainerJson);
+    const cc = ContainerConfig.create(localWsf.fsPath, devcontainerJson.fsPath, parsedConfig);
 
     const cmds = cc.getLifecycleCmd(LifecycleCmd.postAttach);
 
@@ -97,14 +95,15 @@ export async function runPostAttachCommand() {
     }
 }
 
-async function _openRemote(ctx: vscode.ExtensionContext, localWsf: string, cc: ContainerConfig, opts: BuildOpts) {
+async function _openRemote(ctx: vscode.ExtensionContext, localWsf: vscode.Uri, cc: ContainerConfig, opts: BuildOpts) {
+    getLogSink().info(`_openRemote: localWsf: ${localWsf.toString(true)} cc.Id: ${cc.getConfigId()} opts: ${opts}`);
     BuildOptIntent.set(ctx, opts);
 
-    if (isRemoteSession() && opts === BuildOpts.Default) {
+    if (isRemoteDevcontainerSession() && opts === BuildOpts.Default) {
         // nothing to do, already on remote
         return;
     }
-    if (isRemoteSession() && opts !== BuildOpts.Default) {
+    if (isRemoteDevcontainerSession() && opts !== BuildOpts.Default) {
         // this is when rebuild/nocache options are used from a remote session
         // force a window reload so that the intent is picked up on next load
         await vscode.commands.executeCommand("workbench.action.reloadWindow");
@@ -116,7 +115,7 @@ async function _openRemote(ctx: vscode.ExtensionContext, localWsf: string, cc: C
         "vscode.openFolder",
         vscode.Uri.from({
             scheme: "vscode-remote",
-            authority: encodeRemoteAuthority(localWsf),
+            authority: encodeRemoteAuthority(localWsf.fsPath),
             path: cc.getRemoteMountDir(),
         }),
     );
@@ -132,8 +131,8 @@ function promptBuildOpt() {
     );
 }
 
-export async function isConfigStale(localWsf: string, cc: ContainerConfig): Promise<boolean | undefined> {
-    const containerConfigId = await queryContainerConfigId(localWsf);
+export async function isConfigStale(localWsf: vscode.Uri, cc: ContainerConfig): Promise<boolean | undefined> {
+    const containerConfigId = await queryContainerConfigId(localWsf.fsPath);
 
     if (!containerConfigId) {
         return undefined;
@@ -143,14 +142,14 @@ export async function isConfigStale(localWsf: string, cc: ContainerConfig): Prom
 }
 
 export async function remotePromptRebuildIfStale(ctx: vscode.ExtensionContext) {
-    if (!isRemoteSession()) {
+    if (!isRemoteDevcontainerSession()) {
         throw new InternalError("checkRemoteIsStale: Expected remote session.");
     }
 
     const localWsf = getLocalWorkspaceFolder();
     const devcontainerJson = await findDevcontainerJson(localWsf);
-    const parsedConfig = await parseDevcontainerFile(devcontainerJson);
-    const cc = ContainerConfig.create(localWsf, devcontainerJson, parsedConfig);
+    const parsedConfig = await parseDevcontainer(devcontainerJson);
+    const cc = ContainerConfig.create(localWsf.fsPath, devcontainerJson.fsPath, parsedConfig);
 
     isConfigStale(localWsf, cc).then((isStale) => {
         if (isStale) {
