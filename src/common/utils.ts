@@ -1,7 +1,6 @@
 import { run } from "../common/cmd";
 import { formatCmdErr } from "../common/spawn";
 import { SpawnError } from "../extension/error";
-import { getLocalWorkspaceFolder } from "../extension/workspace";
 
 export interface HostUserInfo {
     uid: number,
@@ -36,8 +35,8 @@ export function parseEnv(envStdout: string) {
     /* eslint-enable @stylistic/quotes */
 }
 
-export async function getHostUserInfo(cwd: string = getLocalWorkspaceFolder().fsPath): Promise<HostUserInfo> {
-    const userName = await run(["/bin/sh", "-c", "id -n -u $UID"], { cwd });
+export async function getHostUserInfo(): Promise<HostUserInfo> {
+    const userName = await run(["/bin/sh", "-c", "id -n -u $UID"], {});
     /* eslint-disable @typescript-eslint/no-non-null-assertion */
     if (userName.exit === 0) {
         return {

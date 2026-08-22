@@ -257,7 +257,7 @@ export class ContainerState {
             showNotification(NotificationLevel.Warning, msg);
         }
 
-        const hostUserInfo = await getHostUserInfo(this.workspaceFolder);
+        const hostUserInfo = await getHostUserInfo();
         const ret = await run([
             ...settings.getEngineCmd(),
             ...this.cc.getStage2BuildCmd(hostUserInfo, imageUser, { noCache: this.buildOpts === BuildOpts.RebuildNoCache }),

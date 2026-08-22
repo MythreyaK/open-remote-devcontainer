@@ -45,7 +45,7 @@ describe.skipIf(!ENGINE)("integration: dockerfile-basic", async () => {
     });
 
     test("stage2 remapped UID to match host", async () => {
-        const hostInfo = await getHostUserInfo(localWsf);
+        const hostInfo = await getHostUserInfo();
         const res = await container.engineExec(["id", "-u", "ubuntu"]);
         expect(res.exit).eq(0);
         expect(res.stdout.trim()).eq(String(hostInfo.uid));

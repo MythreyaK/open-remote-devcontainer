@@ -13,8 +13,8 @@ let cmdCount: number = 0;
 
 /* eslint-disable @typescript-eslint/no-confusing-void-expression */
 export interface SpawnOpts {
-    cwd: string,
-    env: Envs,
+    env?: Envs,
+    cwd?: string,
     stdin?: string | undefined,
     log: LogOutputChannel,
 }
@@ -36,7 +36,7 @@ export function spawn(
         // TODO: do we need env without inheriting parent's env?
         const finalEnv = {
             ...process.env,
-            ...opts.env,
+            ...(opts.env ?? {}),
             BUILDKIT_PROGRESS: "plain",
         };
 
