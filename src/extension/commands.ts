@@ -12,6 +12,7 @@ import { getLogfilePath, getLogSink } from "./log";
 import { EXTENSION_ID } from "../common/constants";
 import { InternalError } from "./error";
 import { getEngineCmd } from "../common/utils";
+import { getExecCtx } from "../common/ctx/ctx";
 
 enum RebuildPrompt {
     RebuildNoCache = "Yes (Rebuild without cache)",
@@ -74,7 +75,8 @@ export async function onRemoteReady(ctx: vscode.ExtensionContext): Promise<void>
     const localWsf = getLocalWorkspaceFolder();
     const devcontainerJson = await findDevcontainerJson(localWsf);
     const parsedConfig = await parseDevcontainer(devcontainerJson);
-    const cc = ContainerConfig.create(localWsf.fsPath, devcontainerJson.fsPath, parsedConfig);
+    const hostEnv = await getExecCtx().env();
+    const cc = ContainerConfig.create(localWsf.fsPath, devcontainerJson.fsPath, parsedConfig, hostEnv.env);
 
     const cmds = cc.getLifecycleCmd(LifecycleCmd.postAttach);
 
@@ -166,7 +168,8 @@ export async function remotePromptRebuildIfStale(ctx: vscode.ExtensionContext) {
     const localWsf = getLocalWorkspaceFolder();
     const devcontainerJson = await findDevcontainerJson(localWsf);
     const parsedConfig = await parseDevcontainer(devcontainerJson);
-    const cc = ContainerConfig.create(localWsf.fsPath, devcontainerJson.fsPath, parsedConfig);
+    const hostEnv = await getExecCtx().env();
+    const cc = ContainerConfig.create(localWsf.fsPath, devcontainerJson.fsPath, parsedConfig, hostEnv.env);
 
     isConfigStale(localWsf, cc).then((isStale) => {
         if (isStale) {

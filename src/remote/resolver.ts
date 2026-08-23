@@ -10,6 +10,8 @@ import { BuildOptIntent } from "../common/globalState";
 import { EngineError, InstallError, InternalError } from "../extension/error";
 import { getExtensionList, getSettings } from "../extension/settings";
 import { DEVCONTAINER_SERVER_LISTEN_PORT } from "../common/constants";
+import { setExecCtx, getExecCtx } from "../common/ctx/ctx";
+import { RemoteExecCtx } from "../common/ctx/remoteCtx";
 
 export const AUTHORITY_BASE: string = "devcontainer-remote";
 
@@ -88,10 +90,19 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
         void this.extensionCtx; // TODO
     }
 
-    resolve(authority: string, context: vscode.RemoteAuthorityResolverContext): Thenable<vscode.ResolverResult> {
-        this.localWsf = decodeRemoteAuthority(authority);
+    resolve(_authority: string, context: vscode.RemoteAuthorityResolverContext): Thenable<vscode.ResolverResult> {
+        const fullAuthority = vscode.env.remoteAuthority!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
 
-        getLogSink().info(`Starting remote session from ${this.localWsf.toString(true)} (authority ${authority}, attempt #${context.resolveAttempt})...`);
+        if (context.execServer) {
+            getLogSink().info(`Exec server was provided: '${fullAuthority}'`);
+            setExecCtx(new RemoteExecCtx(context.execServer));
+            // if exec server, any commands below run on the remote machine
+        }
+
+        // authority has just our part, but we need the entirety for full Uri
+        this.localWsf = decodeRemoteAuthority(fullAuthority);
+
+        getLogSink().info(`Starting remote session from ${this.localWsf.toString(true)} (authority ${fullAuthority}, attempt #${context.resolveAttempt})...`);
 
         const localWsfBasename = path.parse(this.localWsf.fsPath).base;
 
@@ -110,7 +121,7 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
         cancellationToken: vscode.CancellationToken,
     ): Promise<vscode.ResolverResult> {
         try {
-            return await this.createWindowTask(progress, cancellationToken);
+            return await this.createWindowTask(context, progress, cancellationToken);
         }
         catch (e: unknown) {
             const msg = e instanceof Error ? e.message : String(e);
@@ -127,7 +138,7 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
         }
     }
 
-    private async createWindowTask(progress: vscode.Progress<{ message?: string, increment?: number }>, _2: vscode.CancellationToken): Promise<vscode.ResolverResult> {
+    private async createWindowTask(context: vscode.RemoteAuthorityResolverContext, progress: vscode.Progress<{ message?: string, increment?: number }>, _2: vscode.CancellationToken): Promise<vscode.ResolverResult> {
         const buildOpt = BuildOptIntent.get(this.extensionCtx) ?? BuildOpts.Default;
         const settings = getSettings();
         const engine = (() => {
@@ -144,7 +155,8 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
         const devcontainerJson = await findDevcontainerJson(this.localWsf);
         const parsedConfig = await parseDevcontainer(devcontainerJson);
 
-        const containerConfig = ContainerConfig.create(this.localWsf.fsPath, devcontainerJson.fsPath, parsedConfig, process.env, { engine: engine });
+        const hostEnv = await getExecCtx().env();
+        const containerConfig = ContainerConfig.create(this.localWsf.fsPath, devcontainerJson.fsPath, parsedConfig, hostEnv.env, { engine: engine });
 
         progress.report({ message: "Building image and starting container...", increment: 15 });
         this.containerState = await ContainerState.create(this.localWsf.fsPath, containerConfig, settings, buildOpt);
@@ -180,7 +192,14 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
         vscode.commands.executeCommand("setContext", "forwardedPortsViewEnabled", true);
         vscode.commands.executeCommand("setContext", "forwardedPortsFeaturesEnabled", true);
 
-        return new vscode.ResolvedAuthority(host, port, ctkn);
+        // if exec server, host and port are on the remote machine. forward it out to the local machine
+        if (context.execServer) {
+            const msg = connectToRemote(context.execServer, host, port);
+            return new vscode.ManagedResolvedAuthority(() => { return msg; }, ctkn);
+        }
+        else {
+            return new vscode.ResolvedAuthority(host, port, ctkn);
+        }
     }
 
     // getCanonicalURI?(uri: vscode.Uri): vscode.ProviderResult<vscode.Uri> {
@@ -230,4 +249,30 @@ async function notifyResolverError(message: string) {
         await vscode.commands.executeCommand("open-remote-devcontainer.openLocal");
         return;
     }
+}
+
+// better name lol
+async function connectToRemote(execServer: vscode.ExecServer, host: string, port: number): Promise<vscode.ManagedMessagePassing> {
+    const { stream, done } = await execServer.tcpConnect(host, port);
+
+    const onDidClose = new vscode.EventEmitter<Error | undefined>();
+    const onDidEnd = new vscode.EventEmitter<void>();
+
+    done.then(
+        () => {
+            onDidEnd.fire();
+            onDidClose.fire(undefined);
+        },
+        (err: unknown) => {
+            onDidClose.fire(err instanceof Error ? err : new Error(String(err)));
+        },
+    );
+
+    return {
+        onDidReceiveMessage: stream.onDidReceiveMessage,
+        onDidClose: onDidClose.event,
+        onDidEnd: onDidEnd.event,
+        send: (data: Uint8Array) => { stream.write(data); },
+        end: () => { stream.end(); },
+    };
 }

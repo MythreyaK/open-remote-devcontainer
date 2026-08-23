@@ -7,6 +7,8 @@ import { AUTHORITY_BASE, DevContainerResolver } from "./remote/resolver";
 import { createDevcontainerConfigWatcher, isRemoteDevcontainerSession, onWorkspaceReady } from "./extension/workspace";
 import { checkVersionAndNotify } from "./extension/releaseNotes";
 import { checkLegacySettings } from "./extension/settings";
+import { setExecCtx } from "./common/ctx/ctx";
+import { LocalExecCtx } from "./common/ctx/localCtx";
 
 export function activate(ctx: vscode.ExtensionContext) {
     const logger = initLogs(ctx);
@@ -44,6 +46,16 @@ export function activate(ctx: vscode.ExtensionContext) {
                 getLogSink().error(`onRemoteReady: Error ${JSON.stringify(e)}`);
             }
         });
+    }
+    else {
+        // by "local", we mean "workspace-local". So on a remote machine (say ssh), local
+        // means workspace-local. So spawn has to use the underlying resolver's exec server
+        // plead it for one
+        if (vscode.env.remoteAuthority /* && !isRemoteDevcontainerSession() */) {
+            vscode.workspace.getRemoteExecServer(vscode.env.remoteAuthority).then((server) => {
+                if (server) { setExecCtx(new LocalExecCtx(server)); }
+            });
+        }
     }
 
     checkVersionAndNotify(ctx);
