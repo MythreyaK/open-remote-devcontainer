@@ -10,7 +10,7 @@ import { _initLog } from "../extension/log";
 import { findDevcontainerJson } from "../extension/workspace";
 import { parseDevcontainer } from "../parser/parser";
 import { ContainerConfig } from "../engine/container";
-import * as server from "../remote/installServer";
+import * as utils from "../common/utils";
 
 const DEBUG_TESTS: boolean = process.env.DEBUG_TESTS !== undefined
   && ["true", "on", "t", "1"].includes(process.env.DEBUG_TESTS.toLowerCase());
@@ -45,10 +45,14 @@ export function getEngine() {
 export const ENGINE = getEngine();
 export const jsonFormat = ["--format", "{{json .}}"];
 
-export const TEST_CODIUM_INFO: server.ServerInfo = {
+export const TEST_CODIUM_INFO: utils.ProductJson = {
+    applicationName: "codium",
+    dataFolderName: ".vscode-oss",
+    serverDataFolderName: ".vscode-oss",
+    sharedDataFolderName: ".vscode-oss-shared",
     version: "1.121.03429",
     commit: "824c4c46a288b839f13b24022655329c2aeb9f81",
-    serverUrlTemplate: "https://github.com/VSCodium/vscodium/releases/download/1.121.03429/vscodium-reh-${os}-${arch}-1.121.03429.tar.gz",
+    serverDownloadUrlTemplate: "https://github.com/VSCodium/vscodium/releases/download/1.121.03429/vscodium-reh-${os}-${arch}-1.121.03429.tar.gz",
 };
 
 export const initMocks = () => {
@@ -71,7 +75,7 @@ export const initMocks = () => {
         },
     } as any);
 
-    const spyProdsJson = vi.spyOn(server, "getProductJson");
+    const spyProdsJson = vi.spyOn(utils, "getProductJson");
     spyProdsJson.mockResolvedValue(TEST_CODIUM_INFO);
 
     (vscode as any).env = { remoteAuthority: undefined };

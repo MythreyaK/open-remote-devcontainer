@@ -1,3 +1,7 @@
+import * as vscode from "vscode";
+import * as fs from "node:fs/promises";
+import path from "node:path";
+
 import { run } from "../common/cmd";
 import { formatCmdErr } from "../common/spawn";
 import { SpawnError } from "../extension/error";
@@ -49,4 +53,29 @@ export async function getHostUserInfo(): Promise<HostUserInfo> {
         throw new SpawnError(`Could not query host user info (uid, gid, name): ${formatCmdErr(userName)}`);
     }
     /* eslint-enable @typescript-eslint/no-non-null-assertion */
+}
+
+export interface ProductJson {
+    applicationName: string,
+    dataFolderName: string,
+    serverDataFolderName: string,
+    sharedDataFolderName: string,
+    commit: string,
+    version: string,
+    serverDownloadUrlTemplate: string,
+};
+
+export async function getProductJson(): Promise<ProductJson> {
+    const jsonPath = path.join(vscode.env.appRoot, "product.json");
+    const jsonData = JSON.parse(await fs.readFile(jsonPath, { encoding: "utf-8", flag: "r" })) as ProductJson;
+
+    return {
+        applicationName: jsonData.applicationName,
+        dataFolderName: jsonData.dataFolderName,
+        serverDataFolderName: jsonData.serverDataFolderName,
+        sharedDataFolderName: jsonData.sharedDataFolderName,
+        version: jsonData.version,
+        commit: jsonData.commit,
+        serverDownloadUrlTemplate: jsonData.serverDownloadUrlTemplate,
+    };
 }

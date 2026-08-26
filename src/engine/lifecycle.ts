@@ -3,7 +3,7 @@ import path from "node:path";
 import { run } from "../common/cmd";
 import { getLogSink } from "../extension/log";
 import { formatCmdErr } from "../common/spawn";
-import { parseEnv, getHostUserInfo } from "../common/utils";
+import { parseEnv, getHostUserInfo, getProductJson } from "../common/utils";
 import { ContainerConfig, ContainerEngine, LifecycleCmd } from "./container";
 import { EngineError, InstallError, InternalError } from "../extension/error";
 import { NotificationLevel, showNotification } from "../extension/workspace";
@@ -11,6 +11,7 @@ import { NotificationLevel, showNotification } from "../extension/workspace";
 import * as settings from "../extension/settings";
 import * as server from "../remote/installServer";
 import { EXTENSION_ID, DEVCONTAINER_SERVER_LISTEN_PORT } from "../common/constants";
+
 const UUID_TOKEN_LEN = 36;
 
 const jsonFormat = ["--format", "{{json .}}"];
@@ -526,8 +527,8 @@ export class ContainerState {
 
         // TODO: let users customize the URL
         const prodJson = await (async () => {
-            const pj = await server.getProductJson();
-            pj.serverUrlTemplate = pj.serverUrlTemplate
+            const pj = await getProductJson();
+            pj.serverDownloadUrlTemplate = pj.serverDownloadUrlTemplate
                 .replace("${os}", "${CODIUM_OS_PLATFORM}")
                 .replace("${arch}", "${CODIUM_ARCH}");
             return pj;
@@ -547,7 +548,7 @@ export class ContainerState {
         const info: server.ScriptInstallInfo = {
             port: DEVCONTAINER_SERVER_LISTEN_PORT,
             extensions: extensionList,
-            downloadTemplateUrl: prodJson.serverUrlTemplate,
+            downloadTemplateUrl: prodJson.serverDownloadUrlTemplate,
             codiumVersion: prodJson.version,
             connectionToken: token,
             forceReinstall: forceReinstall,
