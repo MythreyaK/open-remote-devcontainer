@@ -12,6 +12,7 @@ import { getSettings } from "../extension/settings";
 import { DEVCONTAINER_SERVER_LISTEN_PORT } from "../common/constants";
 import { setExecCtx, getExecCtx } from "../common/ctx/ctx";
 import { RemoteExecCtx } from "../common/ctx/remoteCtx";
+import { SSHDestination } from "../extension/ssh";
 
 export const AUTHORITY_BASE: string = "devcontainer-remote";
 
@@ -164,6 +165,20 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
         const containerId = await this.containerState.getContainerId();
         const localWsfBasename = path.parse(this.localWsf.fsPath).base;
 
+        const remoteHost = (() => {
+            const auth = vscode.env.remoteAuthority ?? "";
+            if (!auth.includes("@")) { return undefined; }
+            const [_devc, ssh, ..._rest] = auth.split("@");
+            const [_sshAuthority, sshEncoded] = ssh.split("+");
+            return SSHDestination.parseEncoded(sshEncoded).hostname;
+        })();
+
+        // '📦 <dir> (container)' for local
+        // '📦 <dir> (host:container)' for ssh-chained
+        const containerTag = remoteHost
+            ? `${remoteHost}:${containerId.slice(0, 8)}`
+            : containerId.slice(0, 8);
+
         // set status bar item
         this.statusItemFormatter
             = vscode.workspace.registerResourceLabelFormatter({
@@ -173,7 +188,7 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
                     label: "${path}",
                     separator: "/",
                     tildify: true,
-                    workspaceSuffix: `📦 ${localWsfBasename} (${containerId.slice(0, 8)})`,
+                    workspaceSuffix: `📦 ${localWsfBasename} (${containerTag})`,
                 },
             });
 
