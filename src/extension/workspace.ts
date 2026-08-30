@@ -4,7 +4,7 @@ import * as crypto from "node:crypto";
 
 import { getLogSink } from "./log";
 import { ConfigError } from "./error";
-import { AUTHORITY_BASE, decodeRemoteAuthorityUri } from "../remote/resolver";
+import { AUTHORITY_BASE, decodeRemoteAuthority } from "../remote/resolver";
 import * as cmds from "../extension/commands";
 
 export enum NotificationLevel {
@@ -61,7 +61,7 @@ export function isRemoteDevcontainerSession(): boolean {
 export function getLocalWorkspaceFolder(): vscode.Uri {
     const remote = vscode.env.remoteAuthority;
     if (remote?.startsWith(AUTHORITY_BASE)) {
-        return decodeRemoteAuthorityUri(remote);
+        return decodeRemoteAuthority(remote);
     }
     // for remotes that aren't devcontainer (say, ssh), the workspace
     // is "local" from extension's pov, so use "local" workspace

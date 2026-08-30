@@ -1,19 +1,21 @@
 import path from "node:path";
+import * as fs from "node:fs/promises";
 
 import { run } from "../common/cmd";
 import { getLogSink } from "../extension/log";
 import { formatCmdErr } from "../common/spawn";
-import { parseEnv, getHostUserInfo, getProductJson } from "../common/utils";
+import { parseEnv, getHostUserInfo, getProductJson, getEngineCmd } from "../common/utils";
 import { ContainerConfig, ContainerEngine, LifecycleCmd } from "./container";
 import { EngineError, InstallError, InternalError } from "../extension/error";
 import { NotificationLevel, showNotification } from "../extension/workspace";
 
 import * as settings from "../extension/settings";
 import * as server from "../remote/installServer";
-import { EXTENSION_ID, DEVCONTAINER_SERVER_LISTEN_PORT } from "../common/constants";
+import { EXTENSION_ID, DEVCONTAINER_SERVER_LISTEN_PORT, CAT_PIPE_STDIN_WORKAROUND } from "../common/constants";
+
+export const STAGE2_DOCKERFILE_LOCATION: string = path.join(__dirname, "Dockerfile");
 
 const UUID_TOKEN_LEN = 36;
-
 const jsonFormat = ["--format", "{{json .}}"];
 
 export const STAGE2_INFO_MSG_REGEX = /{{DEVCONTAINER_STAGE2 INFO: (.*?)}}/g;
@@ -54,21 +56,23 @@ export enum BuildOpts {
 export class ContainerState {
     private readonly workspaceFolder: string;
     private readonly cc: ContainerConfig;
+    private readonly cmd: string[];
     private readonly buildOpts: BuildOpts;
 
     private remoteEnvProbe: Record<string, string> = {};
     // private imageId: string;
 
-    private constructor(workspaceFolder: string, cc: ContainerConfig, opts: BuildOpts = BuildOpts.Default) {
+    private constructor(workspaceFolder: string, cc: ContainerConfig, cmd: string[], opts: BuildOpts = BuildOpts.Default) {
         this.workspaceFolder = path.resolve(workspaceFolder);
         this.cc = cc;
+        this.cmd = cmd;
         this.buildOpts = opts;
     }
 
-    public static async create(workspaceFolder: string, cc: ContainerConfig, opts: BuildOpts = BuildOpts.Default): Promise<ContainerState> {
+    public static async create(workspaceFolder: string, cc: ContainerConfig, stn: settings.Settings, opts: BuildOpts = BuildOpts.Default): Promise<ContainerState> {
         getLogSink().info(`Using compat/convenience options for '${cc.engine}'`);
         // mmm more spaghetti ... TODO: could use some cleanup
-        const ret = new ContainerState(workspaceFolder, cc, opts);
+        const ret = new ContainerState(workspaceFolder, cc, getEngineCmd(stn), opts);
         await ret.runInitializeCmd();
 
         if (opts !== BuildOpts.Default) {
@@ -142,7 +146,7 @@ export class ContainerState {
 
                     // TODO: run in bash as a single exec instead? Might lose per-pid error reporting
                     return run([
-                        ...settings.getEngineCmd(),
+                        ...this.cmd,
                         ...this.cc.getExecArgs(cname, this.remoteEnvProbe),
                         ...cmd,
                     ], { cwd: this.workspaceFolder });
@@ -203,7 +207,7 @@ export class ContainerState {
                 const imageHash = await (async () => {
                     getLogSink().warn(`Image '${stage1Image}' does not exist or noCache specified, attempting to pull ...`);
                     const pullRes = await run([
-                        ...settings.getEngineCmd(),
+                        ...this.cmd,
                         "pull",
                         stage1Image,
                     ], { cwd: this.workspaceFolder });
@@ -228,7 +232,7 @@ export class ContainerState {
 
     private async getEffectiveUser(stage1Image: string): Promise<{ imageUser: string | undefined, remoteUser: string }> {
         const imgUser = await run([
-            ...settings.getEngineCmd(),
+            ...this.cmd,
             "image",
             "inspect",
             stage1Image,
@@ -258,11 +262,24 @@ export class ContainerState {
             showNotification(NotificationLevel.Warning, msg);
         }
 
+        // ah lol, debugging this was fun
+        // https://github.com/nodejs/node/issues/21941
+        // bad summary: node uses sockets for fd 0 (so /dev/stdin isn't a thing), podman/buildah uses open(/dev/stdin)
+        // cool workaround from https://github.com/wolfgang42 at https://github.com/nodejs/node/issues/21941#issuecomment-2873658998
+        // 🤞 no bugs here
+        const stage2Dockerfile = await readStage2Dockerfile();
         const hostUserInfo = await getHostUserInfo();
-        const ret = await run([
-            ...settings.getEngineCmd(),
+
+        const catWorkaround = [
+            ...CAT_PIPE_STDIN_WORKAROUND,
+            ...this.cmd,
             ...this.cc.getStage2BuildCmd(hostUserInfo, imageUser, { noCache: this.buildOpts === BuildOpts.RebuildNoCache }),
-        ], { cwd: this.workspaceFolder });
+        ];
+
+        const ret = await run([...catWorkaround], {
+            cwd: this.workspaceFolder,
+            stdin: stage2Dockerfile,
+        });
 
         if (ret.exit !== 0) {
             // docker and podman output differs, some to stdout, some to stderr
@@ -288,7 +305,7 @@ export class ContainerState {
 
     private async startContainer(): Promise<string> {
         const ret = await run([
-            ...settings.getEngineCmd(),
+            ...this.cmd,
             "start",
             this.getContainerName(),
         ], { cwd: this.workspaceFolder });
@@ -303,7 +320,7 @@ export class ContainerState {
 
     public async tryStopContainer(opts: { force: boolean } = { force: false }) {
         const ret = await run([
-            ...settings.getEngineCmd(),
+            ...this.cmd,
             "stop",
             ...(opts.force ? ["-t", "1"] : []),
             this.getContainerName(),
@@ -335,7 +352,7 @@ export class ContainerState {
 
     public async tryRemoveContainer(opts: { force: boolean } = { force: false }) {
         const ret = await run([
-            ...settings.getEngineCmd(),
+            ...this.cmd,
             "rm",
             ...(opts.force ? ["--force"] : []),
             this.getContainerName(),
@@ -346,7 +363,7 @@ export class ContainerState {
     private async inspectContainer(identifier: string): Promise<ContainerInspectResult> {
         const res = await run(
             [
-                ...settings.getEngineCmd(),
+                ...this.cmd,
                 "container",
                 "inspect",
                 identifier,
@@ -365,7 +382,7 @@ export class ContainerState {
     private async tryInspectImage(identifier: string): Promise<ImageInspectResult | undefined> {
         const res = await run(
             [
-                ...settings.getEngineCmd(),
+                ...this.cmd,
                 "image",
                 "inspect",
                 identifier,
@@ -384,7 +401,7 @@ export class ContainerState {
     public async tryContainerInspect(identifier: string): Promise<ContainerInspectResult | undefined> {
         const res = await run(
             [
-                ...settings.getEngineCmd(),
+                ...this.cmd,
                 "container",
                 "inspect",
                 identifier,
@@ -410,7 +427,7 @@ export class ContainerState {
         if (checkExists !== undefined && checkExists.State.Running) {
             // TODO: token in tempdir?
             const token = await run([
-                ...settings.getEngineCmd(),
+                ...this.cmd,
                 ...this.cc.getExecArgs(this.getContainerName(), this.remoteEnvProbe),
                 "bash",
                 "-c",
@@ -431,7 +448,7 @@ export class ContainerState {
     private async runCreate(imageName: string, remoteUser: string): Promise<string> {
         const createRes = await run(
             [
-                ...settings.getEngineCmd(),
+                ...this.cmd,
                 ...this.cc.getRunCreateCmd(imageName, this.getContainerName(), {
                     extraArgs: [
                         "-p", `${DEVCONTAINER_SERVER_LISTEN_PORT}`,
@@ -458,7 +475,7 @@ export class ContainerState {
     public async getContainerEnv(): Promise<Record<string, string>> {
         const out = await run(
             [
-                ...settings.getEngineCmd(),
+                ...this.cmd,
                 ...this.cc.getExecArgs(this.getContainerName(), {}, { tty: true, withRemoteEnv: false }),
                 ...this.cc.getUserEnvProbeArgs(),
                 "-c",
@@ -475,7 +492,7 @@ export class ContainerState {
     public getImageHash(name: string) {
         return run(
             [
-                ...settings.getEngineCmd(),
+                ...this.cmd,
                 "image",
                 "inspect",
                 name,
@@ -488,7 +505,7 @@ export class ContainerState {
         if (!this.cc.isDockerfileBased()) { throw new Error("Expected dockerfile-based config"); }
 
         const ret = await run([
-            ...settings.getEngineCmd(),
+            ...this.cmd,
             ...this.cc.getBuildCmd({ noCache: this.buildOpts === BuildOpts.RebuildNoCache }),
         ], { cwd: this.workspaceFolder });
 
@@ -510,7 +527,7 @@ export class ContainerState {
     public engineExec(cmdArgs: string[]) {
         return run(
             [
-                ...settings.getEngineCmd(),
+                ...this.cmd,
                 ...this.cc.getExecArgs(this.getContainerName(), this.remoteEnvProbe),
                 ...cmdArgs,
             ], { cwd: this.workspaceFolder },
@@ -558,7 +575,7 @@ export class ContainerState {
 
         const installExecResult = await run(
             [
-                ...settings.getEngineCmd(),
+                ...this.cmd,
                 ...this.cc.getExecArgs(this.getContainerName(), this.remoteEnvProbe, { interactive: true }),
                 "bash",
             ],
@@ -580,7 +597,7 @@ export class ContainerState {
 
     private async getHostmappedPort() {
         const portCmdRes = await run([
-            ...settings.getEngineCmd(),
+            ...this.cmd,
             "port",
             this.getContainerName(),
             `${DEVCONTAINER_SERVER_LISTEN_PORT}`,
@@ -642,12 +659,12 @@ function fixDockerImageInspect(engine: ContainerEngine, json: string): ImageInsp
  * @param workspaceFolder
  * @returns `undefined` if container doesn't exist. `true`/`false` if exists
  */
-export async function queryContainerConfigId(workspaceFolder: string): Promise<string | undefined> {
+export async function queryContainerConfigId(cmd: string[], workspaceFolder: string): Promise<string | undefined> {
     const containerName = ContainerConfig.getContainerName(workspaceFolder);
     const labelKey = `${EXTENSION_ID}.configId`;
 
     const res = await run([
-        ...settings.getEngineCmd(),
+        ...cmd,
         "container", "inspect", containerName,
         "--format", `{{index .Config.Labels "${labelKey}"}}`,
     ], { cwd: workspaceFolder });
@@ -656,4 +673,8 @@ export async function queryContainerConfigId(workspaceFolder: string): Promise<s
 
     const id = res.stdout.trim();
     return id.length > 0 ? id : undefined;
+}
+
+export async function readStage2Dockerfile() {
+    return await fs.readFile(STAGE2_DOCKERFILE_LOCATION, { encoding: "utf-8" });
 }

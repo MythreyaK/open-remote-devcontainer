@@ -18,7 +18,12 @@ export default tseslint.config(
     },
     {
         rules: {
-            "@typescript-eslint/no-unused-vars": isDev ? "warn" : "error",
+            "@typescript-eslint/no-unused-vars": [
+                isDev ? "warn" : "error",
+                {
+                    "argsIgnorePattern": "^_"
+                }
+            ],
             "@typescript-eslint/naming-convention": ["warn", {
                 selector: "import",
                 format: ["camelCase", "PascalCase"],

@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { window, workspace } from "vscode";
+import { window } from "vscode";
 import { afterAll, vi } from "vitest";
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -10,6 +10,8 @@ import { _initLog } from "../extension/log";
 import { findDevcontainerJson } from "../extension/workspace";
 import { parseDevcontainer } from "../parser/parser";
 import { ContainerConfig } from "../engine/container";
+import { Config } from "../parser/schema";
+import { Settings } from "../extension/settings";
 import * as utils from "../common/utils";
 
 const DEBUG_TESTS: boolean = process.env.DEBUG_TESTS !== undefined
@@ -42,7 +44,6 @@ export function getEngine() {
     return cached;
 }
 
-export const ENGINE = getEngine();
 export const jsonFormat = ["--format", "{{json .}}"];
 
 export const TEST_CODIUM_INFO: utils.ProductJson = {
@@ -55,7 +56,9 @@ export const TEST_CODIUM_INFO: utils.ProductJson = {
     serverDownloadUrlTemplate: "https://github.com/VSCodium/vscodium/releases/download/1.121.03429/vscodium-reh-${os}-${arch}-1.121.03429.tar.gz",
 };
 
-export const initMocks = () => {
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment */
+export function initMocks() {
+    // const engine = getEngine();
     const spyCreateOutput = vi.spyOn(window, "createOutputChannel");
     spyCreateOutput.mockReturnValue({
         debug: DEBUG_TESTS ? console.log : vi.fn(),
@@ -65,15 +68,19 @@ export const initMocks = () => {
         error: DEBUG_TESTS ? console.log : vi.fn(),
     } as any);
 
-    const spySettings = vi.spyOn(workspace, "getConfiguration");
-    spySettings.mockReturnValue({
-        get: (key: string) => {
-            const config: Record<string, string | undefined> = {
-                dockerPath: ENGINE,
-            };
-            return config[key];
-        },
-    } as any);
+    // const config: Record<string, string | string[] | undefined> = {
+    //     "dev.containers.dockerPath": engine,
+    //     "dev.containers.extraArgs": [],
+    //     "dev.containers.defaultExtensions": [],
+    // };
+
+    // const spySettings = vi.spyOn(workspace, "getConfiguration");
+    // spySettings.mockImplementation((section?: string) => ({
+    //     get: (key: string) => config[section ? `${section}.${key}` : key],
+    //     has: (key: string) => (section ? `${section}.${key}` : key) in config,
+    //     inspect: () => undefined,
+    //     update: vi.fn(),
+    // }));
 
     const spyProdsJson = vi.spyOn(utils, "getProductJson");
     spyProdsJson.mockResolvedValue(TEST_CODIUM_INFO);
@@ -83,13 +90,17 @@ export const initMocks = () => {
     _initLog("Remote - Devcontainer (tests)");
 };
 
-export function init() {
-    if (!ENGINE) { throw new Error("No container engine (docker/podman) found. Cannot run integration tests."); }
-    initMocks();
+export function getMockSettings(): Settings {
+    return {
+        dockerPath: getEngine() ?? "",
+        extraArgs: [],
+        defaultExtensions: [],
+    };
 }
 
-export async function setupFixture(opts: { name: string, testDir: string }) {
-    if (!ENGINE) {
+export async function setupFixture(opts: { name: string, testDir: string }): Promise<{ localWsf: string, localWsfBasename: string, config: Config }> {
+    const engine = getEngine();
+    if (!engine) {
         // called not from inside a test() but at describe-scope level, so can't throw
         // it'll be resolved correctly during actual runs
         // TODO: may be able to clean this up
@@ -107,19 +118,20 @@ export async function setupFixture(opts: { name: string, testDir: string }) {
 
     afterAll(async () => {
         if (DEBUG_TESTS) { console.info(`Stopping and removing container ${containerName}`); }
-        const proc1 = await run([ENGINE, "container", "stop", containerName], { cwd: testDir });
-        const proc2 = await run([ENGINE, "container", "rm", containerName], { cwd: testDir });
+        const proc1 = await run([engine, "container", "stop", containerName], { cwd: testDir });
+        const proc2 = await run([engine, "container", "rm", containerName], { cwd: testDir });
 
         if (proc1.exit !== 0) { console.warn("Warning: Containers were not stopped cleanly. Maybe a bug?"); }
         if (proc2.exit !== 0) { console.warn("Warning: Containers were not removed cleanly. Maybe a bug?"); }
 
-        if (proc1.exit !== 0 || proc2.exit !== 0) { await run([ENGINE, "container", "rm", "--force", containerName], { cwd: testDir }); }
+        if (proc1.exit !== 0 || proc2.exit !== 0) { await run([engine, "container", "rm", "--force", containerName], { cwd: testDir }); }
 
         const stg1 = ContainerConfig._getStage1ImageName(testDir);
         const stg2 = ContainerConfig._getStage2ImageName(testDir);
         if (DEBUG_TESTS) { console.info(`Removing images [${stg1}, ${stg2}]`); }
-        await run([ENGINE, "image", "rm", stg1, stg2], { cwd: testDir });
+        await run([engine, "image", "rm", stg1, stg2], { cwd: testDir });
     });
 
     return { localWsf: testDir, localWsfBasename: path.parse(testDir).base, config: config };
 }
+/* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment */

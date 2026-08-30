@@ -6,9 +6,7 @@ import { ContainerState } from "../../../engine/lifecycle";
 import { ContainerConfig } from "../../../engine/container";
 import { getHostUserInfo, parseEnv } from "../../../common/utils";
 
-import { init, setupFixture, ENGINE } from "../../common";
-
-if (ENGINE) { init(); }
+import { initMocks, setupFixture, getMockSettings } from "../../common";
 
 interface LifecycleEntry {
     cmd: string,
@@ -19,7 +17,10 @@ function parseLifecycleLog(stdout: string): LifecycleEntry[] {
     return stdout.trim().split("\n").map(line => JSON.parse(line) as LifecycleEntry);
 }
 
-describe.skipIf(!ENGINE)("integration: dockerfile-basic", async () => {
+const SETTINGS = getMockSettings();
+initMocks();
+
+describe.skipIf(!SETTINGS.dockerPath)("integration: dockerfile-basic", async () => {
     let cc: ContainerConfig;
     let container: ContainerState;
 
@@ -35,7 +36,7 @@ describe.skipIf(!ENGINE)("integration: dockerfile-basic", async () => {
         cc = ContainerConfig.create(localWsf, devcPath, config, localEnv);
         expect(cc.isDockerfileBased()).toBe(true);
         expect(cc.isImageBased()).toBe(false);
-        container = await ContainerState.create(localWsf, cc);
+        container = await ContainerState.create(localWsf, cc, SETTINGS);
     }, 60_000);
 
     test("build arg was passed", async () => {
@@ -106,7 +107,7 @@ describe.skipIf(!ENGINE)("integration: dockerfile-basic", async () => {
 
     test("postStart runs again on container restart", async () => {
         await container.stopContainer();
-        container = await ContainerState.create(localWsf, cc);
+        container = await ContainerState.create(localWsf, cc, SETTINGS);
 
         const res = await container.engineExec(["cat", "/tmp/lifecycle.log"]);
         expect(res.exit).eq(0);

@@ -5,6 +5,7 @@ import path from "node:path";
 import { run } from "../common/cmd";
 import { formatCmdErr } from "../common/spawn";
 import { SpawnError } from "../extension/error";
+import { Settings } from "../extension/settings";
 
 export interface HostUserInfo {
     uid: number,
@@ -37,6 +38,17 @@ export function parseEnv(envStdout: string) {
     }
     return parsedEnvs;
     /* eslint-enable @stylistic/quotes */
+}
+
+/**
+ * returns `[engine, ...engine_args]` in `engine <engine_args...>
+ * command <command args...>`
+ *
+ * e.g., `[ "podman", "--root", "<root dir>"]` for
+ * `podman --root <root dir> command <command args>`
+*/
+export function getEngineCmd(s: Settings): string[] {
+    return [s.dockerPath, ...s.extraArgs];
 }
 
 export async function getHostUserInfo(): Promise<HostUserInfo> {

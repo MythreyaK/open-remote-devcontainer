@@ -143,7 +143,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             ...this.getStage2BuildArgs(hostUserInfo, imgUser),
             ...this.addLabels(),
             "-t", this.getStage2ImageName(),
-            "-f", path.join(__dirname, "Dockerfile"),
+            "-f", "-", // read from stdin
             this.workspaceFolder,
         ].filter(Boolean);
     }

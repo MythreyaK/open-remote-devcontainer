@@ -6,12 +6,13 @@ import { ContainerState } from "../../../engine/lifecycle";
 import { ContainerConfig } from "../../../engine/container";
 import * as schema from "../../../parser/schema";
 
-import { init, setupFixture, jsonFormat, ENGINE } from "../../common";
+import { initMocks, setupFixture, jsonFormat, getMockSettings } from "../../common";
 
-if (ENGINE) { init(); }
+const SETTINGS = getMockSettings();
+initMocks();
 
-describe.skipIf(!ENGINE)("integration: lifecycle: img-pull", async () => {
-    const engine = ENGINE!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+describe.skipIf(!SETTINGS.dockerPath)("integration: lifecycle: img-pull", async () => {
+    const engine = SETTINGS.dockerPath;
 
     let cc: ContainerConfig;
     let container: ContainerState;
@@ -46,7 +47,7 @@ describe.skipIf(!ENGINE)("integration: lifecycle: img-pull", async () => {
         expect(inspectResult.stdout.trim()).toBe("");
 
         cc = ContainerConfig.create(localWsf, devcPath, config, localEnv);
-        container = await ContainerState.create(localWsf, cc);
+        container = await ContainerState.create(localWsf, cc, SETTINGS);
         const cId = await container.getContainerId();
 
         expect(cId.length).toBeGreaterThan(16);

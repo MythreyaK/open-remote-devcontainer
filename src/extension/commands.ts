@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 
 import * as cmd from "../common/cmd";
-import { getContainerEngine } from "./settings";
+import { getSettings } from "./settings";
 import { ContainerConfig, LifecycleCmd } from "../engine/container";
 import { parseDevcontainer } from "../parser/parser";
 import { encodeRemoteAuthority } from "../remote/resolver";
@@ -11,6 +11,7 @@ import { BuildOptIntent } from "../common/globalState";
 import { getLogfilePath, getLogSink } from "./log";
 import { EXTENSION_ID } from "../common/constants";
 import { InternalError } from "./error";
+import { getEngineCmd } from "../common/utils";
 
 enum RebuildPrompt {
     RebuildNoCache = "Yes (Rebuild without cache)",
@@ -23,9 +24,9 @@ export function getCmd(suffix: string) {
 }
 
 export async function getContainerEngineVersion() {
-    const localWsf = getLocalWorkspaceFolder().fsPath;
-    const { stdout } = await cmd.run([getContainerEngine(), "--version"], { cwd: localWsf });
-    vscode.window.showInformationMessage(`${getContainerEngine()} version: ${stdout}`);
+    const engine = getSettings().dockerPath;
+    const { stdout } = await cmd.run([engine, "--version"], {});
+    vscode.window.showInformationMessage(`${engine} version: ${stdout}`);
 }
 
 export async function openRemote(ctx: vscode.ExtensionContext, opts: BuildOpts = BuildOpts.Default) {
@@ -132,7 +133,8 @@ function promptBuildOpt() {
 }
 
 export async function isConfigStale(localWsf: vscode.Uri, cc: ContainerConfig): Promise<boolean | undefined> {
-    const containerConfigId = await queryContainerConfigId(localWsf.fsPath);
+    const cmd = getEngineCmd(getSettings());
+    const containerConfigId = await queryContainerConfigId(cmd, localWsf.fsPath);
 
     if (!containerConfigId) {
         return undefined;

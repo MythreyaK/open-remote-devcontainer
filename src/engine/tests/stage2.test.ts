@@ -1,19 +1,16 @@
 import path from "node:path";
 import { tmpdir } from "node:os";
-import { mkdirSync, writeFileSync, unlinkSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { afterAll, describe, expect, test } from "vitest";
 
 import { run } from "../../common/cmd";
 import { ContainerConfig, ContainerEngine } from "../container";
 import { HostUserInfo } from "../../common/utils";
 import * as schema from "../../parser/schema";
-import { ContainerState, STAGE2_ERR_MSG_REGEX, STAGE2_INFO_MSG_REGEX, STAGE2_WARN_MSG_REGEX } from "../lifecycle";
+import * as lf from "../lifecycle";
 
-import { init, ENGINE } from "../../tests/common";
-
-if (ENGINE) { init(); }
-
-const BASE_IMAGE = "ubuntu:24.04";
+import { getMockSettings, initMocks } from "../../tests/common";
+import { CAT_PIPE_STDIN_WORKAROUND } from "../../common/constants";
 
 function testWsf(label: string) {
     const wsf = path.join(tmpdir(), `stage2-${label}`);
@@ -25,8 +22,13 @@ function imgCfg(overrides: Partial<schema.ImageDevcontainer> = {}): schema.Image
     return schema.ConfigSchemaBase.parse({ image: BASE_IMAGE, ...overrides }) as schema.ImageDevcontainer;
 }
 
-describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
-    const engine = ENGINE!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+const BASE_IMAGE = "ubuntu:24.04";
+
+const SETTINGS = getMockSettings();
+initMocks();
+
+describe.skipIf(!SETTINGS.dockerPath)("stage2 UID remapping", () => {
+    const engine = SETTINGS.dockerPath;
 
     const images: string[] = [];
 
@@ -36,11 +38,12 @@ describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
 
     async function buildStage2(cc: ContainerConfig, hostInfo: HostUserInfo, imgUser?: string) {
         trackImage(cc);
+        const dockerfile = await lf.readStage2Dockerfile();
         const buildCmd = cc.getStage2BuildCmd(hostInfo, imgUser, { noCache: true });
 
         // set context and cwd to a dir that exists
         buildCmd[buildCmd.length - 1] = __dirname;
-        return await run([engine, ...buildCmd], { cwd: __dirname });
+        return await run([...CAT_PIPE_STDIN_WORKAROUND, engine, ...buildCmd], { cwd: __dirname, stdin: dockerfile });
     }
 
     async function runInImage(cc: ContainerConfig, cmd: string[]) {
@@ -72,7 +75,7 @@ describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
         const build = await buildStage2(cc, { uid: 0, gid: 0, name: "root" });
         const output = build.stdout.trim() + build.stderr.trim();
         expect(build.exit).eq(0);
-        const warnMsg = Array.from(output.matchAll(STAGE2_WARN_MSG_REGEX));
+        const warnMsg = Array.from(output.matchAll(lf.STAGE2_WARN_MSG_REGEX));
         expect(warnMsg.length).eq(1);
         expect(warnMsg[0][1]).includes("Using user root");
     }, 45_000);
@@ -109,7 +112,7 @@ describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
         const build = await buildStage2(cc, { uid: 9999, gid: 9999, name: "host" });
         expect(build.exit).eq(0);
         const output = build.stdout.trim() + build.stderr.trim();
-        const infoMsg = Array.from(output.matchAll(STAGE2_INFO_MSG_REGEX));
+        const infoMsg = Array.from(output.matchAll(lf.STAGE2_INFO_MSG_REGEX));
         expect(infoMsg.length).eq(1);
         expect(infoMsg[0][1]).includes("UPDATE_REMOTE_UID was false");
 
@@ -124,7 +127,7 @@ describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
         const build = await buildStage2(cc, { uid: 1000, gid: 1000, name: "host" });
         expect(build.exit).not.eq(0);
         const output = build.stdout.trim() + build.stderr.trim();
-        const errMsg = Array.from(output.matchAll(STAGE2_ERR_MSG_REGEX));
+        const errMsg = Array.from(output.matchAll(lf.STAGE2_ERR_MSG_REGEX));
         expect(errMsg.length).toBeGreaterThanOrEqual(1);
         expect(errMsg[0][1]).includes("does not exist in container");
     }, 45_000);
@@ -136,13 +139,11 @@ describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
 
         // Build an intermediate image with a second user (foobar uid=2000).
         // Then remap foobar to uid=1000, which collides with "ubuntu".
-        const tmpDockerfile = path.join(tmpdir(), "stage2-test-conflict.Dockerfile");
-        writeFileSync(tmpDockerfile, `FROM ${BASE_IMAGE}\nRUN useradd -m -u 2000 foobar\n`);
+        const dockerfile = `FROM ${BASE_IMAGE}\nRUN useradd -m -u 2000 foobar\n`;
 
         const setupBase = await run([
-            engine, "build", "-t", baseTag, "-f", tmpDockerfile, ".",
-        ], { cwd: __dirname });
-        unlinkSync(tmpDockerfile);
+            ...CAT_PIPE_STDIN_WORKAROUND, engine, "build", "-t", baseTag, "-f", "-", ".",
+        ], { cwd: __dirname, stdin: dockerfile });
         expect(setupBase.exit).eq(0);
 
         const cc = ContainerConfig.create(localWsf, cfgPath, imgCfg({ image: baseTag, remoteUser: "foobar" }), {});
@@ -161,11 +162,9 @@ describe.skipIf(!ENGINE)("stage2 UID remapping", () => {
     }, 45_000);
 });
 
-const IS_PODMAN = ENGINE === "podman";
-
-describe.skipIf(!IS_PODMAN)("podman: --userns=keep-id", () => {
-    const containers: ContainerState[] = [];
-    const engine = ENGINE!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+describe.skipIf(SETTINGS.dockerPath !== "podman")("podman: --userns=keep-id", () => {
+    const containers: lf.ContainerState[] = [];
+    const engine = SETTINGS.dockerPath;
 
     afterAll(async () => {
         for (const c of containers) {
@@ -179,7 +178,7 @@ describe.skipIf(!IS_PODMAN)("podman: --userns=keep-id", () => {
         const { localWsf, cfgPath } = testWsf("podman-keepid");
         const cc = ContainerConfig.create(localWsf, cfgPath, imgCfg({ remoteUser: "ubuntu" }), {}, { engine: ContainerEngine.podman });
 
-        const container = await ContainerState.create(localWsf, cc);
+        const container = await lf.ContainerState.create(localWsf, cc, SETTINGS);
         containers.push(container);
 
         const wsDir = container.getConfig().getRemoteMountDir();
@@ -199,7 +198,7 @@ describe.skipIf(!IS_PODMAN)("podman: --userns=keep-id", () => {
         const { localWsf, cfgPath } = testWsf("podman-keepid-uid");
         const cc = ContainerConfig.create(localWsf, cfgPath, imgCfg({ remoteUser: "ubuntu" }), {}, { engine: ContainerEngine.podman });
 
-        const container = await ContainerState.create(localWsf, cc);
+        const container = await lf.ContainerState.create(localWsf, cc, SETTINGS);
         containers.push(container);
 
         const res = await container.engineExec(["id", "-u"]);
@@ -211,7 +210,7 @@ describe.skipIf(!IS_PODMAN)("podman: --userns=keep-id", () => {
         const { localWsf, cfgPath } = testWsf("podman-root");
         const cc = ContainerConfig.create(localWsf, cfgPath, imgCfg(), {}, { engine: ContainerEngine.podman });
 
-        const container = await ContainerState.create(localWsf, cc);
+        const container = await lf.ContainerState.create(localWsf, cc, SETTINGS);
         containers.push(container);
 
         const wsDir = container.getConfig().getRemoteMountDir();

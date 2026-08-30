@@ -4,7 +4,7 @@ import { spawn } from "../spawn";
 import { getLogSink } from "../../extension/log";
 import { ContainerInspectResult } from "../../engine/lifecycle";
 
-import { jsonFormat, init, ENGINE } from "../../tests/common";
+import { initMocks, jsonFormat, getMockSettings } from "../../tests/common";
 
 function getcwd() {
     return __dirname;
@@ -16,10 +16,11 @@ function opts() {
 
 const bashSleepCmd = ["bash", "-c", "trap 'exit 0' SIGINT SIGTERM; while true; do sleep 1; done"];
 
-if (ENGINE) { init(); }
+const SETTINGS = getMockSettings();
+initMocks();
 
-describe.skipIf(!ENGINE)("cmd spawn tests", () => {
-    const engine = ENGINE!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+describe.skipIf(!SETTINGS.dockerPath)("cmd spawn tests", () => {
+    const engine = SETTINGS.dockerPath;
 
     test("log is initialized", () => {
         expect(getLogSink()).toBeDefined();
