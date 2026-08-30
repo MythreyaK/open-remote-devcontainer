@@ -1,5 +1,6 @@
-import { describe, expect, test } from "vitest";
+import { Uri } from "vscode";
 import * as fs from "node:fs/promises";
+import { describe, expect, test } from "vitest";
 
 import * as install from "../installServer";
 import * as resolver from "../resolver";
@@ -28,6 +29,11 @@ function toAuthority(str: string) {
     return `${resolver.AUTHORITY_BASE}+${str}`;
 }
 
+function uriEql(a: Uri | string, b: Uri | string) {
+    const toStr = (u: Uri | string) => typeof u === "string" ? Uri.file(u).toString(true) : u.toString(true);
+    expect(toStr(a)).eq(toStr(b));
+}
+
 const testString = "6e6556455220674f4e6e61206749566520596f552055702c204e4576655220676f4e4e61206c657420794f7520646f776e2c204e4556457220474f6e6e612072754e2041524f556e6420614e642064457365727420796f75";
 const MaxIter = 100;
 
@@ -46,8 +52,10 @@ describe("fixtures", () => {
             const mangled = mangleCasing(testString);
             counter += filterNumbers(mangled) !== filterNumbers(testString) ? 1 : 0;
 
-            expect(resolver.decodeRemoteAuthority(toAuthority(mangled)))
-                .eq(resolver.decodeRemoteAuthority(toAuthority(testString)));
+            uriEql(
+                resolver.decodeRemoteAuthority(toAuthority(mangled)),
+                resolver.decodeRemoteAuthority(toAuthority(testString)),
+            );
         }
 
         expect(counter).eq(10);
@@ -70,19 +78,24 @@ describe("remote authority", () => {
     test("encode/decode roundtrip", () => {
         const encoded = resolver.encodeRemoteAuthority(localWsf);
         const decoded = resolver.decodeRemoteAuthority(encoded);
-        expect(localWsf).eq(decoded);
+        uriEql(decoded, localWsf);
     });
 
     test("encode/decode roundtrip (unicode)", () => {
         const localWsf = "/home/君の名は";
         const encoded = resolver.encodeRemoteAuthority(localWsf);
-        expect(resolver.decodeRemoteAuthority(encoded)).eq(localWsf);
+        uriEql(
+            resolver.decodeRemoteAuthority(encoded),
+            localWsf,
+        );
     });
 
     test("encode/decode preserves encode's input casing", () => {
         const encodedA = resolver.encodeRemoteAuthority("aaAaa");
         const encodedB = resolver.encodeRemoteAuthority("aaaaa");
-        expect(resolver.decodeRemoteAuthority(encodedA)).not.eq(resolver.decodeRemoteAuthority(encodedB));
+        const a = resolver.decodeRemoteAuthority(encodedA).toString(true);
+        const b = resolver.decodeRemoteAuthority(encodedB).toString(true);
+        expect(a).not.eq(b);
     });
 
     test("encode/decode roundtrip with mangled casing", () => {
@@ -113,7 +126,7 @@ describe("remote authority", () => {
 
             for (const item of items) {
                 const decoded = resolver.decodeRemoteAuthority(item);
-                expect(wsf).eq(decoded);
+                uriEql(decoded, wsf);
             }
         }
     });

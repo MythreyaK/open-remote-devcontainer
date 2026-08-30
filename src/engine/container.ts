@@ -11,6 +11,7 @@ const USERNS_CONFLICT_FLAGS = ["--userns", "--uidmap", "--gidmap"];
 
 export interface ExecOpts {
     tty?: boolean,
+    interactive?: boolean,
     withRemoteEnv?: boolean,
 };
 
@@ -142,7 +143,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             ...this.getStage2BuildArgs(hostUserInfo, imgUser),
             ...this.addLabels(),
             "-t", this.getStage2ImageName(),
-            "-f", path.join(__dirname, "Dockerfile"),
+            "-f", "-", // read from stdin
             this.workspaceFolder,
         ].filter(Boolean);
     }
@@ -210,12 +211,13 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         ];
     }
 
-    public getExecArgs(containerId: string, remoteEnvProbe: NodeJS.ProcessEnv, opts: ExecOpts = { tty: false, withRemoteEnv: true }): string[] {
+    public getExecArgs(containerId: string, remoteEnvProbe: NodeJS.ProcessEnv, opts: ExecOpts = { tty: false, interactive: false, withRemoteEnv: true }): string[] {
         return [
             "exec",
             ...this.addRemoteUser(),
             ...(opts.withRemoteEnv ? this.addRemoteEnv(remoteEnvProbe) : []),
             (opts.tty ? "-t" : ""),
+            (opts.interactive ? "-i" : ""),
             containerId,
             ...(opts.withRemoteEnv ? this.getUnsetRemoteEnvArgs() : []),
         ].filter(Boolean);

@@ -12,12 +12,17 @@ export interface CmdResult {
 let cmdCount: number = 0;
 
 /* eslint-disable @typescript-eslint/no-confusing-void-expression */
+export interface SpawnOpts {
+    env?: Envs,
+    cwd?: string,
+    stdin?: string | undefined,
+    log: LogOutputChannel,
+}
+
 export function spawn(
     cmd: string,
     args: string[],
-    cwd: string,
-    env: Envs,
-    log: LogOutputChannel,
+    opts: SpawnOpts,
 ): Promise<CmdResult> {
     return new Promise((resolve, _) => {
         cmdCount += 1;
@@ -31,22 +36,27 @@ export function spawn(
         // TODO: do we need env without inheriting parent's env?
         const finalEnv = {
             ...process.env,
-            ...env,
+            ...(opts.env ?? {}),
             BUILDKIT_PROGRESS: "plain",
         };
 
         const proc = chproc.spawn(cmd, args, {
-            cwd: cwd,
+            cwd: opts.cwd,
             env: finalEnv,
             stdio: "pipe",
         });
         proc.stdout.setEncoding("utf-8");
         proc.stderr.setEncoding("utf-8");
 
+        if (opts.stdin !== undefined) {
+            proc.stdin.write(opts.stdin);
+            proc.stdin.end();
+        }
+
         proc.on("spawn", () => {
             const strz_args = args.map(e => `'${e}'`).join(", ");
             // TODO: log env values as well
-            log.info(`${cmdStr()} Running (spawn) ['${cmd}', ${strz_args}]`);
+            opts.log.info(`${cmdStr()} Running (spawn) ['${cmd}', ${strz_args}]`);
         });
 
         proc.on("error", (err: NodeJS.ErrnoException) => {
@@ -57,19 +67,19 @@ export function spawn(
                 stderr: err.message,
             };
 
-            log.error(cmdStr(), msg);
+            opts.log.error(cmdStr(), msg);
             // TODO: reject?
             return resolve(res);
         });
 
         proc.stdout.on("data", (data: string) => {
             stdout += data;
-            log.info(cmdStr(), data);
+            opts.log.info(cmdStr(), data);
         });
 
         proc.stderr.on("data", (data: string) => {
             stderr += data;
-            log.error(cmdStr(), data);
+            opts.log.error(cmdStr(), data);
         });
 
         proc.on("exit", (code, signal) => {
@@ -80,10 +90,10 @@ export function spawn(
             };
 
             if (code !== 0) {
-                log.error(`${cmdStr()} Command failed with {code / signal ${res.exit}}`);
+                opts.log.error(`${cmdStr()} Command failed with {code / signal ${res.exit}}`);
             }
             else {
-                log.info(`${cmdStr()} command exit: ${res.exit}`);
+                opts.log.info(`${cmdStr()} command exit: ${res.exit}`);
             }
 
             return resolve(res);

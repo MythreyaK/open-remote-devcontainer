@@ -27,7 +27,7 @@ export function initLogs(ctx: vscode.ExtensionContext) {
     _initLog(EXTENSION_PRETTY_NAME);
 
     try {
-        const logSlug = getWorkspaceId(getLocalWorkspaceFolder());
+        const logSlug = getWorkspaceId(getLocalWorkspaceFolder().toString(true));
         const [dir, name] = getLogfileInfo(ctx, logSlug);
 
         mkdirSync(dir, { recursive: true });
@@ -40,7 +40,9 @@ export function initLogs(ctx: vscode.ExtensionContext) {
 
     const logger = getLogSink();
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    logger.info(`Activating ${EXTENSION_PRETTY_NAME} (${EXTENSION_ID}) v${ctx.extension.packageJSON.version as string}`);
+    const logmsg = `Activating ${EXTENSION_PRETTY_NAME} (${EXTENSION_ID}) v${ctx.extension.packageJSON.version as string}`;
+    logger.info("—".repeat(logmsg.length + 1));
+    logger.info(logmsg);
     return logger;
 }
 

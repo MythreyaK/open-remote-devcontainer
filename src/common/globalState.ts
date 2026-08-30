@@ -10,7 +10,7 @@ export function getExtensionKey(key: string) {
 }
 
 export function getLocalWsfExtensionKey(key: string) {
-    const wsfId = getWorkspaceId(getLocalWorkspaceFolder());
+    const wsfId = getWorkspaceId(getLocalWorkspaceFolder().toString(true));
     return `${EXTENSION_ID}.${wsfId.slice(0, 8)}.${key}`;
 }
 

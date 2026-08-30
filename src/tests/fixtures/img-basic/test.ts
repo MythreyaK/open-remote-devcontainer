@@ -7,17 +7,18 @@ import { ContainerInspectResult, ContainerState } from "../../../engine/lifecycl
 import { ContainerConfig } from "../../../engine/container";
 import { parseEnv } from "../../../common/utils";
 
-import { init, setupFixture, jsonFormat, TEST_CODIUM_INFO, ENGINE } from "../../common";
+import { initMocks, setupFixture, jsonFormat, getMockSettings, TEST_CODIUM_INFO } from "../../common";
 
-if (ENGINE) { init(); }
+const SETTINGS = getMockSettings();
+initMocks();
 
-describe.skipIf(!ENGINE)("integration: lifecycle: img-basic", () => {
-    const engine = ENGINE!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+describe.skipIf(!SETTINGS.dockerPath)("integration: lifecycle: img-basic", async () => {
+    const engine = SETTINGS.dockerPath;
 
     let cc: ContainerConfig;
     let container: ContainerState;
 
-    const { localWsf, config } = setupFixture({ name: "image-basic", testDir: __dirname });
+    const { localWsf, config } = await setupFixture({ name: "image-basic", testDir: __dirname });
     const devcPath = path.join(localWsf, ".devcontainer/devcontainer.json");
 
     const localEnv = {
@@ -30,11 +31,11 @@ describe.skipIf(!ENGINE)("integration: lifecycle: img-basic", () => {
         // TODO: use auto-detection
         cc = ContainerConfig.create(localWsf, devcPath, config, localEnv);
 
-        container = await ContainerState.create(localWsf, cc);
+        container = await ContainerState.create(localWsf, cc, SETTINGS);
     }, 60 * 1000);
 
     test("workspace mounts exists", async () => {
-        const inspectResult = await run([engine, "inspect", container.getContainerName(), ...jsonFormat], localWsf, localEnv);
+        const inspectResult = await run([engine, "inspect", container.getContainerName(), ...jsonFormat], { cwd: localWsf, env: localEnv });
         expect(inspectResult.exit).eq(0);
 
         const mounts = (JSON.parse(inspectResult.stdout.trim()) as ContainerInspectResult)["Mounts"];

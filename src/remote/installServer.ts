@@ -1,29 +1,5 @@
-import * as vscode from "vscode";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-
-export interface ServerInfo {
-    version: string,
-    commit: string,
-    serverUrlTemplate: string,
-};
-
-export async function getProductJson() {
-    interface ProductJson {
-        commit: string,
-        version: string,
-        serverDownloadUrlTemplate: string,
-    }
-
-    const jsonPath = path.join(vscode.env.appRoot, "product.json");
-    const jsonData = JSON.parse(await fs.readFile(jsonPath, { encoding: "utf-8", flag: "r" })) as ProductJson;
-
-    return {
-        version: jsonData.version,
-        commit: jsonData.commit,
-        serverUrlTemplate: jsonData.serverDownloadUrlTemplate,
-    };
-}
 
 export interface ScriptInstallInfo {
     port: number,
