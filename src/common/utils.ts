@@ -77,3 +77,16 @@ export async function getProductJson(): Promise<ProductJson> {
         serverDownloadUrlTemplate: jsonData.serverDownloadUrlTemplate,
     };
 }
+
+export function getRemoteAuthorities() {
+    const auth = vscode.env.remoteAuthority;
+
+    if (!auth) { return [auth]; }
+
+    const inx = auth.indexOf("@");
+
+    if (inx > 0) {
+        return auth.split("@");
+    }
+    else { return [auth]; }
+}
