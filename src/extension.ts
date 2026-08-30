@@ -4,7 +4,7 @@ import * as cmds from "./extension/commands";
 import { BuildOpts } from "./engine/lifecycle";
 import { getLogSink, initLogs } from "./extension/log";
 import { AUTHORITY_BASE, DevContainerResolver } from "./remote/resolver";
-import { createDevcontainerConfigWatcher, isRemoteDevcontainerSession } from "./extension/workspace";
+import { createDevcontainerConfigWatcher, isRemoteDevcontainerSession, onWorkspaceReady } from "./extension/workspace";
 import { checkVersionAndNotify } from "./extension/releaseNotes";
 import { checkLegacySettings } from "./extension/settings";
 
@@ -34,14 +34,15 @@ export function activate(ctx: vscode.ExtensionContext) {
     });
 
     if (isRemoteDevcontainerSession()) {
-        void cmds.runPostAttachCommand().catch((e: unknown) => {
-            getLogSink().error(`runPostAttachCommand failed: ${JSON.stringify(e)}`);
-        });
-
-        void remoteResolver.onContainerReady.then(async () => {
-            await cmds.remotePromptRebuildIfStale(ctx);
-        }).catch((e: unknown) => {
-            getLogSink().error(`onContainerReady.then failed with error ${JSON.stringify(e)}`);
+        onWorkspaceReady()?.then(async () => {
+            getLogSink().info("onWorkspaceReady: workspace ready");
+            try {
+                await cmds.onRemoteReady(ctx);
+                getLogSink().info("onRemoteReady: OK");
+            }
+            catch (e: unknown) {
+                getLogSink().error(`onRemoteReady: Error ${JSON.stringify(e)}`);
+            }
         });
     }
 

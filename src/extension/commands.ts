@@ -69,13 +69,16 @@ export function showLogFile() {
     vscode.commands.executeCommand("vscode.open", vscode.Uri.file(path));
 }
 
-export async function runPostAttachCommand() {
+export async function onRemoteReady(ctx: vscode.ExtensionContext): Promise<void> {
+    getLogSink().info("onRemoteReady");
     const localWsf = getLocalWorkspaceFolder();
     const devcontainerJson = await findDevcontainerJson(localWsf);
     const parsedConfig = await parseDevcontainer(devcontainerJson);
     const cc = ContainerConfig.create(localWsf.fsPath, devcontainerJson.fsPath, parsedConfig);
 
     const cmds = cc.getLifecycleCmd(LifecycleCmd.postAttach);
+
+    await remotePromptRebuildIfStale(ctx);
 
     for (const [name, cmdArgs] of Object.entries(cmds)) {
         const task = new vscode.Task(
@@ -93,6 +96,18 @@ export async function runPostAttachCommand() {
             group: "devcontainer-postAttach",
         };
         vscode.tasks.executeTask(task);
+    }
+
+    for (const p of parsedConfig.forwardPorts) {
+        if (typeof p === "string") {
+            getLogSink().warn(`Skipping forwardPorts entry '${p}' (host:port compose format not supported)`);
+            continue;
+        }
+        else {
+            const remotePort = p;
+            getLogSink().info(`Forwarding remote port ${remotePort} -> to local http://localhost:${remotePort}`);
+            vscode.env.asExternalUri(vscode.Uri.parse(`http://localhost:${remotePort}`));
+        }
     }
 }
 

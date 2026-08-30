@@ -82,8 +82,6 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
     private serverHostPort: number | undefined;
 
     private statusItemFormatter: vscode.Disposable | undefined;
-    private onContainerReadyFunc?: () => void;
-    public readonly onContainerReady = new Promise<void>((r) => { this.onContainerReadyFunc = r; });
 
     constructor(context: vscode.ExtensionContext) {
         this.extensionCtx = context;
@@ -179,22 +177,8 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
         const ctkn = await this.containerState.getConnectionToken();
         progress.report({ message: "Opening remote...", increment: 10 });
 
-        this.onContainerReadyFunc?.();
-
         vscode.commands.executeCommand("setContext", "forwardedPortsViewEnabled", true);
         vscode.commands.executeCommand("setContext", "forwardedPortsFeaturesEnabled", true);
-
-        for (const p of parsedConfig.forwardPorts) {
-            if (typeof p === "string") {
-                getLogSink().warn(`Skipping forwardPorts entry '${p}' (host:port compose format not supported)`);
-                continue;
-            }
-            else {
-                const remotePort = p;
-                getLogSink().info(`Forwarding remote port ${remotePort} -> to local http://localhost:${remotePort}`);
-                vscode.env.asExternalUri(vscode.Uri.parse(`http://localhost:${remotePort}`));
-            }
-        }
 
         return new vscode.ResolvedAuthority(host, port, ctkn);
     }

@@ -144,6 +144,15 @@ export async function createDevcontainerConfigWatcher(ctx: vscode.ExtensionConte
     return watcher;
 }
 
+export function onWorkspaceReady() {
+    // wait for remote workspace
+    const wsf = vscode.workspace.workspaceFolders;
+    if (wsf && wsf.length > 0) {
+        return vscode.workspace.fs.stat(wsf[0].uri);
+    }
+    return undefined;
+}
+
 function onOpenNotify(_: string) {
     // TODO: Store preference per-workspace
     enum OpenOpts {
