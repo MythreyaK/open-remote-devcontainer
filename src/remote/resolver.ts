@@ -8,7 +8,7 @@ import { ContainerConfig, ContainerEngine } from "../engine/container";
 import { parseDevcontainer } from "../parser/parser";
 import { BuildOptIntent } from "../common/globalState";
 import { EngineError, InstallError, InternalError } from "../extension/error";
-import { getExtensionList, getSettings } from "../extension/settings";
+import { getSettings } from "../extension/settings";
 import { DEVCONTAINER_SERVER_LISTEN_PORT } from "../common/constants";
 import { setExecCtx, getExecCtx } from "../common/ctx/ctx";
 import { RemoteExecCtx } from "../common/ctx/remoteCtx";
@@ -140,7 +140,7 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
 
     private async createWindowTask(context: vscode.RemoteAuthorityResolverContext, progress: vscode.Progress<{ message?: string, increment?: number }>, _2: vscode.CancellationToken): Promise<vscode.ResolverResult> {
         const buildOpt = BuildOptIntent.get(this.extensionCtx) ?? BuildOpts.Default;
-        const settings = getSettings();
+        const settings = await getSettings();
         const engine = (() => {
             const e = path.parse(settings.dockerPath).base;
             if (e === "podman") { return ContainerEngine.podman; }
@@ -180,7 +180,7 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
         progress.report({ message: "Installing server...", increment: 30 });
 
         const { host, port } = await this.containerState.installServer([
-            ...getExtensionList(),
+            ...settings.defaultExtensions,
             ...parsedConfig.customizations?.vscode?.extensions ?? [],
         ]);
         this.serverHostPort = port;
@@ -194,8 +194,9 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
 
         // if exec server, host and port are on the remote machine. forward it out to the local machine
         if (context.execServer) {
-            const msg = connectToRemote(context.execServer, host, port);
-            return new vscode.ManagedResolvedAuthority(() => { return msg; }, ctkn);
+            return new vscode.ManagedResolvedAuthority(() => {
+                return connectToRemote(context.execServer!, host, port); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+            }, ctkn);
         }
         else {
             return new vscode.ResolvedAuthority(host, port, ctkn);

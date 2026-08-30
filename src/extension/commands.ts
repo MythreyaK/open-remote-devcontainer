@@ -25,7 +25,7 @@ export function getCmd(suffix: string) {
 }
 
 export async function getContainerEngineVersion() {
-    const engine = getSettings().dockerPath;
+    const engine = (await getSettings()).dockerPath;
     const { stdout } = await cmd.run([engine, "--version"], {});
     vscode.window.showInformationMessage(`${engine} version: ${stdout}`);
 }
@@ -150,7 +150,7 @@ function promptBuildOpt() {
 }
 
 export async function isConfigStale(localWsf: vscode.Uri, cc: ContainerConfig): Promise<boolean | undefined> {
-    const cmd = getEngineCmd(getSettings());
+    const cmd = getEngineCmd(await getSettings());
     const containerConfigId = await queryContainerConfigId(cmd, localWsf.fsPath);
 
     if (!containerConfigId) {
