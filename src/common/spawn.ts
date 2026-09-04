@@ -1,24 +1,9 @@
-import { LogOutputChannel } from "vscode";
 import * as chproc from "node:child_process";
-
-export type Envs = Record<string, string | undefined>;
-
-export interface CmdResult {
-    exit: number | NodeJS.Signals,
-    stdout: string,
-    stderr: string,
-};
+import { CmdResult, SpawnOpts } from "./opts";
 
 let cmdCount: number = 0;
 
 /* eslint-disable @typescript-eslint/no-confusing-void-expression */
-export interface SpawnOpts {
-    env?: Envs,
-    cwd?: string,
-    stdin?: string | undefined,
-    log: LogOutputChannel,
-}
-
 export function spawn(
     cmd: string,
     args: string[],

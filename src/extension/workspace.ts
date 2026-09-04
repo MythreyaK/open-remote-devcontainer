@@ -6,6 +6,7 @@ import { getLogSink } from "./log";
 import { ConfigError } from "./error";
 import { AUTHORITY_BASE, decodeRemoteAuthority } from "../remote/resolver";
 import * as cmds from "../extension/commands";
+import { getExecCtx } from "../common/ctx/ctx";
 
 export enum NotificationLevel {
     Info,
@@ -33,8 +34,9 @@ export function getWorkspaceId(localWsp: string): string {
 }
 
 async function fileExists(filePath: vscode.Uri): Promise<boolean> {
+    getLogSink().debug(`fileExists check: '${filePath.toString(true)}'`);
     try {
-        await vscode.workspace.fs.stat(filePath);
+        await getExecCtx().fs.stat(filePath);
         return true;
     }
     catch {
@@ -43,10 +45,11 @@ async function fileExists(filePath: vscode.Uri): Promise<boolean> {
 }
 
 export async function findDevcontainerJson(dir: vscode.Uri): Promise<vscode.Uri> {
+    getLogSink().debug(`Searching '${dir.toString(true)}' for config files ...`);
     const filePaths = ConfigPaths(dir);
     for (const f of filePaths) {
         if (await fileExists(f)) {
-            getLogSink().info(`Using devcontainer.json at ${f.toString(true)}`);
+            getLogSink().info(`Using devcontainer.json at '${f.toString(true)}'`);
             return f;
         }
     }
@@ -59,9 +62,10 @@ export function isRemoteDevcontainerSession(): boolean {
 }
 
 export function getLocalWorkspaceFolder(): vscode.Uri {
-    const remote = vscode.env.remoteAuthority;
-    if (remote?.startsWith(AUTHORITY_BASE)) {
-        return decodeRemoteAuthority(remote);
+    getLogSink().info(`getLocalWorkspaceFolder: remote is ${vscode.env.remoteAuthority}`);
+    if (isRemoteDevcontainerSession()) {
+        const remote = vscode.env.remoteAuthority;
+        return decodeRemoteAuthority(remote!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
     }
     // for remotes that aren't devcontainer (say, ssh), the workspace
     // is "local" from extension's pov, so use "local" workspace

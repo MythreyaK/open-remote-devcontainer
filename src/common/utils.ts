@@ -2,10 +2,8 @@ import * as vscode from "vscode";
 import * as fs from "node:fs/promises";
 import path from "node:path";
 
-import { run } from "../common/cmd";
-import { formatCmdErr } from "../common/spawn";
-import { SpawnError } from "../extension/error";
 import { Settings } from "../extension/settings";
+import { getExecCtx } from "./ctx/ctx";
 
 export interface HostUserInfo {
     uid: number,
@@ -52,19 +50,7 @@ export function getEngineCmd(s: Settings): string[] {
 }
 
 export async function getHostUserInfo(): Promise<HostUserInfo> {
-    const userName = await run(["/bin/sh", "-c", "id -n -u $UID"], {});
-    /* eslint-disable @typescript-eslint/no-non-null-assertion */
-    if (userName.exit === 0) {
-        return {
-            uid: process.getuid!(),
-            gid: process.getgid!(),
-            name: userName.stdout.trim(),
-        };
-    }
-    else {
-        throw new SpawnError(`Could not query host user info (uid, gid, name): ${formatCmdErr(userName)}`);
-    }
-    /* eslint-enable @typescript-eslint/no-non-null-assertion */
+    return getExecCtx().getHostUserInfo();
 }
 
 export interface ProductJson {
@@ -90,4 +76,17 @@ export async function getProductJson(): Promise<ProductJson> {
         commit: jsonData.commit,
         serverDownloadUrlTemplate: jsonData.serverDownloadUrlTemplate,
     };
+}
+
+export function getRemoteAuthorities() {
+    const auth = vscode.env.remoteAuthority;
+
+    if (!auth) { return [auth]; }
+
+    const inx = auth.indexOf("@");
+
+    if (inx > 0) {
+        return auth.split("@");
+    }
+    else { return [auth]; }
 }
