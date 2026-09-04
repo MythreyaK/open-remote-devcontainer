@@ -53,6 +53,27 @@ def format_dev_version(v: Version, label: str, sha: str, run: int = 1) -> str:
     bumped = bump_patch(v)
     return f"{bumped.base()}-{label}.{run}.{sha}"
 
+def extract_changelog(tag: str, path: str = "CHANGELOG.md") -> str:
+    heading = f"## {tag}"
+    lines: list[str] = []
+    capturing = False
+    with open(path) as f:
+        for line in f:
+            stripped = line.rstrip()
+            if stripped == heading:
+                capturing = True
+                continue
+            if capturing:
+                if stripped.startswith("## "):
+                    break
+                lines.append(stripped)
+
+    while lines and not lines[0]:
+        lines.pop(0)
+    while lines and not lines[-1]:
+        lines.pop()
+    return "\n".join(lines)
+
 def validate_tag(tag: str, pkg_ver: str, pkg_lock_ver: str) -> None:
     expected = tag.removeprefix("v")
 
@@ -239,6 +260,13 @@ def cmd_release(args: argparse.Namespace) -> None:
     set_github_output("vsix_sha256", sha_path)
     set_github_output("pre_release", "true" if version.is_prerelease else "false")
 
+def cmd_changelog(args: argparse.Namespace) -> None:
+    body = extract_changelog(args.tag)
+    if not body:
+        print(f"Error: no changelog found for {args.tag}", file=sys.stderr)
+        sys.exit(1)
+    print(body)
+
 def cmd_local(args: argparse.Namespace) -> None:
     run_pre_steps(args)
     branch = git_branch_name()
@@ -326,6 +354,9 @@ if __name__ == "__main__":
 
     sub.add_parser("local", help="Local dev build (current branch)")
 
+    cl = sub.add_parser("changelog", help="Extract changelog for a tag")
+    cl.add_argument("--tag", required=True, type=str, help="Tag name (e.g., v0.7.0)")
+
     sub.add_parser("test", help="Run self-tests")
 
     ver = sub.add_parser("version-check", help="Check tag, package.json, and package-lock.json versions match")
@@ -337,6 +368,7 @@ if __name__ == "__main__":
         "ci": cmd_ci,
         "release": cmd_release,
         "local": cmd_local,
+        "changelog": cmd_changelog,
         "test": cmd_test,
         "version-check": validate_versions,
     }

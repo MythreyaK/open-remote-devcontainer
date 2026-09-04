@@ -3,7 +3,7 @@
   "displayName": "Open Remote - Devcontainer",
   "description": "Build & run a devcontainer using Docker or Podman",
   "publisher": "mythreyak",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "license": "AGPL-3.0-only",
   "homepage": "https://github.com/mythreyak/open-remote-devcontainer#readme",
   "icon": "assets/icon.png",

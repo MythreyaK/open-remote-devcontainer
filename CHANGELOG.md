@@ -1,6 +1,31 @@
 # Open Remote - Devcontainer: Changelog
 
-## 0.7.0
+## v0.7.2
+
+- npm audit: bump fast-uri, qs
+- update changelog
+
+#### Misc:
+- CI: update build script to publish changelog b/w tag releases
+
+## v0.7.1
+
+- forwardPort, onPostAttach, and config watcher activate after remote window fully loads. Fixes race conditions where ports don't correctly forward connections
+- Better error messages for some actions
+
+#### Dev: misc code refactor
+Stability:
+  - npm audit: bump js-yaml, nanoid
+  - Harden environment variable parsing: filter invalid keys, shell noise. Improves stability
+  - Misc code refactor (check github for full changes)
+
+Prep for Remote-SSH:
+  - Correctly chain remote authorities: enables devcontainer-on-SSH workflows
+  - Filesystem operations now work transparently over remote connections (vscode.workspace.fs)
+  - Simplified engine configuration: single unified settings query instead of scattered calls
+  - Note: devcontainer over remote-ssh is **not** enabled/supported yet, wip
+
+## v0.7.0
 
 ### Breaking changes
 
