@@ -49,11 +49,11 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     private readonly localEnv: NodeJS.ProcessEnv;
     private readonly inferredMounts: InferredWorkspace;
 
-    private constructor(workspaceFolder: string, cfgPath: string, cfg: T, localEnv: NodeJS.ProcessEnv, opts: { engine: ContainerEngine } = { engine: ContainerEngine.none }) {
+    private constructor(workspaceFolder: string, cfgPath: string, cfg: T, localEnv: NodeJS.ProcessEnv, engine: ContainerEngine) {
         this.cfg = cfg;
         this.workspaceFolder = workspaceFolder;
         this.cfgPath = cfgPath;
-        this.engine = opts.engine;
+        this.engine = engine;
         this.localEnv = localEnv;
 
         // TODO: normalize mount
@@ -109,8 +109,8 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         }
     }
 
-    static create<T extends schema.Config>(workspacePath: string, cfgPath: string, cfg: T, localEnv: NodeJS.ProcessEnv = process.env, opts: { engine: ContainerEngine } = { engine: ContainerEngine.none }): ContainerConfig<T> {
-        return new ContainerConfig(workspacePath, cfgPath, cfg, localEnv, opts);
+    static create<T extends schema.Config>(workspacePath: string, cfgPath: string, cfg: T, localEnv: NodeJS.ProcessEnv = process.env, { engine = ContainerEngine.none }: { engine?: ContainerEngine } = {}): ContainerConfig<T> {
+        return new ContainerConfig(workspacePath, cfgPath, cfg, localEnv, engine);
     }
 
     public isImageBased(): this is ContainerConfig<schema.ImageDevcontainer> {
@@ -121,10 +121,10 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         return schema.isDockerfileBased(this.cfg);
     }
 
-    public getBuildCmd(this: ContainerConfig<schema.DockerfileDevcontainer>, opts: { noCache: boolean } = { noCache: false }): string[] {
+    public getBuildCmd(this: ContainerConfig<schema.DockerfileDevcontainer>, { noCache = false }: { noCache?: boolean } = {}): string[] {
         return [
             "build",
-            ...(opts.noCache ? ["--pull", "--no-cache"] : this.getCacheFromArgs()),
+            ...(noCache ? ["--pull", "--no-cache"] : this.getCacheFromArgs()),
             ...this.getBuildArgs(),
             "-t", this.getStage1ImageName(),
             "-f", this.getResolvedDockerfilePath(),
@@ -135,11 +135,11 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             .map(e => interpolateLocal(e, this.workspaceFolder, this.getRemoteMountDir(), this.localEnv));
     }
 
-    public getStage2BuildCmd(hostUserInfo: HostUserInfo, imgUser: string | undefined, opts: { noCache: boolean } = { noCache: false }): string[] {
+    public getStage2BuildCmd(hostUserInfo: HostUserInfo, imgUser: string | undefined, { noCache = false }: { noCache?: boolean } = {}): string[] {
         return [
             "build",
             // stage2 source is always local, so no --pull here
-            ...(opts.noCache ? ["--no-cache"] : []),
+            ...(noCache ? ["--no-cache"] : []),
             ...this.getStage2BuildArgs(hostUserInfo, imgUser),
             ...this.addLabels(),
             "-t", this.getStage2ImageName(),
@@ -195,7 +195,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
     }
 
     public getStage1ImageName(this: ContainerConfig<schema.DockerfileDevcontainer>): string {
-        // TODO: resolve symlinks?
+        // do not resolve symlinks
         // const safeImgName = this.workspacePath.replaceAll('/[^a-z0-9.-]', '-');
         return ContainerConfig._getStage1ImageName(this.workspaceFolder);
     }
@@ -211,15 +211,15 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         ];
     }
 
-    public getExecArgs(containerId: string, remoteEnvProbe: NodeJS.ProcessEnv, opts: ExecOpts = { tty: false, interactive: false, withRemoteEnv: true }): string[] {
+    public getExecArgs(containerId: string, remoteEnvProbe: NodeJS.ProcessEnv, { tty = false, interactive = false, withRemoteEnv = true }: ExecOpts = {}): string[] {
         return [
             "exec",
             ...this.addRemoteUser(),
-            ...(opts.withRemoteEnv ? this.addRemoteEnv(remoteEnvProbe) : []),
-            (opts.tty ? "-t" : ""),
-            (opts.interactive ? "-i" : ""),
+            ...(withRemoteEnv ? this.addRemoteEnv(remoteEnvProbe) : []),
+            (tty ? "-t" : ""),
+            (interactive ? "-i" : ""),
             containerId,
-            ...(opts.withRemoteEnv ? this.getUnsetRemoteEnvArgs() : []),
+            ...(withRemoteEnv ? this.getUnsetRemoteEnvArgs() : []),
         ].filter(Boolean);
     }
 

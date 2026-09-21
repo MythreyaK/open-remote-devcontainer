@@ -163,6 +163,19 @@ describe("lifecycle: dockerfile", () => {
         expect(stage2.endsWith(` ${__dirname}`)).toBe(true);
     });
 
+    test("build cmd: empty opts defaults noCache to false", () => {
+        const cc = ContainerConfig.create(localWsf, cfgPath, dockerfileCfg, localEnv);
+
+        const stage1 = cc.getBuildCmd({}).join(" ");
+        const _stage1 = cc.getBuildCmd().join(" ");
+        expect(stage1).eq(_stage1);
+        expect(stage1).not.includes("--no-cache");
+        expect(stage1).not.includes("--pull");
+
+        const stage2 = cc.getStage2BuildCmd(hostUserInfo, "root", {}).join(" ");
+        expect(stage2).not.includes("--no-cache");
+    });
+
     test("build cmd: --target flag", () => {
         const cfg = withDefaults({
             build: { dockerfile: "Dockerfile", target: "builder" },
@@ -343,6 +356,21 @@ describe("exec args", () => {
             .includes("-u dev");
 
         expect(args).not.includes("UNSET_ME=");
+    });
+
+    test("partial opts still includes defaults", () => {
+        const cfg = withDefaults({
+            image: "ubuntu",
+            remoteEnv: { SSH_AUTH_SOCK: "/tmp/ssh.sock", UNSET_ME: null },
+            remoteUser: "dev",
+        });
+        const cc = ContainerConfig.create(localWsf, cfgPath, cfg, {});
+        const args = cc.getExecArgs("cid123", {}, { interactive: true }).join(" ");
+
+        expect(args)
+            .includes("--env SSH_AUTH_SOCK=/tmp/ssh.sock")
+            .includes("env -u UNSET_ME")
+            .includes("-i");
     });
 
     test("withRemoteEnv=false skips all remoteEnv injection", () => {
