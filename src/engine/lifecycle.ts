@@ -318,18 +318,18 @@ export class ContainerState {
         }
     }
 
-    public async tryStopContainer(opts: { force: boolean } = { force: false }) {
+    public async tryStopContainer({ force = false }: { force?: boolean } = {}) {
         const ret = await run([
             ...this.cmd,
             "stop",
-            ...(opts.force ? ["-t", "1"] : []),
+            ...(force ? ["-t", "1"] : []),
             this.getContainerName(),
         ], { cwd: this.workspaceFolder });
         return ret;
     }
 
-    public async stopContainer(opts: { force: boolean } = { force: false }) {
-        const ret = await this.tryStopContainer(opts);
+    public async stopContainer({ force = false }: { force?: boolean } = {}) {
+        const ret = await this.tryStopContainer({ force });
 
         if (ret.exit !== 0) {
             throw new EngineError(`Could not stop container :: ${formatCmdErr(ret)}`);
@@ -350,11 +350,11 @@ export class ContainerState {
         }
     }
 
-    public async tryRemoveContainer(opts: { force: boolean } = { force: false }) {
+    public async tryRemoveContainer({ force = false }: { force?: boolean } = {}) {
         const ret = await run([
             ...this.cmd,
             "rm",
-            ...(opts.force ? ["--force"] : []),
+            ...(force ? ["--force"] : []),
             this.getContainerName(),
         ], { cwd: this.workspaceFolder });
         return ret;

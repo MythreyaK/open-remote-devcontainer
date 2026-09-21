@@ -1,5 +1,14 @@
 # Open Remote - Devcontainer: Changelog
 
+## v0.7.3
+
+- Fix regression with `remoteEnv`: `remoteEnv` in v0.7.1 and v0.7.2 was 
+  silently ignored and was not applied to containers
+
+#### Dev:
+- Bump node to 24, CI actions/checkout to v7.0.1
+- npm audit: bump dev deps @types/node, @vscode/vsce, @vitest/coverage-v8, vitest
+
 ## v0.7.2
 
 - npm audit: bump fast-uri, qs
