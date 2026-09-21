@@ -210,17 +210,17 @@
   },
   "devDependencies": {
     "@stylistic/eslint-plugin": "^5.10.0",
-    "@types/node": "^22.20.0",
+    "@types/node": "^24.13.6",
     "@types/vscode": "^1.110.0",
-    "@vitest/coverage-v8": "^4.1.10",
+    "@vitest/coverage-v8": "^4.1.11",
     "@vscode/dts": "^0.4.1",
-    "@vscode/vsce": "^3.9.2",
+    "@vscode/vsce": "^4.0.0",
     "esbuild": "^0.28.1",
     "eslint": "^10.5.0",
     "jest-mock-vscode": "^4.12.0",
     "ovsx": "^1.0.2",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.56.1",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.11"
   }
 }
