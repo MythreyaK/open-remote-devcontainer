@@ -135,3 +135,9 @@ export async function setupFixture(opts: { name: string, testDir: string }): Pro
     return { localWsf: testDir, localWsfBasename: path.parse(testDir).base, config: config };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment */
+
+export function getTestTimeout(defaultDurSeconds: number): number {
+    const envTimeout = process.env.TEST_TIMEOUT;
+    const timeout = envTimeout ? Number.parseInt(envTimeout) : defaultDurSeconds;
+    return timeout * 1000;
+}

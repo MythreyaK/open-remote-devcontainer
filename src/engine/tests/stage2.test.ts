@@ -9,7 +9,7 @@ import { HostUserInfo } from "../../common/utils";
 import * as schema from "../../parser/schema";
 import * as lf from "../lifecycle";
 
-import { getMockSettings, initMocks } from "../../tests/common";
+import { getMockSettings, getTestTimeout, initMocks } from "../../tests/common";
 import { CAT_PIPE_STDIN_WORKAROUND } from "../../common/constants";
 
 function testWsf(label: string) {
@@ -78,7 +78,7 @@ describe.skipIf(!SETTINGS.dockerPath)("stage2 UID remapping", () => {
         const warnMsg = Array.from(output.matchAll(lf.STAGE2_WARN_MSG_REGEX));
         expect(warnMsg.length).eq(1);
         expect(warnMsg[0][1]).includes("Using user root");
-    }, 45_000);
+    }, getTestTimeout(45));
 
     test("remaps existing user UID/GID to host values", async () => {
         const { localWsf, cfgPath } = testWsf("remap-basic");
@@ -89,7 +89,7 @@ describe.skipIf(!SETTINGS.dockerPath)("stage2 UID remapping", () => {
         const { uid, gid } = await getRemoteUserInfo(cc, "ubuntu");
         expect(uid).eq("5000");
         expect(gid).eq("5000");
-    }, 45_000);
+    }, getTestTimeout(45));
 
     test("remaps UID when host GID already exists in container", async () => {
         // Regression test for upstream bugs:
@@ -104,7 +104,7 @@ describe.skipIf(!SETTINGS.dockerPath)("stage2 UID remapping", () => {
         const { uid, gid } = await getRemoteUserInfo(cc, "ubuntu");
         expect(uid).eq("2345");
         expect(gid).eq("100");
-    }, 45_000);
+    }, getTestTimeout(45));
 
     test("UPDATE_REMOTE_UID=false skips remapping", async () => {
         const { localWsf, cfgPath } = testWsf("skip-remap");
@@ -118,7 +118,7 @@ describe.skipIf(!SETTINGS.dockerPath)("stage2 UID remapping", () => {
 
         const { uid } = await getRemoteUserInfo(cc, "ubuntu");
         expect(uid).not.eq("9999");
-    }, 45_000);
+    }, getTestTimeout(45));
 
     test("nonexistent user fails with descriptive error", async () => {
         const { localWsf, cfgPath } = testWsf("no-user");
@@ -130,7 +130,7 @@ describe.skipIf(!SETTINGS.dockerPath)("stage2 UID remapping", () => {
         const errMsg = Array.from(output.matchAll(lf.STAGE2_ERR_MSG_REGEX));
         expect(errMsg.length).toBeGreaterThanOrEqual(1);
         expect(errMsg[0][1]).includes("does not exist in container");
-    }, 45_000);
+    }, getTestTimeout(45));
 
     test("UID conflict: moves colliding user before remapping", async () => {
         const { localWsf, cfgPath } = testWsf("uid-conflict");
@@ -159,7 +159,7 @@ describe.skipIf(!SETTINGS.dockerPath)("stage2 UID remapping", () => {
         // original owner of uid 1000 moved to 1000+1234
         const { uid: movedUid } = await getRemoteUserInfo(cc, "ubuntu");
         expect(movedUid).eq("2234");
-    }, 45_000);
+    }, getTestTimeout(45));
 });
 
 describe.skipIf(SETTINGS.dockerPath !== "podman")("podman: --userns=keep-id", () => {
@@ -192,7 +192,7 @@ describe.skipIf(SETTINGS.dockerPath !== "podman")("podman: --userns=keep-id", ()
 
         const cleanup = await container.engineExec(["rm", `${wsDir}/${marker}`]);
         expect(cleanup.exit).eq(0);
-    }, 60_000);
+    }, getTestTimeout(60));
 
     test("non-root remoteUser: uid inside container matches host uid", async () => {
         const { localWsf, cfgPath } = testWsf("podman-keepid-uid");
@@ -204,7 +204,7 @@ describe.skipIf(SETTINGS.dockerPath !== "podman")("podman: --userns=keep-id", ()
         const res = await container.engineExec(["id", "-u"]);
         expect(res.exit).eq(0);
         expect(res.stdout.trim()).eq(String(process.getuid?.()));
-    }, 60_000);
+    }, getTestTimeout(60));
 
     test("root remoteUser: no keep-id, workspace still accessible", async () => {
         const { localWsf, cfgPath } = testWsf("podman-root");
@@ -223,5 +223,5 @@ describe.skipIf(SETTINGS.dockerPath !== "podman")("podman: --userns=keep-id", ()
 
         const cleanup = await container.engineExec(["rm", `${wsDir}/podman-root-test`]);
         expect(cleanup.exit).eq(0);
-    }, 60_000);
+    }, getTestTimeout(60));
 });

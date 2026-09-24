@@ -6,7 +6,7 @@ import { ContainerState } from "../../../engine/lifecycle";
 import { ContainerConfig } from "../../../engine/container";
 import * as schema from "../../../parser/schema";
 
-import { initMocks, setupFixture, jsonFormat, getMockSettings } from "../../common";
+import { initMocks, setupFixture, jsonFormat, getMockSettings, getTestTimeout } from "../../common";
 
 const SETTINGS = getMockSettings();
 initMocks();
@@ -51,7 +51,7 @@ describe.skipIf(!SETTINGS.dockerPath)("integration: lifecycle: img-pull", async 
         const cId = await container.getContainerId();
 
         expect(cId.length).toBeGreaterThan(16);
-    }, 60_000);
+    }, getTestTimeout(60));
 
     test("getConnectionToken returns correct token over multiple install (without force)", async () => {
         const firstInstall = await container.installServer();
@@ -100,7 +100,7 @@ describe.skipIf(!SETTINGS.dockerPath)("integration: lifecycle: img-pull", async 
             const iterTok = await container.getConnectionToken();
             expect(iterTok).eq(token);
         }
-    }, 60_000);
+    }, getTestTimeout(60));
 
     test("getConnectionToken dies on stopped container", async () => {
         const installServer = await container.installServer();
@@ -108,5 +108,5 @@ describe.skipIf(!SETTINGS.dockerPath)("integration: lifecycle: img-pull", async 
 
         await container.stopContainer();
         await expect(container.getConnectionToken()).rejects.toThrow(Error);
-    }, 60_000);
+    }, getTestTimeout(60));
 });
