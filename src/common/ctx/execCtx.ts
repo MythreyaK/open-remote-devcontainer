@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 
 import { HostUserInfo } from "../utils";
 import { CmdResult, RunOpts } from "../opts";
+import { Settings } from "../settings";
 
 export enum ExecCtxKind {
     Local = "Local",
@@ -21,4 +22,5 @@ export interface ExecCtx {
     run(cmdArgs: string[], opts: RunOpts): Promise<CmdResult>,
     getHostUserInfo(): Promise<HostUserInfo>,
     env(): Promise<vscode.ExecEnvironment>,
+    getSettings(): Promise<Settings>,
 }

@@ -6,6 +6,8 @@ import { formatCmdErr } from "../spawn";
 import { getLogSink } from "../../extension/log";
 import { SpawnError } from "../../extension/error";
 import { CmdResult, RunOpts } from "../opts";
+import { getRemoteserverConfiguration } from "../remoteSettings";
+import * as settings from "../settings";
 
 let cmdCount: number = 0;
 
@@ -77,6 +79,19 @@ export class RemoteExecCtx implements ExecCtx {
 
     async env() {
         return this.execServer.env();
+    }
+
+    async getSettings(): Promise<settings.Settings> {
+        // using the vscode api is fine iff the remote is already connected.
+        // This is called mostly if not exclusively during exec-chained connection,
+        // so we need to parse settings ourselves from the remote machine.
+        // Since we're already doing it ourselves anyway, this is what will be used
+        // even after a remote connection instead of the vscode api
+        // TODO: Note that this doesn't combine { ...local, ...machine, ...user },
+        // fetches exactly the machine's global config (the ssh host's settings)
+        const ret = await getRemoteserverConfiguration();
+        getLogSink().debug(`RemoteExecCtx.getSettings(): ${JSON.stringify(ret)}`);
+        return ret;
     }
 }
 

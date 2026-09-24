@@ -11,7 +11,7 @@ import { findDevcontainerJson } from "../extension/workspace";
 import { parseDevcontainer } from "../parser/parser";
 import { ContainerConfig } from "../engine/container";
 import { Config } from "../parser/schema";
-import { Settings } from "../extension/settings";
+import { Settings } from "../common/settings";
 import * as utils from "../common/utils";
 
 const DEBUG_TESTS: boolean = process.env.DEBUG_TESTS !== undefined

@@ -8,11 +8,11 @@ import { ContainerConfig, ContainerEngine } from "../engine/container";
 import { parseDevcontainer } from "../parser/parser";
 import { BuildOptIntent } from "../common/globalState";
 import { EngineError, InstallError, InternalError } from "../extension/error";
-import { getSettings } from "../extension/settings";
 import { DEVCONTAINER_SERVER_LISTEN_PORT } from "../common/constants";
 import { setExecCtx, getExecCtx } from "../common/ctx/ctx";
 import { RemoteExecCtx } from "../common/ctx/remoteCtx";
 import { SSHDestination } from "../extension/ssh";
+import * as utils from "../common/utils";
 
 export const AUTHORITY_BASE: string = "devcontainer-remote";
 
@@ -141,7 +141,7 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
 
     private async createWindowTask(context: vscode.RemoteAuthorityResolverContext, progress: vscode.Progress<{ message?: string, increment?: number }>, _2: vscode.CancellationToken): Promise<vscode.ResolverResult> {
         const buildOpt = BuildOptIntent.get(this.extensionCtx) ?? BuildOpts.Default;
-        const settings = await getSettings();
+        const settings = await getExecCtx().getSettings();
         const engine = (() => {
             const e = path.parse(settings.dockerPath).base;
             if (e === "podman") { return ContainerEngine.podman; }
@@ -167,9 +167,15 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
 
         const remoteHost = (() => {
             const auth = vscode.env.remoteAuthority ?? "";
-            if (!auth.includes("@")) { return undefined; }
+            if (!auth.includes("@")) {
+                return undefined;
+            }
+
             const [_devc, ssh, ..._rest] = auth.split("@");
             const [_sshAuthority, sshEncoded] = ssh.split("+");
+
+            utils.consume(_devc, _rest, _sshAuthority);
+
             return SSHDestination.parseEncoded(sshEncoded).hostname;
         })();
 

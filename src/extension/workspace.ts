@@ -138,14 +138,11 @@ export async function createDevcontainerConfigWatcher(ctx: vscode.ExtensionConte
     watcher.onDidChange(() => {
         if (!isRemoteDevcontainerSession()) { return; }
         if (debounceTimer) { clearTimeout(debounceTimer); }
-        debounceTimer = setTimeout(async () => {
-            try {
-                await cmds.remotePromptRebuildIfStale(ctx);
-            }
-            catch (e: unknown) {
+        debounceTimer = setTimeout(() => {
+            cmds.remotePromptRebuildIfStale(ctx).catch((e: unknown) => {
                 getLogSink().error(`remotePromptRebuildIfStale failed: ${fmtErr(e)}`);
-            }
-        }, 500);
+            });
+        }, 250);
     });
     watcher.onDidCreate(() => { updateHasConfigContext(true); });
     watcher.onDidDelete(() => { updateHasConfigContext(false); });

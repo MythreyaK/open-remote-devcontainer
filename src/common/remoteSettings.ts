@@ -3,13 +3,12 @@ import path from "node:path";
 
 import * as jc from "jsonc-parser";
 
-import { getExecCtx } from "../common/ctx/ctx";
-import { getProductJson, getRemoteAuthorities } from "../common/utils";
-import { InternalError } from "./error";
+import { getExecCtx } from "./ctx/ctx";
+import { getProductJson, getRemoteAuthorities, fmtErr } from "./utils";
+import { InternalError } from "../extension/error";
 import { getConfig, Settings } from "./settings";
-import { findSSHServerInstallPath, SSHDestination } from "./ssh";
-import { getLogSink } from "./log";
-import { fmtErr } from "../common/utils";
+import { findSSHServerInstallPath, SSHDestination } from "../extension/ssh";
+import { getLogSink } from "../extension/log";
 
 /**
  *
@@ -21,6 +20,7 @@ import { fmtErr } from "../common/utils";
  * of regex keys (for server/hostnames) and values as paths.
  *
  * TODO: Windows support, and merge local settings
+ *       merged = { ...local, ...machine, ...user }?
  *
  * @returns `Settings` on the remote machine
  */

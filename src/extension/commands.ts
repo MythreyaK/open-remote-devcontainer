@@ -2,7 +2,6 @@ import * as vscode from "vscode";
 
 import * as cmd from "../common/cmd";
 import * as workspace from "./workspace";
-import { getSettings } from "./settings";
 import { ContainerConfig, LifecycleCmd } from "../engine/container";
 import { parseDevcontainer } from "../parser/parser";
 import { encodeRemoteAuthority } from "../remote/resolver";
@@ -35,7 +34,7 @@ export async function setupConfigWatcher(ctx: vscode.ExtensionContext): Promise<
 }
 
 export async function getContainerEngineVersion() {
-    const engine = (await getSettings()).dockerPath;
+    const engine = (await getExecCtx().getSettings()).dockerPath;
     const { stdout } = await cmd.run([engine, "--version"], {});
     vscode.window.showInformationMessage(`${engine} version: ${stdout}`);
 }
@@ -164,7 +163,7 @@ function promptBuildOpt() {
 }
 
 export async function isConfigStale(localWsf: vscode.Uri, cc: ContainerConfig): Promise<boolean | undefined> {
-    const cmd = getEngineCmd(await getSettings());
+    const cmd = getEngineCmd(await getExecCtx().getSettings());
     const containerConfigId = await queryContainerConfigId(cmd, localWsf.fsPath);
 
     if (!containerConfigId) {

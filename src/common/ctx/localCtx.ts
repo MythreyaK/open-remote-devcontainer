@@ -7,6 +7,7 @@ import { getLogSink } from "../../extension/log";
 import { SpawnError } from "../../extension/error";
 import { CmdResult, RunOpts } from "../opts";
 import { spawnRemote } from "./remoteCtx";
+import * as settings from "../settings";
 
 class LocalFsCtx implements FsCtx {
     async stat(path: vscode.Uri): Promise<vscode.FileStat> {
@@ -66,5 +67,20 @@ export class LocalExecCtx implements ExecCtx {
             env: process.env as vscode.ProcessEnv,
             osPlatform: process.platform,
         };
+    }
+
+    // eslint-disable-next-line  @typescript-eslint/require-await
+    async getSettings(): Promise<settings.Settings> {
+        // for user-local or remote-local workspace, settings is just
+        // querying it via vscode's API it does the right thing even
+        // if on a remote machine
+        const ret = settings.withDefaults({
+            dockerPath: settings.getConfig<string>("dockerPath"),
+            extraArgs: settings.getConfig<string[]>("extraArgs"),
+            defaultExtensions: settings.getConfig<string[]>("defaultExtensions"),
+        });
+
+        getLogSink().debug(`LocalExecCtx.getSettings(): ${JSON.stringify(ret)}`);
+        return ret;
     }
 }

@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import * as fs from "node:fs/promises";
 import path from "node:path";
 
-import { Settings } from "../extension/settings";
+import { Settings } from "./settings";
 import { getExecCtx } from "./ctx/ctx";
 
 export function fmtErr(e: unknown): string {
@@ -98,4 +98,8 @@ export function getRemoteAuthorities(): string[] | undefined {
         return auth.split("@");
     }
     else { return [auth]; }
+}
+
+export function consume(..._: unknown[]) {
+    void (_);
 }
