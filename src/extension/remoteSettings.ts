@@ -9,6 +9,7 @@ import { InternalError } from "./error";
 import { getConfig, Settings } from "./settings";
 import { findSSHServerInstallPath, SSHDestination } from "./ssh";
 import { getLogSink } from "./log";
+import { fmtErr } from "../common/utils";
 
 /**
  *
@@ -81,12 +82,7 @@ export async function getRemoteserverConfiguration(): Promise<Settings> {
         return await readConfig(remoteInstallPath ?? DEFAULT_DIR);
     }
     catch (e: unknown) {
-        if (e instanceof Error) {
-            getLogSink().error(`getRemoteserverConfiguration: returning local cfg, reading remote config failed: ${e.message}`);
-        }
-        else {
-            getLogSink().error(`getRemoteserverConfiguration: returning local cfg, reading remote config failed with unknown error: ${JSON.stringify(e)}`);
-        }
+        getLogSink().error(`getRemoteserverConfiguration: returning local cfg, reading remote config failed ${fmtErr(e)}`);
         return {
             dockerPath: getConfig<string>("dockerPath") ?? "docker",
             extraArgs: getConfig<string[]>("extraArgs") ?? [],

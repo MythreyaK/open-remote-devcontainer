@@ -4,11 +4,12 @@ import * as cmds from "./extension/commands";
 import { BuildOpts } from "./engine/lifecycle";
 import { getLogSink, initLogs } from "./extension/log";
 import { AUTHORITY_BASE, DevContainerResolver } from "./remote/resolver";
-import { createDevcontainerConfigWatcher, isRemoteDevcontainerSession, onWorkspaceReady } from "./extension/workspace";
+import { isRemoteDevcontainerSession, onWorkspaceReady } from "./extension/workspace";
 import { checkVersionAndNotify } from "./extension/releaseNotes";
 import { checkLegacySettings } from "./extension/settings";
 import { setExecCtx } from "./common/ctx/ctx";
 import { LocalExecCtx } from "./common/ctx/localCtx";
+import { fmtErr } from "./common/utils";
 
 export function activate(ctx: vscode.ExtensionContext) {
     const logger = initLogs(ctx);
@@ -29,32 +30,36 @@ export function activate(ctx: vscode.ExtensionContext) {
         logger,
     );
 
-    void createDevcontainerConfigWatcher(ctx).then((watcher) => {
-        ctx.subscriptions.push(watcher);
-    }).catch((e: unknown) => {
-        getLogSink().error(`createDevcontainerConfigWatcher failed: ${JSON.stringify(e)}`);
-    });
-
     if (isRemoteDevcontainerSession()) {
         onWorkspaceReady()?.then(async () => {
             getLogSink().info("onWorkspaceReady: workspace ready");
+            ctx.subscriptions.push(await cmds.setupConfigWatcher(ctx));
             try {
                 await cmds.onRemoteReady(ctx);
                 getLogSink().info("onRemoteReady: OK");
             }
             catch (e: unknown) {
-                getLogSink().error(`onRemoteReady: Error ${JSON.stringify(e)}`);
+                getLogSink().error(`onRemoteReady: Error ${fmtErr(e)}`);
             }
         });
     }
     else {
+        void cmds.setupConfigWatcher(ctx).then((watcher) => {
+            ctx.subscriptions.push(watcher);
+        });
+
         // by "local", we mean "workspace-local". So on a remote machine (say ssh), local
         // means workspace-local. So spawn has to use the underlying resolver's exec server
         // plead it for one
         if (vscode.env.remoteAuthority /* && !isRemoteDevcontainerSession() */) {
-            vscode.workspace.getRemoteExecServer(vscode.env.remoteAuthority).then((server) => {
-                if (server) { setExecCtx(new LocalExecCtx(server)); }
-            });
+            vscode.workspace.getRemoteExecServer(vscode.env.remoteAuthority).then(
+                (server: vscode.ExecServer | undefined) => {
+                    if (server) { setExecCtx(new LocalExecCtx(server)); }
+                },
+                (err: unknown) => {
+                    getLogSink().error(`Could not getRemoteExecServer on '${vscode.env.remoteAuthority}'. Error: ${fmtErr(err)}`);
+                },
+            );
         }
     }
 

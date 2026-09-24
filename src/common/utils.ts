@@ -5,6 +5,15 @@ import path from "node:path";
 import { Settings } from "../extension/settings";
 import { getExecCtx } from "./ctx/ctx";
 
+export function fmtErr(e: unknown): string {
+    if (e instanceof Error) {
+        return e.stack ?? e.message;
+    }
+    else {
+        return `unknown error: ${JSON.stringify(e)}`;
+    }
+}
+
 export interface HostUserInfo {
     uid: number,
     gid: number,

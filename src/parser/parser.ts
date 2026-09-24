@@ -5,6 +5,7 @@ import * as schema from "./schema";
 import { ParseError } from "../extension/error";
 import { getExecCtx } from "../common/ctx/ctx";
 import { getLogSink } from "../extension/log";
+import { fmtErr } from "../common/utils";
 
 /* eslint-disable @typescript-eslint/unified-signatures */
 export async function parseDevcontainer(fpath: vscode.Uri): Promise<schema.Config>;
@@ -27,7 +28,7 @@ export async function parseDevcontainer(arg: string | vscode.Uri): Promise<schem
                 return await getExecCtx().fs.read(arg);
             }
             catch (e) {
-                throw new ParseError(`Could not read devcontainer.json file at ${arg.toString(true)}: ${JSON.stringify(e)}`);
+                throw new ParseError(`Could not read devcontainer.json file at ${arg.toString(true)}: ${fmtErr(e)}`);
             };
         })();
 
