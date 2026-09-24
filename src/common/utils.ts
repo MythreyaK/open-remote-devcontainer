@@ -87,10 +87,10 @@ export async function getProductJson(): Promise<ProductJson> {
     };
 }
 
-export function getRemoteAuthorities() {
+export function getRemoteAuthorities(): string[] | undefined {
     const auth = vscode.env.remoteAuthority;
 
-    if (!auth) { return [auth]; }
+    if (!auth) { return undefined; }
 
     const inx = auth.indexOf("@");
 

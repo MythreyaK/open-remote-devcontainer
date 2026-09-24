@@ -32,7 +32,7 @@ export class LocalExecCtx implements ExecCtx {
     constructor(execServer?: vscode.ExecServer) {
         // By ensuring file paths are vscode.Uri, remote-local files are resolved automatically by vscode
         // nothing special to do here
-        this.kind = (execServer === undefined) ? ExecCtxKind.LocalSSH : ExecCtxKind.Local;
+        this.kind = (execServer === undefined) ? ExecCtxKind.Local : ExecCtxKind.LocalSSH;
         this.execServer = execServer;
         this.fs = new LocalFsCtx();
     }

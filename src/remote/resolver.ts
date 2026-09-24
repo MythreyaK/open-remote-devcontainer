@@ -280,6 +280,7 @@ async function connectToRemote(execServer: vscode.ExecServer, host: string, port
             onDidClose.fire(undefined);
         },
         (err: unknown) => {
+            onDidEnd.fire();
             onDidClose.fire(err instanceof Error ? err : new Error(String(err)));
         },
     );

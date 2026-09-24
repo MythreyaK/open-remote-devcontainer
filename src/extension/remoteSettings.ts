@@ -31,16 +31,19 @@ export async function getRemoteserverConfiguration(): Promise<Settings> {
     // get hostname from ssh
     // and chained is always at inx 1, that we chain to
     const auths = getRemoteAuthorities();
-    const sshAuthority = auths[1];
 
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    if (auths === undefined || sshAuthority === undefined) {
+    if (auths === undefined || auths[1] === undefined) {
         // man i dunno
         throw new InternalError("getRemoteserverConfiguration: Expected SSH authority to exist");
     }
 
-    const hostname = SSHDestination.parse(sshAuthority).hostname;
+    const sshRemote = auths[1];
+    const [sshAuthority, encodedSSH] = sshRemote.split("+");
+    const hostname = SSHDestination.parseEncoded(encodedSSH).hostname;
     const remoteSysenv = await getExecCtx().env();
+
+    getLogSink().info(`SSH authority is '${sshAuthority}'+'${hostname}' (encoded: '${encodedSSH}')`);
 
     if (!("HOME" in remoteSysenv.env)) {
         throw new InternalError("HOME was undefined on remote env");
@@ -70,7 +73,7 @@ export async function getRemoteserverConfiguration(): Promise<Settings> {
         .get<Record<string, string>>("serverInstallPath");
 
     // default is home if not configured
-    const remoteInstallPath = findSSHServerInstallPath(sshAuthority, serverInstallPathMap ?? {});
+    const remoteInstallPath = findSSHServerInstallPath(hostname, serverInstallPathMap ?? {});
 
     const logmsg = remoteInstallPath
         ? `serverInstallPath for host ${hostname} = ${remoteInstallPath}`

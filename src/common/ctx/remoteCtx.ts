@@ -99,7 +99,7 @@ export async function spawnRemote(execServer: vscode.ExecServer, cmdArgs: string
 
     const spawned = await execServer.spawn(cmd, args, {
         cwd: opts.cwd,
-        env: env,
+        env: { ...env, BUILDKIT_PROGRESS: "plain" },
     });
 
     if (opts.stdin !== undefined) {
@@ -109,16 +109,17 @@ export async function spawnRemote(execServer: vscode.ExecServer, cmdArgs: string
 
     let stdout = "";
     let stderr = "";
-    const decoder = new TextDecoder("utf-8");
+    const stdoutDecoder = new TextDecoder("utf-8");
+    const stderrDecoder = new TextDecoder("utf-8");
 
     spawned.stdout.onDidReceiveMessage((data: Uint8Array) => {
-        const chunk = decoder.decode(data, { stream: true });
+        const chunk = stdoutDecoder.decode(data, { stream: true });
         stdout += chunk;
         log.debug(`RemoteExecCtx.stdout.onDidReceiveMessage[${cmdStr()}]: len ${chunk.length}, chunk: '${chunk.trim()}'`);
     });
 
     spawned.stderr.onDidReceiveMessage((data: Uint8Array) => {
-        const chunk = decoder.decode(data, { stream: true });
+        const chunk = stderrDecoder.decode(data, { stream: true });
         stderr += chunk;
         log.debug(`RemoteExecCtx.stderr.onDidReceiveMessage[${cmdStr()}]: len ${chunk.length}, chunk: '${chunk.trim()}'`);
     });
