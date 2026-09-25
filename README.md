@@ -56,7 +56,6 @@ These features are not supported, but might be added in the future.
 - config: `hostRequirements`
 - config: `waitFor`
 - named config files `.devcontainer/<name>/devcontainer.json`
-- devcontainer on a remote machine (wip!)
 
 While this extension might work with `vscode`, it is not supported. 
 

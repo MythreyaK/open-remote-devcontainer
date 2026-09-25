@@ -11,7 +11,7 @@ import { findDevcontainerJson } from "../extension/workspace";
 import { parseDevcontainer } from "../parser/parser";
 import { ContainerConfig } from "../engine/container";
 import { Config } from "../parser/schema";
-import { Settings } from "../extension/settings";
+import { Settings } from "../common/settings";
 import * as utils from "../common/utils";
 
 const DEBUG_TESTS: boolean = process.env.DEBUG_TESTS !== undefined
@@ -135,3 +135,9 @@ export async function setupFixture(opts: { name: string, testDir: string }): Pro
     return { localWsf: testDir, localWsfBasename: path.parse(testDir).base, config: config };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment */
+
+export function getTestTimeout(defaultDurSeconds: number): number {
+    const envTimeout = process.env.TEST_TIMEOUT;
+    const timeout = envTimeout ? Number.parseInt(envTimeout) : defaultDurSeconds;
+    return timeout * 1000;
+}

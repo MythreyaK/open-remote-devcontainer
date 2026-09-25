@@ -1,24 +1,5 @@
 import * as vscode from "vscode";
 
-export interface Settings {
-    dockerPath: string,
-    extraArgs: string[],
-    defaultExtensions: string[],
-}
-
-// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
-export function getConfig<T>(key: string): T | undefined {
-    return vscode.workspace.getConfiguration("dev.containers").get<T>(key);
-}
-
-export function getSettings(): Settings {
-    return {
-        dockerPath: getConfig<string>("dockerPath") ?? "docker",
-        extraArgs: getConfig<string[]>("extraArgs") ?? [],
-        defaultExtensions: getConfig<string[]>("defaultExtensions") ?? [],
-    };
-}
-
 // TODO: remove after 0.8.0
 const LEGACY_KEYS = ["engine", "extraArgs", "containerBinary"];
 
@@ -39,8 +20,4 @@ export function checkLegacySettings() {
             }
         });
     }
-}
-
-export function getExtensionList(): string[] {
-    return (getConfig<string[]>("defaultExtensions") ?? []);
 }

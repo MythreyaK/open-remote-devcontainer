@@ -7,7 +7,7 @@ import { ContainerInspectResult, ContainerState } from "../../../engine/lifecycl
 import { ContainerConfig } from "../../../engine/container";
 import { parseEnv } from "../../../common/utils";
 
-import { initMocks, setupFixture, jsonFormat, getMockSettings, TEST_CODIUM_INFO } from "../../common";
+import { initMocks, setupFixture, jsonFormat, getMockSettings, TEST_CODIUM_INFO, getTestTimeout } from "../../common";
 
 const SETTINGS = getMockSettings();
 initMocks();
@@ -32,7 +32,7 @@ describe.skipIf(!SETTINGS.dockerPath)("integration: lifecycle: img-basic", async
         cc = ContainerConfig.create(localWsf, devcPath, config, localEnv);
 
         container = await ContainerState.create(localWsf, cc, SETTINGS);
-    }, 60 * 1000);
+    }, getTestTimeout(60));
 
     test("workspace mounts exists", async () => {
         const inspectResult = await run([engine, "inspect", container.getContainerName(), ...jsonFormat], { cwd: localWsf, env: localEnv });
@@ -127,7 +127,7 @@ describe.skipIf(!SETTINGS.dockerPath)("integration: lifecycle: img-basic", async
         })();
 
         expect(healthVersion).eq(TEST_CODIUM_INFO.commit);
-    }, 60 * 1000);
+    }, getTestTimeout(60));
 
     test("connection token is stable across calls", async () => {
         const token1 = await container.getConnectionToken();

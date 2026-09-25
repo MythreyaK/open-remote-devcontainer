@@ -3,12 +3,16 @@ import * as jc from "jsonc-parser";
 
 import * as schema from "./schema";
 import { ParseError } from "../extension/error";
+import { getExecCtx } from "../common/ctx/ctx";
+import { getLogSink } from "../extension/log";
+import { fmtErr } from "../common/utils";
 
 /* eslint-disable @typescript-eslint/unified-signatures */
 export async function parseDevcontainer(fpath: vscode.Uri): Promise<schema.Config>;
 export async function parseDevcontainer(contents: string): Promise<schema.Config>;
 export async function parseDevcontainer(arg: string | vscode.Uri): Promise<schema.Config> {
     if (typeof arg === "string") {
+        getLogSink().debug(`parseDevcontainer(${arg.length}: string):`);
         const parseInfo = schema.ConfigSchema.safeParse(jc.parse(arg));
         if (parseInfo.success) {
             return parseInfo.data;
@@ -18,13 +22,13 @@ export async function parseDevcontainer(arg: string | vscode.Uri): Promise<schem
         }
     }
     else {
+        getLogSink().debug(`parseDevcontainer(${arg.toString(true)}: vscode.Uri):`);
         const contents: string = await (async () => {
             try {
-                const bytes = await vscode.workspace.fs.readFile(arg);
-                return new TextDecoder("utf-8").decode(bytes);
+                return await getExecCtx().fs.read(arg);
             }
             catch (e) {
-                throw new ParseError(`Could not read devcontainer.json file at ${arg.toString(true)}: ${JSON.stringify(e)}`);
+                throw new ParseError(`Could not read devcontainer.json file at ${arg.toString(true)}: ${fmtErr(e)}`);
             };
         })();
 

@@ -2,10 +2,17 @@ import * as vscode from "vscode";
 import * as fs from "node:fs/promises";
 import path from "node:path";
 
-import { run } from "../common/cmd";
-import { formatCmdErr } from "../common/spawn";
-import { SpawnError } from "../extension/error";
-import { Settings } from "../extension/settings";
+import { Settings } from "./settings";
+import { getExecCtx } from "./ctx/ctx";
+
+export function fmtErr(e: unknown): string {
+    if (e instanceof Error) {
+        return e.stack ?? e.message;
+    }
+    else {
+        return `unknown error: ${JSON.stringify(e)}`;
+    }
+}
 
 export interface HostUserInfo {
     uid: number,
@@ -52,19 +59,7 @@ export function getEngineCmd(s: Settings): string[] {
 }
 
 export async function getHostUserInfo(): Promise<HostUserInfo> {
-    const userName = await run(["/bin/sh", "-c", "id -n -u $UID"], {});
-    /* eslint-disable @typescript-eslint/no-non-null-assertion */
-    if (userName.exit === 0) {
-        return {
-            uid: process.getuid!(),
-            gid: process.getgid!(),
-            name: userName.stdout.trim(),
-        };
-    }
-    else {
-        throw new SpawnError(`Could not query host user info (uid, gid, name): ${formatCmdErr(userName)}`);
-    }
-    /* eslint-enable @typescript-eslint/no-non-null-assertion */
+    return getExecCtx().getHostUserInfo();
 }
 
 export interface ProductJson {
@@ -90,4 +85,21 @@ export async function getProductJson(): Promise<ProductJson> {
         commit: jsonData.commit,
         serverDownloadUrlTemplate: jsonData.serverDownloadUrlTemplate,
     };
+}
+
+export function getRemoteAuthorities(): string[] | undefined {
+    const auth = vscode.env.remoteAuthority;
+
+    if (!auth) { return undefined; }
+
+    const inx = auth.indexOf("@");
+
+    if (inx > 0) {
+        return auth.split("@");
+    }
+    else { return [auth]; }
+}
+
+export function consume(..._: unknown[]) {
+    void (_);
 }

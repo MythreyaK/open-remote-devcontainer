@@ -1,0 +1,95 @@
+import * as vscode from "vscode";
+import path from "node:path";
+
+import * as jc from "jsonc-parser";
+
+import { getExecCtx } from "./ctx/ctx";
+import { getProductJson, getRemoteAuthorities, fmtErr } from "./utils";
+import { InternalError } from "../extension/error";
+import { getConfig, Settings } from "./settings";
+import { findSSHServerInstallPath, SSHDestination } from "../extension/ssh";
+import { getLogSink } from "../extension/log";
+
+/**
+ *
+ * `vscode.workspace.getConfiguration` during execServer chaining reads only the
+ * user config, not remote machine's. User may have configured different extension
+ * settings there, so we must read those ourselves.
+ * By default, for vscodium, it's at `$HOME/.vscodium-server/data/Machine/settings.json`
+ * This path can be configured with `remote.SSH.serverInstallPath`, a key-value pair
+ * of regex keys (for server/hostnames) and values as paths.
+ *
+ * TODO: Windows support, and merge local settings
+ *       merged = { ...local, ...machine, ...user }?
+ *
+ * @returns `Settings` on the remote machine
+ */
+export async function getRemoteserverConfiguration(): Promise<Settings> {
+    getLogSink().info(`Fetching remote settings '${vscode.env.remoteAuthority}'`);
+    const productJson = await getProductJson();
+
+    // get hostname from ssh
+    // and chained is always at inx 1, that we chain to
+    const auths = getRemoteAuthorities();
+
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    if (auths === undefined || auths[1] === undefined) {
+        // man i dunno
+        throw new InternalError("getRemoteserverConfiguration: Expected SSH authority to exist");
+    }
+
+    const sshRemote = auths[1];
+    const [sshAuthority, encodedSSH] = sshRemote.split("+");
+    const hostname = SSHDestination.parseEncoded(encodedSSH).hostname;
+    const remoteSysenv = await getExecCtx().env();
+
+    getLogSink().info(`SSH authority is '${sshAuthority}'+'${hostname}' (encoded: '${encodedSSH}')`);
+
+    if (!("HOME" in remoteSysenv.env)) {
+        throw new InternalError("HOME was undefined on remote env");
+    }
+    const homedir = remoteSysenv.env.HOME;
+
+    const DEFAULT_DIR = path.posix.join(homedir, productJson.serverDataFolderName);
+
+    const readConfig = async (installPath: string): Promise<Settings> => {
+        getLogSink().info(`getRemoteserverConfiguration: remote SSH install at: ${installPath}`);
+        const cfgPath = path.posix.join(installPath, "data/Machine/settings.json");
+        const raw = (await getExecCtx().fs.read(vscode.Uri.file(cfgPath))).trim();
+        getLogSink().debug(`getRemoteserverConfiguration: raw cfg: ${raw}`);
+
+        /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
+        const remoteSettings = jc.parse(raw);
+        return {
+            dockerPath: remoteSettings["dev.containers.dockerPath"] ?? "docker",
+            extraArgs: remoteSettings["dev.containers.extraArgs"] ?? [],
+            defaultExtensions: remoteSettings["dev.containers.defaultExtensions"] ?? [],
+        };
+        /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
+    };
+
+    const serverInstallPathMap = vscode.workspace
+        .getConfiguration("remote.SSH")
+        .get<Record<string, string>>("serverInstallPath");
+
+    // default is home if not configured
+    const remoteInstallPath = findSSHServerInstallPath(hostname, serverInstallPathMap ?? {});
+
+    const logmsg = remoteInstallPath
+        ? `serverInstallPath for host ${hostname} = ${remoteInstallPath}`
+        : `no serverInstallPath for host ${hostname}, using default ${DEFAULT_DIR}`;
+
+    getLogSink().info(`getRemoteserverConfiguration: remote.SSH.serverInstallPath[${hostname}]: ${logmsg}`);
+
+    try {
+        return await readConfig(remoteInstallPath ?? DEFAULT_DIR);
+    }
+    catch (e: unknown) {
+        getLogSink().error(`getRemoteserverConfiguration: returning local cfg, reading remote config failed ${fmtErr(e)}`);
+        return {
+            dockerPath: getConfig<string>("dockerPath") ?? "docker",
+            extraArgs: getConfig<string[]>("extraArgs") ?? [],
+            defaultExtensions: getConfig<string[]>("defaultExtensions") ?? [],
+        };
+    }
+}

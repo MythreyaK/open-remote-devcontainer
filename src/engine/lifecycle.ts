@@ -9,7 +9,7 @@ import { ContainerConfig, ContainerEngine, LifecycleCmd } from "./container";
 import { EngineError, InstallError, InternalError } from "../extension/error";
 import { NotificationLevel, showNotification } from "../extension/workspace";
 
-import * as settings from "../extension/settings";
+import * as settings from "../common/settings";
 import * as server from "../remote/installServer";
 import { EXTENSION_ID, DEVCONTAINER_SERVER_LISTEN_PORT, CAT_PIPE_STDIN_WORKAROUND } from "../common/constants";
 

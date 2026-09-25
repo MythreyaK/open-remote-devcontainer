@@ -4,7 +4,7 @@ import { spawn } from "../spawn";
 import { getLogSink } from "../../extension/log";
 import { ContainerInspectResult } from "../../engine/lifecycle";
 
-import { initMocks, jsonFormat, getMockSettings } from "../../tests/common";
+import { initMocks, jsonFormat, getMockSettings, getTestTimeout } from "../../tests/common";
 
 function getcwd() {
     return __dirname;
@@ -43,7 +43,7 @@ describe.skipIf(!SETTINGS.dockerPath)("cmd spawn tests", () => {
         const remove = await spawn(engine, ["rm", create.stdout.trim()], opts());
         expect(create.exit).eq(0);
         expect(remove.exit).eq(0);
-    }, 10_000);
+    }, getTestTimeout(10));
 
     test("run and exec command", async () => {
         const create = await spawn(engine, ["run", "--name", "turtles", "-d", "ubuntu:24.04", ...bashSleepCmd], opts());
@@ -69,5 +69,5 @@ describe.skipIf(!SETTINGS.dockerPath)("cmd spawn tests", () => {
             const rm = await spawn(engine, ["rm", "turtles"], opts());
             expect(rm.exit).eq(0);
         }
-    }, 30_000);
+    }, getTestTimeout(30));
 });
