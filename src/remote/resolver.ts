@@ -12,6 +12,7 @@ import { DEVCONTAINER_SERVER_LISTEN_PORT } from "../common/constants";
 import { setExecCtx, getExecCtx } from "../common/ctx/ctx";
 import { RemoteExecCtx } from "../common/ctx/remoteCtx";
 import { SSHDestination } from "../extension/ssh";
+import { SshAgentRelay } from "./exec-pipe/local";
 import * as utils from "../common/utils";
 
 export const AUTHORITY_BASE: string = "devcontainer-remote";
@@ -85,13 +86,14 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
     private serverHostPort: number | undefined;
 
     private statusItemFormatter: vscode.Disposable | undefined;
+    private sshAgentRelay: SshAgentRelay | undefined;
 
     constructor(context: vscode.ExtensionContext) {
         this.extensionCtx = context;
         void this.extensionCtx; // TODO
     }
 
-    resolve(_authority: string, context: vscode.RemoteAuthorityResolverContext): Thenable<vscode.ResolverResult> {
+    async resolve(_authority: string, context: vscode.RemoteAuthorityResolverContext): Promise<vscode.ResolverResult> {
         const fullAuthority = vscode.env.remoteAuthority!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
 
         if (context.execServer) {
@@ -205,6 +207,10 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
             ...parsedConfig.customizations?.vscode?.extensions ?? [],
         ]);
         this.serverHostPort = port;
+
+        this.sshAgentRelay?.dispose();
+        this.sshAgentRelay = await this.containerState.startSshAgentRelay();
+
         progress.report({ message: "Connecting...", increment: 40 });
 
         const ctkn = await this.containerState.getConnectionToken();
@@ -214,14 +220,25 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
         vscode.commands.executeCommand("setContext", "forwardedPortsFeaturesEnabled", true);
 
         // if exec server, host and port are on the remote machine. forward it out to the local machine
-        if (context.execServer) {
-            return new vscode.ManagedResolvedAuthority(() => {
-                return connectToRemote(context.execServer!, host, port); // eslint-disable-line @typescript-eslint/no-non-null-assertion
-            }, ctkn);
+        const authority = (() => {
+            if (context.execServer) {
+                return new vscode.ManagedResolvedAuthority(() => {
+                    return connectToRemote(context.execServer!, host, port); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+                }, ctkn);
+            }
+            else {
+                return new vscode.ResolvedAuthority(host, port, ctkn);
+            }
+        })();
+
+        if (this.sshAgentRelay) {
+            const sockPath = this.sshAgentRelay.containerSockPath;
+            getLogSink().info(`Injecting SSH_AUTH_SOCK=${sockPath} into resolver env`);
+            return Object.assign(authority, {
+                extensionHostEnv: { SSH_AUTH_SOCK: sockPath },
+            } satisfies vscode.ResolvedOptions);
         }
-        else {
-            return new vscode.ResolvedAuthority(host, port, ctkn);
-        }
+        return authority;
     }
 
     // getCanonicalURI?(uri: vscode.Uri): vscode.ProviderResult<vscode.Uri> {
@@ -242,6 +259,7 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
 
     public async dispose() {
         this.statusItemFormatter?.dispose();
+        this.sshAgentRelay?.dispose();
         await this.containerState?.dispose();
     }
 };

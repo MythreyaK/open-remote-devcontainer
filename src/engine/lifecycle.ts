@@ -1,19 +1,22 @@
 import path from "node:path";
 import * as fs from "node:fs/promises";
+import * as chproc from "node:child_process";
 
 import { run } from "../common/cmd";
 import { getLogSink } from "../extension/log";
 import { formatCmdErr } from "../common/spawn";
-import { parseEnv, getHostUserInfo, getProductJson, getEngineCmd } from "../common/utils";
+import { parseEnv, getHostUserInfo, getProductJson, getEngineCmd, fmtErr } from "../common/utils";
 import { ContainerConfig, ContainerEngine, LifecycleCmd } from "./container";
 import { EngineError, InstallError, InternalError } from "../extension/error";
 import { NotificationLevel, showNotification } from "../extension/workspace";
 
 import * as settings from "../common/settings";
 import * as server from "../remote/installServer";
+import * as sshAgent from "../remote/exec-pipe/local";
 import { EXTENSION_ID, DEVCONTAINER_SERVER_LISTEN_PORT, CAT_PIPE_STDIN_WORKAROUND } from "../common/constants";
 
 export const STAGE2_DOCKERFILE_LOCATION: string = path.join(__dirname, "Dockerfile");
+export const SSH_RELAY_SCRIPT_LOCATION: string = path.join(__dirname, "remote.ts");
 
 const UUID_TOKEN_LEN = 36;
 const jsonFormat = ["--format", "{{json .}}"];
@@ -615,6 +618,61 @@ export class ContainerState {
             else {
                 return port;
             }
+        }
+    }
+
+    public async startSshAgentRelay(): Promise<sshAgent.SshAgentRelay | undefined> {
+        const sshAuthSock = process.env.SSH_AUTH_SOCK;
+        if (!sshAuthSock) {
+            getLogSink().info("ssh-agent-relay: SSH_AUTH_SOCK not set, skipping");
+            return undefined;
+        }
+
+        const remoteEnv = this.remoteEnvProbe.HOME;
+
+        if (!remoteEnv) {
+            throw new InternalError("HOME envvar not resent in remoteEnv");
+        }
+
+        const nodeBin = path.posix.join(remoteEnv, ".vscode-oss-devcontainer", "node");
+        const containerName = this.getContainerName();
+
+        try {
+            const sockPath = sshAgent.sshAgentSockPath();
+            const bridgeScriptTemplate = await fs.readFile(SSH_RELAY_SCRIPT_LOCATION, { encoding: "utf-8" });
+            const bridgeScript = bridgeScriptTemplate
+                .replace("${SSH_AGENT_SOCK_PATH}", sockPath)
+                .replace("${EXTENSION_ID}", EXTENSION_ID)
+                + "\nmain();";
+
+            getLogSink().info(bridgeScript);
+
+            const execArgs = this.cc.getExecArgs(containerName, this.remoteEnvProbe, { interactive: true });
+            const proc = chproc.spawn(this.cmd[0], [
+                ...this.cmd.slice(1),
+                ...execArgs,
+                nodeBin, "--input-type=module-typescript", "-e", bridgeScript,
+            ], {
+                cwd: this.workspaceFolder,
+                stdio: ["pipe", "pipe", "pipe"],
+            });
+
+            const relay = new sshAgent.SshAgentRelay(proc, sshAuthSock, sockPath);
+
+            let timer: ReturnType<typeof setTimeout>;
+            await Promise.race([
+                relay.ready.then(() => { clearTimeout(timer); }),
+                new Promise<never>((_, reject) => {
+                    timer = setTimeout(() => { reject(new Error("bridge startup timeout")); }, 10_000);
+                }),
+            ]);
+
+            getLogSink().info("ssh-agent-relay: started");
+            return relay;
+        }
+        catch (e: unknown) {
+            getLogSink().error(`ssh-agent-relay: ${fmtErr(e)}`);
+            return undefined;
         }
     }
 
