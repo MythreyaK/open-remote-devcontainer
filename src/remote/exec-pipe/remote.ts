@@ -96,8 +96,12 @@ export function main() {
     }
 
     function closeClient(chan: number) {
-        writeFrame(FrameType.Close, chan, null);
+        const sock = clients.get(chan);
+        if (!sock) { return; }
+
+        sock.destroy();
         clients.delete(chan);
+        writeFrame(FrameType.Close, chan, null);
     }
 
     let buf = Buffer.alloc(0);
@@ -137,7 +141,6 @@ export function main() {
             }
         }
     });
-
 
     const serverOpts = args.disableNodeSafety ? { allowHalfOpen: true } : {};
     const server = net.createServer(serverOpts, (sock) => {

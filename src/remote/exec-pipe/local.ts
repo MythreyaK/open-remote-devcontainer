@@ -51,6 +51,7 @@ export class SshAgentRelay {
     private inBuf = Buffer.alloc(0);
     private disposed = false;
     private readyResolve: (() => void) | undefined;
+    private readyReject: ((err: Error) => void) | undefined;
     readonly ready: Promise<void>;
 
     constructor(
@@ -58,7 +59,10 @@ export class SshAgentRelay {
         private readonly sshAuthSock: string,
         readonly containerSockPath: string,
     ) {
-        this.ready = new Promise((resolve) => { this.readyResolve = resolve; });
+        this.ready = new Promise((resolve, reject) => {
+            this.readyResolve = resolve;
+            this.readyReject = reject;
+        });
 
         proc.onStdout((d) => { this.onData(d); });
         proc.onStderr((d) => {
@@ -69,6 +73,8 @@ export class SshAgentRelay {
                 getLogSink().warn(getMsg(`bridge exited (code ${code})`));
             }
             this.disposed = true;
+            this.readyReject?.(new Error(`bridge exited (code ${code}) before Ready`));
+            this.readyReject = undefined;
             this.cleanup();
         });
         proc.onError((err) => {
@@ -83,7 +89,7 @@ export class SshAgentRelay {
 
         while (this.inBuf.length >= HEADER_SIZE) {
             const type = this.inBuf.readUInt16BE(TYPE_OFFSET) as FrameType;
-            if (type > FrameType.LAST) {
+            if (type >= FrameType.LAST) {
                 getLogSink().warn(getMsg(`invalid frame type ${type}, dropping buffer`));
                 this.inBuf = Buffer.alloc(0);
                 break;
@@ -108,6 +114,7 @@ export class SshAgentRelay {
             getLogSink().info(getMsg("bridge ready"));
             this.readyResolve?.();
             this.readyResolve = undefined;
+            this.readyReject = undefined;
             return;
         }
         if (type === FrameType.Open) {

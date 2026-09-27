@@ -639,7 +639,7 @@ export class ContainerState {
         try {
             const sockPath = sshAgent.sshAgentSockPath();
             const bridgeScript = await fs.readFile(SSH_RELAY_SCRIPT_LOCATION, { encoding: "utf-8" })
-                + "\nmain();";
+              + "\nmain();";
 
             getLogSink().debug(`ssh-agent-relay: bridge script contents:\n${bridgeScript}\n`);
 
