@@ -238,6 +238,10 @@ export class DevContainerResolver implements vscode.RemoteAuthorityResolver, vsc
                 extensionHostEnv: { SSH_AUTH_SOCK: sockPath },
             } satisfies vscode.ResolvedOptions);
         }
+        else {
+            getLogSink().info("Could not create SshAgentRelay, not injecting env SSH_AUTH_SOCK into resolver env");
+        }
+
         return authority;
     }
 

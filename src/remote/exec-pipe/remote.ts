@@ -6,11 +6,25 @@ export const FrameType = {
     Open: 1,
     Data: 2,
     Close: 3,
-    LAST: 15,
+    LAST: 4,
+    MAX: 15,
 } as const;
 export type FrameType = (typeof FrameType)[keyof typeof FrameType];
 
-// [ type(2B), channel(4B), length(4B) ]
+/**
+ * remote.ts: container-side socket, shuttles data to the
+ * local.ts on the host via docker exec stdin/stdout
+ *
+ * All types are exported here and used in local.ts to make
+ * remote.ts standalone enough that it can be passed to node -e
+ * without extra setup. We could compile this, embed into the
+ * extension and send it in, but for transparency and quick
+ * debugging, it's easier to keep the .ts file. Also makes
+ * it easier to monkey-patch in the wild for quick-fixes.
+ *
+ * Format is simple: [ type(2B), channel(4B), length(4B) ]
+ */
+
 export const TYPE_SIZE = 2;
 export const CHAN_SIZE = 4;
 export const LEN_SIZE = 4;
@@ -20,15 +34,36 @@ export const TYPE_OFFSET = 0;
 export const CHANNEL_OFFSET = TYPE_OFFSET + TYPE_SIZE;
 export const LENGTH_OFFSET = CHANNEL_OFFSET + CHAN_SIZE;
 
-const SOCK = "${SSH_AGENT_SOCK_PATH}";
-const EXTENSION_ID = "${EXTENSION_ID}";
+function parseArgs(argv: string[]): { sock: string, disableNodeSafety: boolean } {
+    let sock = "";
+    let disableNodeSafety = false;
+    for (const arg of argv) {
+        if (arg.startsWith("--sock-path=")) { sock = arg.slice("--sock-path=".length); }
+        else if (arg === "--disable-node-safety") { disableNodeSafety = true; }
+    }
+    return { sock, disableNodeSafety };
+}
 
 export function main() {
-    const TAG = `[${EXTENSION_ID}/bridge]`;
-    const log = (msg: string) => { console.error(`${TAG} ${msg}`); };
+    const args = parseArgs(process.argv.slice(1));
+    if (!args.sock) {
+        console.error("[ssh-agent-relay/container]: --sock-path=<path> is required");
+        process.exit(1);
+    }
+    const SOCK = args.sock;
+
+    // stderr for all logs because stdio/stdout are for the data
+    const log = (msg: string) => { console.error(`[ssh-agent-relay/container]: ${msg}`); };
 
     function cleanupSocket() {
-        try { fs.unlinkSync(SOCK); }
+        try {
+            if (SOCK.startsWith("/tmp/")) {
+                fs.unlinkSync(SOCK);
+            }
+            else {
+                log(`[ERROR]: SOCK not in /tmp/, refusing to unlink ${SOCK}`);
+            }
+        }
         catch { }
     }
 
@@ -37,7 +72,14 @@ export function main() {
         try { fs.mkdirSync(dir, { recursive: true }); }
         catch { }
 
-        try { fs.unlinkSync(SOCK); }
+        try {
+            if (SOCK.startsWith("/tmp/")) {
+                fs.unlinkSync(SOCK);
+            }
+            else {
+                log(`[ERROR]: SOCK not in /tmp/, refusing to unlink ${SOCK}`);
+            }
+        }
         catch { }
     }
 
@@ -65,8 +107,8 @@ export function main() {
 
         while (buf.length >= HEADER_SIZE) {
             const type: FrameType = buf.readUInt16BE(TYPE_OFFSET) as FrameType;
-            if (type > FrameType.LAST) {
-                log(`invalid frame type ${type}, dropping buffer`);
+            if (type >= FrameType.LAST) {
+                log(`[ERROR]: invalid frame type ${type}, dropping buffer`);
                 buf = Buffer.alloc(0);
                 break;
             }
@@ -80,12 +122,12 @@ export function main() {
 
             const sock = clients.get(chan);
             if (!sock) {
-                log(`stdin: ch${chan} type=${type} — unknown channel, skipping frame`);
+                log(`[ERROR]: stdin: ch${chan} type=${type}: unknown channel, skipping frame`);
                 continue;
             }
 
             if (type === FrameType.Data && payload) {
-                log(`stdin→sock: ch${chan} ${payload.length}B`);
+                log(`stdin->sock: ch${chan} ${payload.length}B`);
                 sock.write(payload);
             }
             else if (type === FrameType.Close) {
@@ -96,13 +138,18 @@ export function main() {
         }
     });
 
-    const server = net.createServer((sock) => {
+
+    const serverOpts = args.disableNodeSafety ? { allowHalfOpen: true } : {};
+    const server = net.createServer(serverOpts, (sock) => {
         const chan = nextChan++;
+
         clients.set(chan, sock);
         log(`client connected: ch${chan} (active: ${clients.size})`);
+
         writeFrame(FrameType.Open, chan, null);
+
         sock.on("data", (d) => {
-            log(`sock→stdout: ch${chan} ${d.length}B`);
+            log(`sock->stdout: ch${chan} ${d.length}B`);
             writeFrame(FrameType.Data, chan, d);
         });
         sock.on("end", () => {
@@ -110,7 +157,7 @@ export function main() {
             closeClient(chan);
         });
         sock.on("error", (err) => {
-            log(`client error: ch${chan} ${(err as NodeJS.ErrnoException).code ?? err}`);
+            log(`[ERROR]: client [error]: ch${chan} ${(err as NodeJS.ErrnoException).code ?? err}`);
             closeClient(chan);
         });
     });

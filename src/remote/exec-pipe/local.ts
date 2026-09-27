@@ -1,10 +1,10 @@
 import * as net from "net";
 import path from "node:path";
 
-import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { getLogSink } from "../../extension/log";
 import { EXTENSION_ID } from "../../common/constants";
+import type { SpawnedProcess } from "../../common/ctx/execCtx";
 
 import {
     FrameType,
@@ -14,14 +14,39 @@ import {
     LENGTH_OFFSET,
 } from "./remote";
 
+// Location of socket in container.
 export const SSH_AGENT_SOCK_DIR = `/tmp/codium-${EXTENSION_ID}-ipc`;
 
 export function sshAgentSockPath(): string {
     return path.posix.join(SSH_AGENT_SOCK_DIR, `ssh-agent-fwd-${randomUUID()}.sock`);
 }
 
+function getMsg(msg: string) {
+    return `[ssh-agent-relay/host]: ${msg}`;
+}
+
+/**
+ * We create a relay per-window, so stale sockets might accumulate
+ * but that's more reliable as we won't have to maintain state
+ * that's not tied to window lifetime. Using a socket that's tied
+ * to the container lifecycle is a lil more painful, especially for
+ * devcontainers over ssh.
+ *
+ * For a remote over SSH, we exec over the ssh connection via the
+ * SSH-extension's execServer provider, so the connection lifetime
+ * is necessarily bound to the window, meaning we can't exec a
+ * forwarded "outside" the window's lifetime, unlike in local case.
+ * So just use window-bound lifetime for all sockets for consistency.
+ * Also prevents buggy cases with unstable connections.
+ *
+ * local.ts is the workspace-local relay-end that connects to the
+ * socket. "workspace-local" on a remote-ssh machine = on the remote
+ * ssh machine. Uses docker exec and shuttles data over stdin/stdout
+ * to the socket in the container. The container-side listener is
+ * in remote.ts.
+ *
+**/
 export class SshAgentRelay {
-    private static readonly TAG = "ssh-agent-relay";
     private readonly agentConns = new Map<number, net.Socket>();
     private inBuf = Buffer.alloc(0);
     private disposed = false;
@@ -29,37 +54,50 @@ export class SshAgentRelay {
     readonly ready: Promise<void>;
 
     constructor(
-        private readonly proc: ChildProcess,
+        private readonly proc: SpawnedProcess,
         private readonly sshAuthSock: string,
         readonly containerSockPath: string,
     ) {
         this.ready = new Promise((resolve) => { this.readyResolve = resolve; });
 
-        proc.stdout?.on("data", (d: Buffer) => { this.onData(d); });
-        proc.stderr?.on("data", (d: Buffer) => {
-            getLogSink().info(`${SshAgentRelay.TAG}: ${d.toString().trim()}`);
+        proc.onStdout((d) => { this.onData(d); });
+        proc.onStderr((d) => {
+            getLogSink().info(getMsg(d.toString().trim()));
         });
-        proc.on("exit", (code) => {
+        proc.onExit((code) => {
             if (!this.disposed) {
-                getLogSink().warn(`${SshAgentRelay.TAG}: bridge exited (code ${code})`);
+                getLogSink().warn(getMsg(`bridge exited (code ${code})`));
             }
+            this.disposed = true;
             this.cleanup();
         });
-        proc.on("error", (err) => {
-            getLogSink().error(`${SshAgentRelay.TAG}: bridge error: ${err.message}`);
+        proc.onError((err) => {
+            getLogSink().error(getMsg(`bridge error: ${err.message}`));
         });
-        getLogSink().info(`${SshAgentRelay.TAG}: started, agent=${this.sshAuthSock}`);
+
+        getLogSink().info(getMsg(`started, agent=${this.sshAuthSock}`));
     }
 
     private onData(d: Buffer): void {
         this.inBuf = Buffer.concat([this.inBuf, d]);
+
         while (this.inBuf.length >= HEADER_SIZE) {
-            const type: FrameType = this.inBuf.readUInt16BE(TYPE_OFFSET) as FrameType;
+            const type = this.inBuf.readUInt16BE(TYPE_OFFSET) as FrameType;
+            if (type > FrameType.LAST) {
+                getLogSink().warn(getMsg(`invalid frame type ${type}, dropping buffer`));
+                this.inBuf = Buffer.alloc(0);
+                break;
+            }
+
             const chan = this.inBuf.readUInt32BE(CHANNEL_OFFSET);
             const len = this.inBuf.readUInt32BE(LENGTH_OFFSET);
 
             if (this.inBuf.length < HEADER_SIZE + len) { break; }
-            const payload = len > 0 ? Buffer.from(this.inBuf.subarray(HEADER_SIZE, HEADER_SIZE + len)) : null;
+
+            const payload = len > 0
+                ? Buffer.from(this.inBuf.subarray(HEADER_SIZE, HEADER_SIZE + len))
+                : null;
+
             this.inBuf = this.inBuf.subarray(HEADER_SIZE + len);
             this.handleFrame(type, chan, payload);
         }
@@ -67,21 +105,21 @@ export class SshAgentRelay {
 
     private handleFrame(type: FrameType, chan: number, payload: Buffer | null): void {
         if (type === FrameType.Ready) {
-            getLogSink().info(`${SshAgentRelay.TAG}: bridge ready`);
+            getLogSink().info(getMsg("bridge ready"));
             this.readyResolve?.();
             this.readyResolve = undefined;
             return;
         }
         if (type === FrameType.Open) {
-            getLogSink().debug(`${SshAgentRelay.TAG}: ch${chan} Open → connecting to agent`);
+            getLogSink().debug(getMsg(`ch${chan} Open -> connecting to agent`));
             this.openAgentConn(chan);
         }
         else if (type === FrameType.Data && payload) {
-            getLogSink().debug(`${SshAgentRelay.TAG}: ch${chan} Data ${payload.length}B → agent`);
+            getLogSink().debug(getMsg(`ch${chan} Data ${payload.length}B -> agent`));
             this.forwardToAgent(chan, payload);
         }
         else if (type === FrameType.Close) {
-            getLogSink().debug(`${SshAgentRelay.TAG}: ch${chan} Close`);
+            getLogSink().debug(getMsg(`ch${chan} Close`));
             this.closeAgentConn(chan);
         }
     }
@@ -91,20 +129,22 @@ export class SshAgentRelay {
         this.agentConns.set(chan, conn);
 
         conn.on("connect", () => {
-            getLogSink().debug(`${SshAgentRelay.TAG}: ch${chan} agent connected`);
+            getLogSink().debug(getMsg(`ch${chan} agent connected`));
         });
         conn.on("data", (d: Buffer) => {
-            getLogSink().debug(`${SshAgentRelay.TAG}: ch${chan} agent→bridge ${d.length}B`);
+            getLogSink().debug(getMsg(`ch${chan} agent->bridge ${d.length}B`));
             this.writeFrame(FrameType.Data, chan, d);
         });
         conn.on("error", (err) => {
-            getLogSink().warn(`${SshAgentRelay.TAG}: ch${chan} agent error: ${err.message}`);
+            getLogSink().warn(getMsg(`ch${chan} agent error: ${err.message}`));
             this.writeFrame(FrameType.Close, chan, null);
             this.agentConns.delete(chan);
         });
         conn.on("close", () => {
-            getLogSink().debug(`${SshAgentRelay.TAG}: ch${chan} agent closed`);
-            this.agentConns.delete(chan);
+            getLogSink().debug(getMsg(`ch${chan} agent closed`));
+            if (this.agentConns.delete(chan)) {
+                this.writeFrame(FrameType.Close, chan, null);
+            }
         });
     }
 
@@ -122,12 +162,14 @@ export class SshAgentRelay {
     }
 
     private writeFrame(type: FrameType, chan: number, data: Buffer | null): void {
-        if (this.disposed || !this.proc.stdin?.writable) { return; }
+        if (this.disposed) { return; }
+
         const hdr = Buffer.alloc(HEADER_SIZE);
         hdr.writeUInt16BE(type, TYPE_OFFSET);
         hdr.writeUInt32BE(chan, CHANNEL_OFFSET);
         hdr.writeUInt32BE(data ? data.length : 0, LENGTH_OFFSET);
         this.proc.stdin.write(hdr);
+
         if (data && data.length > 0) { this.proc.stdin.write(data); }
     }
 
@@ -139,9 +181,8 @@ export class SshAgentRelay {
     dispose(): void {
         if (this.disposed) { return; }
         this.disposed = true;
-        getLogSink().info(`${SshAgentRelay.TAG}: disposing (${this.agentConns.size} active agent conns)`);
-        this.proc.stdin?.end();
-        this.proc.kill();
+        getLogSink().info(getMsg(`disposing (${this.agentConns.size} active agent conns)`));
+        this.proc.stdin.end();
         this.cleanup();
     }
 }

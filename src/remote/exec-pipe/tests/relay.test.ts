@@ -1,25 +1,52 @@
-import { describe, test, expect, afterEach } from "vitest";
 import * as net from "net";
-import * as childProcess from "child_process";
 import * as fs from "fs";
 import * as path from "path";
+import * as childProcess from "child_process";
 
-const REMOTE_SCRIPT = path.resolve(__dirname, "..", "remote.ts");
+import { describe, test, expect, afterEach } from "vitest";
+
+import { SshAgentRelay } from "../local";
+import { getTestTimeout, initMocks } from "../../../tests/common";
+import type { SpawnedProcess } from "../../../common/ctx/execCtx";
+import {
+    CHANNEL_OFFSET,
+    FrameType,
+    HEADER_SIZE,
+    LENGTH_OFFSET,
+    TYPE_OFFSET,
+} from "../remote";
+
+initMocks();
+
 const SOCK_PATH = `/tmp/relay-test-${process.pid}.sock`;
 const AGENT_SOCK_PATH = `/tmp/relay-test-agent-${process.pid}.sock`;
 
-const TYPE_SIZE = 2;
-const CHAN_SIZE = 4;
-const LEN_SIZE = 4;
-const HEADER_SIZE = TYPE_SIZE + CHAN_SIZE + LEN_SIZE;
-const TYPE_OFFSET = 0;
-const CHANNEL_OFFSET = TYPE_OFFSET + TYPE_SIZE;
-const LENGTH_OFFSET = CHANNEL_OFFSET + CHAN_SIZE;
+interface Frame {
+    type: FrameType,
+    chan: number,
+    payload: Buffer | null,
+}
 
-const FrameType = { Ready: 0, Open: 1, Data: 2, Close: 3 } as const;
-type FrameType = (typeof FrameType)[keyof typeof FrameType];
+function localReadFrames(buf: Buffer): { frames: Frame[], remainder: Buffer } {
+    const frames: Frame[] = [];
+    let offset = 0;
+    while (offset + HEADER_SIZE <= buf.length) {
+        const type = buf.readUInt16BE(offset + TYPE_OFFSET) as FrameType;
+        const chan = buf.readUInt32BE(offset + CHANNEL_OFFSET);
+        const len = buf.readUInt32BE(offset + LENGTH_OFFSET);
+        if (offset + HEADER_SIZE + len > buf.length) { break; }
 
-function writeFrame(stream: NodeJS.WritableStream, type: FrameType, chan: number, data: Buffer | null) {
+        const payload = len > 0
+            ? Buffer.from(buf.subarray(offset + HEADER_SIZE, offset + HEADER_SIZE + len))
+            : null;
+
+        frames.push({ type, chan, payload });
+        offset += HEADER_SIZE + len;
+    }
+    return { frames, remainder: Buffer.from(buf.subarray(offset)) };
+}
+
+function localWriteFrame(stream: NodeJS.WritableStream, type: FrameType, chan: number, data: Buffer | null) {
     const hdr = Buffer.alloc(HEADER_SIZE);
     hdr.writeUInt16BE(type, TYPE_OFFSET);
     hdr.writeUInt32BE(chan, CHANNEL_OFFSET);
@@ -28,28 +55,7 @@ function writeFrame(stream: NodeJS.WritableStream, type: FrameType, chan: number
     if (data && data.length > 0) { stream.write(data); }
 }
 
-interface Frame {
-    type: FrameType,
-    chan: number,
-    payload: Buffer | null,
-}
-
-function readFrames(buf: Buffer): { frames: Frame[], remainder: Buffer } {
-    const frames: Frame[] = [];
-    let offset = 0;
-    while (offset + HEADER_SIZE <= buf.length) {
-        const type = buf.readUInt16BE(offset + TYPE_OFFSET) as FrameType;
-        const chan = buf.readUInt32BE(offset + CHANNEL_OFFSET);
-        const len = buf.readUInt32BE(offset + LENGTH_OFFSET);
-        if (offset + HEADER_SIZE + len > buf.length) { break; }
-        const payload = len > 0 ? Buffer.from(buf.subarray(offset + HEADER_SIZE, offset + HEADER_SIZE + len)) : null;
-        frames.push({ type, chan, payload });
-        offset += HEADER_SIZE + len;
-    }
-    return { frames, remainder: Buffer.from(buf.subarray(offset)) };
-}
-
-function waitForFrames(proc: childProcess.ChildProcess, count: number, timeoutMs = 5000): Promise<Frame[]> {
+function waitForFrames(proc: childProcess.ChildProcess, count: number, timeoutMs = 2000): Promise<Frame[]> {
     return new Promise((resolve, reject) => {
         const frames: Frame[] = [];
         let buf: Buffer = Buffer.alloc(0);
@@ -60,7 +66,7 @@ function waitForFrames(proc: childProcess.ChildProcess, count: number, timeoutMs
         if (!proc.stdout) { throw new Error("proc.stdout is null"); }
         proc.stdout.on("data", (d: Buffer) => {
             buf = Buffer.concat([buf, d]);
-            const result = readFrames(buf);
+            const result = localReadFrames(buf);
             frames.push(...result.frames);
             buf = result.remainder;
             if (frames.length >= count) {
@@ -71,13 +77,19 @@ function waitForFrames(proc: childProcess.ChildProcess, count: number, timeoutMs
     });
 }
 
-function spawnBridge(): childProcess.ChildProcess {
-    const script = fs.readFileSync(REMOTE_SCRIPT, "utf-8")
-        .replace("${SSH_AGENT_SOCK_PATH}", SOCK_PATH)
-        .replace("${EXTENSION_ID}", "test-relay")
-        + "\nmain();";
+function spawnBridge(opts?: { disableNodeSafety?: boolean }): childProcess.ChildProcess {
+    const REMOTE_SCRIPT = path.resolve(__dirname, "..", "remote.ts");
+    const script = fs.readFileSync(REMOTE_SCRIPT, "utf-8") + "\nmain();";
 
-    return childProcess.spawn("node", ["--input-type=module-typescript", "-e", script], {
+    const nodeArgs = [
+        "--input-type=module-typescript",
+        "-e", script,
+        "--",
+        `--sock-path=${SOCK_PATH}`,
+        (opts?.disableNodeSafety ? "--disable-node-safety" : ""),
+    ];
+
+    return childProcess.spawn("node", nodeArgs, {
         stdio: ["pipe", "pipe", "pipe"],
     });
 }
@@ -111,12 +123,20 @@ afterEach(() => {
 });
 
 describe("exec-pipe relay", () => {
+    test("sanity", () => {
+        // if this changes, then ensure correct handling of [0, 3]
+        expect(FrameType.LAST).eq(4);
+
+        // if this changes, then type field needs to be 3
+        expect(FrameType.MAX).eq(15);
+    }, getTestTimeout(10));
+
     test("bridge sends Ready frame on startup", async () => {
         bridge = spawnBridge();
         const frames = await waitForFrames(bridge, 1);
         expect(frames[0].type).toBe(FrameType.Ready);
         expect(frames[0].chan).toBe(0);
-    }, 10_000);
+    }, getTestTimeout(10));
 
     test("bridge sends Open frame when client connects to socket", async () => {
         bridge = spawnBridge();
@@ -131,7 +151,7 @@ describe("exec-pipe relay", () => {
         expect(frames[0].type).toBe(FrameType.Open);
 
         client.destroy();
-    }, 10_000);
+    }, getTestTimeout(10));
 
     test("bridge forwards data from client to stdout", async () => {
         bridge = spawnBridge();
@@ -153,7 +173,7 @@ describe("exec-pipe relay", () => {
         expect(data.payload?.toString()).toBe("hello");
 
         client.destroy();
-    }, 10_000);
+    }, getTestTimeout(10));
 
     test("bridge forwards data from stdin to client", async () => {
         bridge = spawnBridge();
@@ -166,7 +186,7 @@ describe("exec-pipe relay", () => {
         const chan = open.chan;
 
         const clientData = new Promise<Buffer>((resolve, reject) => {
-            const timer = setTimeout(() => { reject(new Error("timeout waiting for client data")); }, 5000);
+            const timer = setTimeout(() => { reject(new Error("timeout waiting for client data")); }, 2000);
             client.once("data", (d) => {
                 clearTimeout(timer);
                 resolve(d);
@@ -174,13 +194,13 @@ describe("exec-pipe relay", () => {
         });
 
         if (!bridge.stdin) { throw new Error("bridge.stdin is null"); }
-        writeFrame(bridge.stdin, FrameType.Data, chan, Buffer.from("world"));
+        localWriteFrame(bridge.stdin, FrameType.Data, chan, Buffer.from("world"));
 
         const received = await clientData;
         expect(received.toString()).toBe("world");
 
         client.destroy();
-    }, 10_000);
+    }, getTestTimeout(10));
 
     test("full roundtrip through fake agent", async () => {
         agentServer = await createFakeAgent();
@@ -194,7 +214,7 @@ describe("exec-pipe relay", () => {
         const [open] = await waitForFrames(bridge, 1);
         const chan = open.chan;
 
-        // client sends data → bridge stdout → we read Open+Data frames
+        // client sends data -> bridge stdout -> we read Open+Data frames
         client.write(Buffer.from("list-keys"));
 
         const [dataFrame] = await waitForFrames(bridge, 1);
@@ -206,7 +226,7 @@ describe("exec-pipe relay", () => {
         await new Promise<void>((resolve) => { agentConn.on("connect", resolve); });
 
         const agentResponse = new Promise<Buffer>((resolve, reject) => {
-            const timer = setTimeout(() => { reject(new Error("timeout waiting for agent response")); }, 5000);
+            const timer = setTimeout(() => { reject(new Error("timeout waiting for agent response")); }, 2000);
             agentConn.once("data", (d) => {
                 clearTimeout(timer);
                 resolve(d);
@@ -217,9 +237,9 @@ describe("exec-pipe relay", () => {
         const response = await agentResponse;
         expect(response.toString()).toBe("AGENT:list-keys");
 
-        // send response back through bridge stdin → bridge socket → client
+        // send response back through bridge stdin -> bridge socket -> client
         const clientResponse = new Promise<Buffer>((resolve, reject) => {
-            const timer = setTimeout(() => { reject(new Error("timeout waiting for client response")); }, 5000);
+            const timer = setTimeout(() => { reject(new Error("timeout waiting for client response")); }, 2000);
             client.once("data", (d) => {
                 clearTimeout(timer);
                 resolve(d);
@@ -227,14 +247,14 @@ describe("exec-pipe relay", () => {
         });
 
         if (!bridge.stdin) { throw new Error("bridge.stdin is null"); }
-        writeFrame(bridge.stdin, FrameType.Data, chan, response);
+        localWriteFrame(bridge.stdin, FrameType.Data, chan, response);
 
         const finalResponse = await clientResponse;
         expect(finalResponse.toString()).toBe("AGENT:list-keys");
 
         agentConn.destroy();
         client.destroy();
-    }, 15_000);
+    }, getTestTimeout(10));
 
     test("bridge sends Close frame when client disconnects", async () => {
         bridge = spawnBridge();
@@ -249,5 +269,5 @@ describe("exec-pipe relay", () => {
 
         const [close] = await waitForFrames(bridge, 1);
         expect(close.type).toBe(FrameType.Close);
-    }, 10_000);
+    }, getTestTimeout(10));
 });

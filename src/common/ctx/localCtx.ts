@@ -1,8 +1,9 @@
 import * as vscode from "vscode";
+import * as chproc from "node:child_process";
 
-import { ExecCtx, ExecCtxKind, FsCtx } from "./execCtx";
+import { ExecCtx, ExecCtxKind, FsCtx, SpawnedProcess } from "./execCtx";
 import { HostUserInfo } from "../utils";
-import { formatCmdErr, spawn } from "../spawn";
+import { collectOutput, formatCmdErr } from "../spawn";
 import { getLogSink } from "../../extension/log";
 import { SpawnError } from "../../extension/error";
 import { CmdResult, RunOpts } from "../opts";
@@ -39,14 +40,37 @@ export class LocalExecCtx implements ExecCtx {
     }
 
     async run(cmdArgs: string[], opts: RunOpts): Promise<CmdResult> {
+        const proc = await this.spawn(cmdArgs, opts);
+        return collectOutput(proc, opts);
+    }
+
+    async spawn(cmdArgs: string[], opts: RunOpts): Promise<SpawnedProcess> {
         if (this.execServer) {
-            return await spawnRemote(this.execServer, cmdArgs, opts);
+            return spawnRemote(this.execServer, cmdArgs, opts);
         }
-        return await spawn(cmdArgs[0], cmdArgs.slice(1), { ...opts, log: getLogSink() });
+
+        const [cmd, ...args] = cmdArgs;
+        const proc = chproc.spawn(cmd, args, {
+            cwd: opts.cwd,
+            env: { ...process.env, BUILDKIT_PROGRESS: "plain", ...opts.env },
+            stdio: ["pipe", "pipe", "pipe"],
+        });
+
+        return {
+            stdin: {
+                write(data: Buffer | Uint8Array) { proc.stdin.write(data); },
+                end() { proc.stdin.end(); },
+            },
+            onStdout(cb) { proc.stdout.on("data", cb); },
+            onStderr(cb) { proc.stderr.on("data", cb); },
+            onError(cb) { proc.on("error", cb); },
+            onExit(cb) { proc.on("exit", cb); },
+            onClose(cb) { proc.on("close", cb); },
+        };
     }
 
     async getHostUserInfo(): Promise<HostUserInfo> {
-        const userName = await spawn("id", ["-nu"], { log: getLogSink() });
+        const userName = await this.run(["id", "-nu"], {});
         /* eslint-disable @typescript-eslint/no-non-null-assertion */
         if (userName.exit === 0) {
             return {

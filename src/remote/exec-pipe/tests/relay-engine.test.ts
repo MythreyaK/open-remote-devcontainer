@@ -5,8 +5,9 @@ import path from "node:path";
 
 import { describe, test, expect, afterAll, afterEach } from "vitest";
 
-import { getMockSettings, getTestTimeout, initMocks } from "../../../tests/common";
 import { run } from "../../../common/cmd";
+import { getMockSettings, getTestTimeout, initMocks } from "../../../tests/common";
+import type { SpawnedProcess } from "../../../common/ctx/execCtx";
 
 import { SshAgentRelay, SSH_AGENT_SOCK_DIR } from "../local";
 
@@ -15,16 +16,13 @@ initMocks();
 const SETTINGS = getMockSettings();
 const CONTAINER_IMAGE = "node:24-slim";
 
-const SSH_RELAY_SCRIPT_LOCATION = path.join(__dirname, "../remote.ts");
 const CONTAINER_NAME = `ord-relay-test-${process.pid}`;
 const AGENT_SOCK_PATH = `/tmp/relay-engine-agent-${process.pid}.sock`;
 const CONTAINER_SOCK_PATH = `${SSH_AGENT_SOCK_DIR}/test-${process.pid}.sock`;
 
 function readBridgeScript(): string {
-    return fs.readFileSync(SSH_RELAY_SCRIPT_LOCATION, "utf-8")
-        .replace("${SSH_AGENT_SOCK_PATH}", CONTAINER_SOCK_PATH)
-        .replace("${EXTENSION_ID}", "relay-engine-test")
-        + "\nmain();";
+    const SSH_RELAY_SCRIPT_LOCATION = path.join(__dirname, "../remote.ts");
+    return fs.readFileSync(SSH_RELAY_SCRIPT_LOCATION, "utf-8") + "\nmain();";
 }
 
 function createFakeAgent(): Promise<net.Server> {
@@ -40,14 +38,33 @@ function createFakeAgent(): Promise<net.Server> {
     });
 }
 
-function startBridge(engine: string): childProcess.ChildProcess {
+function wrapChildProcess(proc: childProcess.ChildProcess): SpawnedProcess {
+    return {
+        stdin: {
+            write(data) { proc.stdin?.write(data); },
+            end() { proc.stdin?.end(); },
+        },
+        onStdout(cb) { proc.stdout?.on("data", cb); },
+        onStderr(cb) { proc.stderr?.on("data", cb); },
+        onError(cb) { proc.on("error", cb); },
+        onExit(cb) { proc.on("exit", cb); },
+        onClose(cb) { proc.on("close", cb); },
+    };
+}
+
+function startBridge(engine: string): SpawnedProcess {
     const bridgeScript = readBridgeScript();
-    return childProcess.spawn(engine, [
+    const proc = childProcess.spawn(engine, [
         "exec", "-i", CONTAINER_NAME,
-        "node", "--input-type=module-typescript", "-e", bridgeScript,
+        "node",
+        "--input-type=module-typescript",
+        "-e", bridgeScript,
+        "--",
+        `--sock-path=${CONTAINER_SOCK_PATH}`,
     ], {
         stdio: ["pipe", "pipe", "pipe"],
     });
+    return wrapChildProcess(proc);
 }
 
 async function waitForRelay(r: SshAgentRelay, timeoutMs = 15_000): Promise<void> {
@@ -62,7 +79,7 @@ async function waitForRelay(r: SshAgentRelay, timeoutMs = 15_000): Promise<void>
 
 // client script that runs inside the container, connects to the bridge socket,
 // sends a message, waits for one response, prints it to stdout
-function clientScript(id: number): string {
+function containerSocketClientScript(id: number): string {
     return [
         "import net from \"net\";",
         "const timer = setTimeout(() => { process.stderr.write(\"timeout\"); process.exit(1); }, 10000);",
@@ -131,7 +148,7 @@ describe.skipIf(!SETTINGS.dockerPath)("exec-pipe engine integration", () => {
                 const r = await run([
                     engine, "exec", CONTAINER_NAME,
                     "node", "--input-type=module-typescript",
-                    "-e", clientScript(i),
+                    "-e", containerSocketClientScript(i),
                 ], {});
                 return { i, exit: r.exit, stdout: r.stdout, stderr: r.stderr };
             }),
@@ -153,7 +170,7 @@ describe.skipIf(!SETTINGS.dockerPath)("exec-pipe engine integration", () => {
             const r = await run([
                 engine, "exec", CONTAINER_NAME,
                 "node", "--input-type=module-typescript",
-                "-e", clientScript(i),
+                "-e", containerSocketClientScript(i),
             ], {});
             expect(r.exit, `client ${i} failed: ${r.stderr}`).toBe(0);
             expect(r.stdout).toBe(`AGENT:ping-${i}`);

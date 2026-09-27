@@ -35,8 +35,8 @@ describe("lint", () => {
 
         expect(violations, [
             "Use destructured defaults instead of object literal defaults:",
-            "  Bad:  opts: Type = { key: val }",
-            "  Good: { key = val }: Type = {}",
+            "  Bad:  opts: T = { key: val }",
+            "  Good: { key = val }: T = {}",
             "",
             ...violations,
         ].join("\n")).toHaveLength(0);

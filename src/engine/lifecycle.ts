@@ -1,8 +1,7 @@
 import path from "node:path";
 import * as fs from "node:fs/promises";
-import * as chproc from "node:child_process";
-
 import { run } from "../common/cmd";
+import { getExecCtx } from "../common/ctx/ctx";
 import { getLogSink } from "../extension/log";
 import { formatCmdErr } from "../common/spawn";
 import { parseEnv, getHostUserInfo, getProductJson, getEngineCmd, fmtErr } from "../common/utils";
@@ -624,14 +623,14 @@ export class ContainerState {
     public async startSshAgentRelay(): Promise<sshAgent.SshAgentRelay | undefined> {
         const sshAuthSock = process.env.SSH_AUTH_SOCK;
         if (!sshAuthSock) {
-            getLogSink().info("ssh-agent-relay: SSH_AUTH_SOCK not set, skipping");
+            getLogSink().info("ssh-agent-relay: SSH_AUTH_SOCK env not set, skipping");
             return undefined;
         }
 
         const remoteEnv = this.remoteEnvProbe.HOME;
 
         if (!remoteEnv) {
-            throw new InternalError("HOME envvar not resent in remoteEnv");
+            throw new InternalError("ssh-agent-relay: HOME envvar not present in remoteEnv");
         }
 
         const nodeBin = path.posix.join(remoteEnv, ".vscode-oss-devcontainer", "node");
@@ -639,23 +638,21 @@ export class ContainerState {
 
         try {
             const sockPath = sshAgent.sshAgentSockPath();
-            const bridgeScriptTemplate = await fs.readFile(SSH_RELAY_SCRIPT_LOCATION, { encoding: "utf-8" });
-            const bridgeScript = bridgeScriptTemplate
-                .replace("${SSH_AGENT_SOCK_PATH}", sockPath)
-                .replace("${EXTENSION_ID}", EXTENSION_ID)
+            const bridgeScript = await fs.readFile(SSH_RELAY_SCRIPT_LOCATION, { encoding: "utf-8" })
                 + "\nmain();";
 
-            getLogSink().info(bridgeScript);
+            getLogSink().debug(`ssh-agent-relay: bridge script contents:\n${bridgeScript}\n`);
 
             const execArgs = this.cc.getExecArgs(containerName, this.remoteEnvProbe, { interactive: true });
-            const proc = chproc.spawn(this.cmd[0], [
-                ...this.cmd.slice(1),
+            const proc = await getExecCtx().spawn([
+                ...this.cmd,
                 ...execArgs,
-                nodeBin, "--input-type=module-typescript", "-e", bridgeScript,
-            ], {
-                cwd: this.workspaceFolder,
-                stdio: ["pipe", "pipe", "pipe"],
-            });
+                nodeBin,
+                "--input-type=module-typescript",
+                "-e", bridgeScript,
+                "--",
+                `--sock-path=${sockPath}`,
+            ], { cwd: this.workspaceFolder });
 
             const relay = new sshAgent.SshAgentRelay(proc, sshAuthSock, sockPath);
 
