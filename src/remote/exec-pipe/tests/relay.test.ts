@@ -271,3 +271,125 @@ describe("exec-pipe relay", () => {
         expect(close.type).toBe(FrameType.Close);
     }, getTestTimeout(10));
 });
+
+describe("stability edge-cases", () => {
+    test("ready rejects when bridge exits before 'FrameType.Ready'", async () => {
+        let exitCb: ((code: number | null) => void) | undefined;
+
+        const mockProc: SpawnedProcess = {
+            stdin: { write() { }, end() { } },
+            onStdout() { },
+            onStderr() { },
+            onError() { },
+            onExit(cb) { exitCb = cb; },
+            onClose() { },
+        };
+
+        const relay = new SshAgentRelay(mockProc, "/tmp/fake-agent.sock", "/tmp/fake.sock");
+
+        // bridge dies before sending Ready
+        exitCb?.(1);
+
+        const result = await Promise.race([
+            relay.ready.then(() => "resolved").catch(() => "rejected"),
+            new Promise<string>(r => setTimeout(() => { r("hung"); }, 500)),
+        ]);
+
+        // ready promise never rejects = it hangs forever
+        expect(result).toBe("rejected");
+
+        relay.dispose();
+    });
+
+    test("closeClient sends exactly one 'FrameType.Close' per disconnect", async () => {
+        bridge = spawnBridge({ disableNodeSafety: true });
+
+        const allFrames: Frame[] = [];
+        let parseBuf: Buffer = Buffer.alloc(0);
+
+        const onData = (d: Buffer) => {
+            parseBuf = Buffer.concat([parseBuf, d]);
+            const result = localReadFrames(parseBuf);
+            allFrames.push(...result.frames);
+            parseBuf = result.remainder;
+        };
+
+        if (!bridge.stdout) { throw new Error("bridge.stdout is null"); }
+        bridge.stdout.on("data", onData);
+
+        // wait for Ready
+        while (!allFrames.some(f => f.type === FrameType.Ready)) {
+            await new Promise(r => setTimeout(r, 10));
+        }
+
+        const client = net.createConnection(SOCK_PATH);
+        await new Promise<void>(r => client.on("connect", r));
+
+        // wait for Open
+        while (!allFrames.some(f => f.type === FrameType.Open)) {
+            await new Promise(r => setTimeout(r, 10));
+        }
+
+        const openFrame = allFrames.find(f => f.type === FrameType.Open);
+        if (!openFrame) { throw new Error("no Open frame"); }
+        const chan = openFrame.chan;
+
+        // flood data from host->bridge->client socket to fill the socket buffer
+        // bridge will queue sock.write() calls and when client is destroyed,
+        // pending writes fail (EPIPE) = error event = closeClient called
+        if (!bridge.stdin) { throw new Error("bridge.stdin is null"); }
+        const payload = Buffer.alloc(65536, 0x42);
+        for (let i = 0; i < 100; i++) {
+            localWriteFrame(bridge.stdin, FrameType.Data, chan, payload);
+        }
+
+        // don't read on client side — let bridge-side socket buffer fill
+        await new Promise(r => setTimeout(r, 100));
+
+        // half-close first -> bridge gets 'end' -> closeClient -> Close #1
+        client.end();
+
+        // wait for bridge to process the FIN
+        await new Promise(r => setTimeout(r, 50));
+
+        // full-close -> pending writes fail -> ECONNRESET -> 'error' -> closeClient -> Close #2
+        client.destroy();
+
+        // collect frames for 1s
+        await new Promise(r => setTimeout(r, 1000));
+        bridge.stdout.removeListener("data", onData);
+
+        // potential bug: both 'end' and 'error' fire on bridge-side socket = two Close frames
+        const closeFrames = allFrames.filter(f => f.type === FrameType.Close && f.chan === chan);
+        expect(closeFrames).toHaveLength(1);
+    });
+
+    test("bridge destroys server-side socket on client disconnect", async () => {
+        bridge = spawnBridge({ disableNodeSafety: true });
+        await waitForFrames(bridge, 1); // Ready
+
+        const client = net.createConnection(SOCK_PATH);
+        await new Promise<void>(r => client.on("connect", r));
+        await waitForFrames(bridge, 1); // Open
+
+        // register listener before triggering events to avoid race
+        const clientClosed = new Promise<boolean>((r) => {
+            const timer = setTimeout(() => { r(false); }, 1000);
+            client.on("close", () => {
+                clearTimeout(timer);
+                r(true);
+            });
+        });
+
+        // client half-closes (sends FIN to bridge)
+        client.end();
+
+        // bridge receives 'end' -> closeClient -> sends Close frame, deletes from map
+        // potential bug: closeClient does not call sock.destroy(), so bridge-side socket
+        // stays open (writable). Client never receives FIN from bridge.
+        await waitForFrames(bridge, 1); // Close
+
+        // if bridge properly destroyed its socket, client receives close event
+        expect(await clientClosed).toBe(true);
+    });
+});
