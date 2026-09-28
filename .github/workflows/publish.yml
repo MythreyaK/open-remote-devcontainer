@@ -73,11 +73,13 @@ jobs:
           PRE_RELEASE: ${{ inputs.pre_release }}
           VSIX_FILE: ${{ inputs.vsix_file }}
           VSIX_SHA256: ${{ inputs.vsix_sha256 }}
+          RELEASE_NOTES: ${{ steps.changelog.outputs.body }}
         run: |
           set -e
           FLAGS=""
           if [ "$PRE_RELEASE" = "true" ]; then FLAGS="--prerelease"; fi
-          gh release create "$GH_TAG" $FLAGS --target "$GH_SHA" --notes "${{ steps.changelog.outputs.body }}" "$VSIX_FILE" "$VSIX_SHA256"
+          printf '%s\n' "$RELEASE_NOTES" > release-notes.md
+          gh release create "$GH_TAG" $FLAGS --target "$GH_SHA" --notes-file release-notes.md "$VSIX_FILE" "$VSIX_SHA256"
 
       - name: Publish to Open VSX
         if: inputs.publish_ovsx

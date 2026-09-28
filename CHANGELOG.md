@@ -1,5 +1,18 @@
 # Open Remote - Devcontainer: Changelog
 
+## v0.7.4
+
+- **SSH Agent forwarding:** Automatically forward local `SSH_AUTH_SOCK` into devcontainers. 
+  Each window gets its own forwarded socket under `/tmp/codium-open-remote-devcontainer-ipc` 
+  and `SSH_AUTH_SOCK` is set accordingly. With "Reload window", existing terminals may 
+  need to be re-created. *This is experimental*. Please report issues [here](https://github.com/MythreyaK/open-remote-devcontainer/issues).
+- Fix "Show configuration": Now opens the `devcontainer.json` file in the current workspace context. 
+- Fix config-file watcher not triggering rebuild prompt in a remote session. 
+
+#### Misc / Dev: 
+- `ExecCtx` code refactor. Expose `spawn` alongside `run` (used for socket stream)
+- Misc test improvements
+
 ## v0.7.3
 
 - Fix regression with `remoteEnv`: `remoteEnv` in v0.7.1 and v0.7.2 was 

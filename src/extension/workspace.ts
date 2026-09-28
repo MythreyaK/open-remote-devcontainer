@@ -6,6 +6,10 @@ import { getLogSink } from "./log";
 import { ConfigError } from "./error";
 import { AUTHORITY_BASE, decodeRemoteAuthority } from "../remote/resolver";
 import * as cmds from "../extension/commands";
+import { getExecCtx } from "../common/ctx/ctx";
+import { fmtErr } from "../common/utils";
+import { parseDevcontainer } from "../parser/parser";
+import { ContainerConfig } from "../engine/container";
 
 export enum NotificationLevel {
     Info,
@@ -33,8 +37,9 @@ export function getWorkspaceId(localWsp: string): string {
 }
 
 async function fileExists(filePath: vscode.Uri): Promise<boolean> {
+    getLogSink().debug(`fileExists check: '${filePath.toString(true)}'`);
     try {
-        await vscode.workspace.fs.stat(filePath);
+        await getExecCtx().fs.stat(filePath);
         return true;
     }
     catch {
@@ -43,10 +48,11 @@ async function fileExists(filePath: vscode.Uri): Promise<boolean> {
 }
 
 export async function findDevcontainerJson(dir: vscode.Uri): Promise<vscode.Uri> {
+    getLogSink().debug(`Searching '${dir.toString(true)}' for config files ...`);
     const filePaths = ConfigPaths(dir);
     for (const f of filePaths) {
         if (await fileExists(f)) {
-            getLogSink().info(`Using devcontainer.json at ${f.toString(true)}`);
+            getLogSink().info(`Using devcontainer.json at '${f.toString(true)}'`);
             return f;
         }
     }
@@ -59,9 +65,10 @@ export function isRemoteDevcontainerSession(): boolean {
 }
 
 export function getLocalWorkspaceFolder(): vscode.Uri {
-    const remote = vscode.env.remoteAuthority;
-    if (remote?.startsWith(AUTHORITY_BASE)) {
-        return decodeRemoteAuthority(remote);
+    getLogSink().info(`getLocalWorkspaceFolder: remote is ${vscode.env.remoteAuthority}`);
+    if (isRemoteDevcontainerSession()) {
+        const remote = vscode.env.remoteAuthority;
+        return decodeRemoteAuthority(remote!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
     }
     // for remotes that aren't devcontainer (say, ssh), the workspace
     // is "local" from extension's pov, so use "local" workspace
@@ -113,35 +120,49 @@ export async function createDevcontainerConfigWatcher(ctx: vscode.ExtensionConte
             getLogSink().error(`Watcher: No workspace or config found: ${e.message}`);
         }
         else {
-            getLogSink().error(`Unknown error: ${JSON.stringify(e)}`);
+            getLogSink().error(`Unknown error: ${fmtErr(e)}`);
         }
         return new vscode.Disposable(() => { });
     }
 
-    const configName = path.posix.basename(configPath.path);
-    const configDir = vscode.Uri.joinPath(configPath, "..");
+    const localWsf = getLocalWorkspaceFolder();
+    const parsedConfig = await parseDevcontainer(configPath);
+    const cc = ContainerConfig.create(localWsf.fsPath, configPath.fsPath, parsedConfig);
+    const watchPath = remapToCurrentAuthority(localWsf, configPath, cc.getRemoteMountDir());
+    const configName = path.posix.basename(watchPath.path);
+    const configDir = vscode.Uri.joinPath(watchPath, "..");
     const pattern = new vscode.RelativePattern(configDir, configName);
     const watcher = vscode.workspace.createFileSystemWatcher(pattern);
 
-    watcher.onDidChange(async () => {
-        if (isRemoteDevcontainerSession()) {
-            try {
-                await cmds.remotePromptRebuildIfStale(ctx);
-            }
-            catch (e: unknown) {
-                if (e instanceof Error) {
-                    getLogSink().error(`remotePromptRebuildIfStale failed ${e.message}`);
-                }
-                else {
-                    getLogSink().error(`remotePromptRebuildIfStale failed ${JSON.stringify(e)}`);
-                }
-            }
-        }
+    let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+    watcher.onDidChange(() => {
+        if (!isRemoteDevcontainerSession()) { return; }
+        if (debounceTimer) { clearTimeout(debounceTimer); }
+        debounceTimer = setTimeout(() => {
+            cmds.remotePromptRebuildIfStale(ctx).catch((e: unknown) => {
+                getLogSink().error(`remotePromptRebuildIfStale failed: ${fmtErr(e)}`);
+            });
+        }, 250);
     });
     watcher.onDidCreate(() => { updateHasConfigContext(true); });
     watcher.onDidDelete(() => { updateHasConfigContext(false); });
 
     return watcher;
+}
+
+export function remapToCurrentAuthority(localWsf: vscode.Uri, filePath: vscode.Uri, remoteMountDir: string): vscode.Uri {
+    if (!isRemoteDevcontainerSession()) {
+        return filePath;
+    }
+    const authority = vscode.env.remoteAuthority;
+    if (!authority) { return filePath; }
+
+    const relativePath = path.posix.relative(localWsf.path, filePath.path);
+    return vscode.Uri.from({
+        scheme: "vscode-remote",
+        authority,
+        path: path.posix.join(remoteMountDir, relativePath),
+    });
 }
 
 export function onWorkspaceReady() {
