@@ -39,11 +39,14 @@ function getMsg(msg: string) {
  * So just use window-bound lifetime for all sockets for consistency.
  * Also prevents buggy cases with unstable connections.
  *
- * local.ts is the workspace-local relay-end that connects to the
- * socket. "workspace-local" on a remote-ssh machine = on the remote
- * ssh machine. Uses docker exec and shuttles data over stdin/stdout
- * to the socket in the container. The container-side listener is
- * in remote.ts.
+ * local.ts is the ui-local relay-end that connects to the socket on
+ * the user-side *not* the remote ssh machine side. Uses docker exec
+ * over the execServer (provided by the ssh extension) and shuttles
+ * data over stdin/stdout to the socket in the container. The
+ * container-side listener is in remote.ts.
+ *
+ * In particular, this means that `ForwardAgent yes` is *not* needed
+ * and not used.
  *
 **/
 export class SshAgentRelay {
