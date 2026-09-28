@@ -16,10 +16,20 @@ export interface FsCtx {
     write(filePath: vscode.Uri, content: string): Promise<void>,
 };
 
+export interface SpawnedProcess {
+    readonly stdin: { write(data: Buffer | Uint8Array): void, end(): void },
+    onStdout(cb: (data: Buffer) => void): void,
+    onStderr(cb: (data: Buffer) => void): void,
+    onError(cb: (err: Error) => void): void,
+    onExit(cb: (code: number | null) => void): void,
+    onClose(cb: () => void): void,
+}
+
 export interface ExecCtx {
     kind: ExecCtxKind,
     fs: FsCtx,
     run(cmdArgs: string[], opts: RunOpts): Promise<CmdResult>,
+    spawn(cmdArgs: string[], opts: RunOpts): Promise<SpawnedProcess>,
     getHostUserInfo(): Promise<HostUserInfo>,
     env(): Promise<vscode.ExecEnvironment>,
     getSettings(): Promise<Settings>,

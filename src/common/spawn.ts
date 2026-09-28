@@ -1,91 +1,60 @@
-import * as chproc from "node:child_process";
-import { CmdResult, SpawnOpts } from "./opts";
+import { StringDecoder } from "node:string_decoder";
+import { CmdResult, RunOpts } from "./opts";
+import { getLogSink } from "../extension/log";
+import type { SpawnedProcess } from "./ctx/execCtx";
 
 let cmdCount: number = 0;
 
-/* eslint-disable @typescript-eslint/no-confusing-void-expression */
-export function spawn(
-    cmd: string,
-    args: string[],
-    opts: SpawnOpts,
-): Promise<CmdResult> {
-    return new Promise((resolve, _) => {
+export function collectOutput(proc: SpawnedProcess, opts?: RunOpts): Promise<CmdResult> {
+    return new Promise((resolve) => {
         cmdCount += 1;
         const cmdId = cmdCount;
+        const log = getLogSink();
+        const tag = `CMD${String(cmdId).padStart(4, "0")}`;
 
-        const cmdStr = () => `[CMD${String(cmdId).padStart(4, "0")}]:`;
+        let stdout = "";
+        let stderr = "";
+        const stdoutDecoder = new StringDecoder("utf-8");
+        const stderrDecoder = new StringDecoder("utf-8");
 
-        let stdout: string = "";
-        let stderr: string = "";
-
-        // TODO: do we need env without inheriting parent's env?
-        const finalEnv = {
-            ...process.env,
-            ...(opts.env ?? {}),
-            BUILDKIT_PROGRESS: "plain",
-        };
-
-        const proc = chproc.spawn(cmd, args, {
-            cwd: opts.cwd,
-            env: finalEnv,
-            stdio: "pipe",
-        });
-        proc.stdout.setEncoding("utf-8");
-        proc.stderr.setEncoding("utf-8");
-
-        if (opts.stdin !== undefined) {
-            proc.stdin.write(opts.stdin);
+        if (opts?.stdin !== undefined) {
+            proc.stdin.write(Buffer.from(opts.stdin));
             proc.stdin.end();
         }
 
-        proc.on("spawn", () => {
-            const strz_args = args.map(e => `'${e}'`).join(", ");
-            // TODO: log env values as well
-            opts.log.info(`${cmdStr()} Running (spawn) ['${cmd}', ${strz_args}]`);
+        proc.onStdout((d) => {
+            const chunk = stdoutDecoder.write(d);
+            stdout += chunk;
+            log.debug(`${tag} stdout: ${chunk.trimEnd()}`);
         });
 
-        proc.on("error", (err: NodeJS.ErrnoException) => {
-            const msg = `${err.code} :: ${err.message} :: :: ${err.syscall}`;
-            const res: CmdResult = {
-                exit: err.errno ?? 255,
-                stdout: "",
-                stderr: err.message,
-            };
-
-            opts.log.error(cmdStr(), msg);
-            // TODO: reject?
-            return resolve(res);
+        proc.onStderr((d) => {
+            const chunk = stderrDecoder.write(d);
+            stderr += chunk;
+            log.debug(`${tag} stderr: ${chunk.trimEnd()}`);
         });
 
-        proc.stdout.on("data", (data: string) => {
-            stdout += data;
-            opts.log.info(cmdStr(), data);
+        proc.onError((err) => {
+            log.error(`${tag} error: ${err.message}`);
+            resolve({ exit: 255, stdout: "", stderr: err.message });
         });
 
-        proc.stderr.on("data", (data: string) => {
-            stderr += data;
-            opts.log.error(cmdStr(), data);
-        });
+        let exitCode: number = 256;
 
-        proc.on("exit", (code, signal) => {
-            const res: CmdResult = {
-                exit: code ?? (signal ?? 256),
-                stdout: stdout,
-                stderr: stderr,
-            };
-
-            if (code !== 0) {
-                opts.log.error(`${cmdStr()} Command failed with {code / signal ${res.exit}}`);
+        proc.onExit((code) => {
+            exitCode = code ?? 256;
+            if (exitCode !== 0) {
+                log.error(`${tag} exited ${exitCode}`);
             }
-            else {
-                opts.log.info(`${cmdStr()} command exit: ${res.exit}`);
-            }
+        });
 
-            return resolve(res);
+        proc.onClose(() => {
+            stdout += stdoutDecoder.end();
+            stderr += stderrDecoder.end();
+            resolve({ exit: exitCode, stdout, stderr });
         });
     });
 }
-/* eslint-enable @typescript-eslint/no-confusing-void-expression */
 
 export function formatCmdErr(res: CmdResult): string {
     return `Error: ${res.exit}: stdout: [${res.stdout.trim()}] stderr: [${res.stderr.trim()}]`;

@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
 
-import { ExecCtx, ExecCtxKind, FsCtx } from "./execCtx";
+import { ExecCtx, ExecCtxKind, FsCtx, SpawnedProcess } from "./execCtx";
 import { HostUserInfo } from "../utils";
-import { formatCmdErr } from "../spawn";
+import { collectOutput, formatCmdErr } from "../spawn";
 import { getLogSink } from "../../extension/log";
 import { SpawnError } from "../../extension/error";
 import { CmdResult, RunOpts } from "../opts";
@@ -54,6 +54,11 @@ export class RemoteExecCtx implements ExecCtx {
     }
 
     public async run(cmdArgs: string[], opts: RunOpts): Promise<CmdResult> {
+        const proc = await this.spawn(cmdArgs, opts);
+        return collectOutput(proc, opts);
+    }
+
+    public async spawn(cmdArgs: string[], opts: RunOpts): Promise<SpawnedProcess> {
         return spawnRemote(this.execServer, cmdArgs, opts);
     }
 
@@ -95,7 +100,7 @@ export class RemoteExecCtx implements ExecCtx {
     }
 }
 
-export async function spawnRemote(execServer: vscode.ExecServer, cmdArgs: string[], opts: RunOpts) {
+export async function spawnRemote(execServer: vscode.ExecServer, cmdArgs: string[], opts: RunOpts): Promise<SpawnedProcess> {
     cmdCount += 1;
     const cmdId = cmdCount;
 
@@ -117,41 +122,28 @@ export async function spawnRemote(execServer: vscode.ExecServer, cmdArgs: string
         env: { ...env, BUILDKIT_PROGRESS: "plain" },
     });
 
-    if (opts.stdin !== undefined) {
-        spawned.stdin.write(new TextEncoder().encode(opts.stdin));
-        spawned.stdin.end();
-    }
-
-    let stdout = "";
-    let stderr = "";
-    const stdoutDecoder = new TextDecoder("utf-8");
-    const stderrDecoder = new TextDecoder("utf-8");
-
-    spawned.stdout.onDidReceiveMessage((data: Uint8Array) => {
-        const chunk = stdoutDecoder.decode(data, { stream: true });
-        stdout += chunk;
-        log.debug(`RemoteExecCtx.stdout.onDidReceiveMessage[${cmdStr()}]: len ${chunk.length}, chunk: '${chunk.trim()}'`);
-    });
-
-    spawned.stderr.onDidReceiveMessage((data: Uint8Array) => {
-        const chunk = stderrDecoder.decode(data, { stream: true });
-        stderr += chunk;
-        log.debug(`RemoteExecCtx.stderr.onDidReceiveMessage[${cmdStr()}]: len ${chunk.length}, chunk: '${chunk.trim()}'`);
-    });
-
-    const exit = await spawned.onExit;
-    const info: CmdResult = {
-        exit: exit.status,
-        stdout: stdout,
-        stderr: stderr,
+    return {
+        stdin: {
+            write(data) { spawned.stdin.write(data instanceof Buffer ? new Uint8Array(data) : data); },
+            end() { spawned.stdin.end(); },
+        },
+        onStdout(cb) {
+            spawned.stdout.onDidReceiveMessage((d) => {
+                cb(Buffer.from(d));
+            });
+        },
+        onStderr(cb) {
+            spawned.stderr.onDidReceiveMessage((d) => {
+                cb(Buffer.from(d));
+            });
+        },
+        onError(cb) { void spawned.onExit.then(() => { }, (err: unknown) => { cb(err instanceof Error ? err : new Error(String(err))); }); },
+        onExit(cb) { void spawned.onExit.then((e) => { cb(e.status); }); },
+        onClose(cb) {
+            void spawned.onExit.then(
+                () => { cb(); },
+                () => { cb(); },
+            );
+        },
     };
-
-    if (exit.status === 0) {
-        log.info(`RemoteExecCtx[${cmdStr()}]: stdout: ${info.stdout.trim()}`);
-    }
-    else {
-        log.error(`RemoteExecCtx[${cmdStr()}]: ${formatCmdErr(info)}`);
-    }
-
-    return { exit: exit.status, stdout, stderr };
 }

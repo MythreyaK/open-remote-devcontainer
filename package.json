@@ -188,9 +188,10 @@
   "scripts": {
     "compile": "tsc --noEmit && eslint src",
     "build": "npm run build:dev",
-    "build:dev": "node esbuild.js && cp src/remote/installServer.sh dist/ && cp src/engine/Dockerfile dist/",
+    "copy_templates": "cp src/remote/installServer.sh dist/ && cp src/engine/Dockerfile dist/ && cp src/remote/exec-pipe/remote.ts dist/",
+    "build:dev": "node esbuild.js && npm run copy_templates",
+    "build:prod": "node esbuild.js --production && npm run copy_templates",
     "build:clean": "rm -rf dist out",
-    "build:prod": "node esbuild.js --production && cp src/remote/installServer.sh dist/ && cp src/engine/Dockerfile dist/",
     "test": "npm run test:noengine",
     "test:noengine": "SKIP_ENGINE_TESTS=1 vitest run",
     "test:engine": "vitest run",
