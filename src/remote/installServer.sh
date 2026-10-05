@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 #_CODIUM_INJECT_DEBUG_SET_X
-set -e
+set -eu # 🇪🇺
 set -o pipefail
 
 # CODIUM_INJECT_* are injected from extension via replacement
@@ -64,9 +64,9 @@ BAD_ARGS=20
 
 function inspect_conatiner_platform() {
     if [[ -r /etc/os-release ]]; then
-        CODIUM_OS_ID=$(source /etc/os-release && echo "$ID")
+        CODIUM_OS_ID=$(source /etc/os-release && echo "${ID:-}")
     elif [[ -r /usr/lib/os-release ]]; then
-        CODIUM_OS_ID=$(source /usr/lib/os-release && echo "$ID")
+        CODIUM_OS_ID=$(source /usr/lib/os-release && echo "${ID:-}")
     else
         echo "INSTALL_SCRIPT_WARN: Both /etc/os-release and /usr/lib/os-release were not found";
         # print_envs_exit ${UNSUPPORTED_PLATFORM};
@@ -174,7 +174,7 @@ function download_and_install_server() {
     fi
 
     if [[ ! -x "${CODIUM_SERVER_ROOT_DIR}/bin/codium-server" ]]; then
-        rm -rf "${CODIUM_SERVER_ROOT_DIR}"
+        kill_server_and_remove_all
         print_envs_exit ${SERVER_INSTALL_FAILED}
     fi
 
