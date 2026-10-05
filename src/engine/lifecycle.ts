@@ -575,6 +575,7 @@ export class ContainerState {
             codiumVersion: prodJson.version,
             connectionToken: token,
             forceReinstall: forceReinstall,
+            shutdownAction: this.cc.cfg.shutdownAction,
         };
 
         const scriptData = await server.generateInstallScript(info, true);

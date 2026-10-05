@@ -155,7 +155,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             "-d",
             "--name",
             containerName,
-            ...this.addContainerUser(),
+            ...this.addRemoteUser(),
             ...this.addAppPorts(),
             ...this.addMounts(),
             ...this.addWorkspaceMount(this.engine === ContainerEngine.podman),
@@ -172,7 +172,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             imageName,
             //
             "-c",
-            'trap "echo Got signal, exiting...; exit 0" SIGINT SIGTERM; while sleep 60 & wait $! ; do : ; done',
+            'trap "echo Got signal, exiting...; exit 0" SIGINT SIGTERM; while sleep 600 & wait $! ; do : ; done',
         ].filter(Boolean)
             .map(e => interpolateLocal(e, this.workspaceFolder, this.getRemoteMountDir(), this.localEnv));
     }

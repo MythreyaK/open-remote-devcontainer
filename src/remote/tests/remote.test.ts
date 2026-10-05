@@ -141,6 +141,7 @@ describe("Install script", () => {
             downloadTemplateUrl: "https://localhost/${CODIUM_OS_PLATFORM}-${CODIUM_ARCH}.tar.gz",
             codiumVersion: "1.2.345",
             forceReinstall: false,
+            shutdownAction: "none",
         };
 
         const script = await fs.readFile(install.INSTALL_SCRIPT_LOCATION, { encoding: "utf-8" });
@@ -153,6 +154,7 @@ describe("Install script", () => {
         expect(updatedScript).toContain('CODIUM_NEW_INSTALL_VERSION="1.2.345"');
         expect(updatedScript).toContain('CODIUM_SERVER_LISTEN_PORT="6543"');
         expect(updatedScript).toContain("localhost/${CODIUM_OS_PLATFORM}-${CODIUM_ARCH}");
+        expect(updatedScript).toContain('CODIUM_SHUTDOWN_ACTION="none"');
 
         // await fs.writeFile("out.sh", updatedScript, { encoding: 'utf-8', mode: 0o700 });
     });
@@ -165,6 +167,7 @@ describe("Install script", () => {
             downloadTemplateUrl: "https://localhost/${CODIUM_OS_PLATFORM}-${CODIUM_ARCH}.tar.gz",
             codiumVersion: "1.2.345",
             forceReinstall: false,
+            shutdownAction: "stopContainer",
         };
 
         const script = await fs.readFile(install.INSTALL_SCRIPT_LOCATION, { encoding: "utf-8" });
@@ -176,6 +179,7 @@ describe("Install script", () => {
         expect(updatedScript).toContain('CODIUM_NEW_INSTALL_VERSION="1.2.345"');
         expect(updatedScript).toContain('CODIUM_SERVER_LISTEN_PORT="6543"');
         expect(updatedScript).toContain("localhost/${CODIUM_OS_PLATFORM}-${CODIUM_ARCH}");
+        expect(updatedScript).toContain('CODIUM_SHUTDOWN_ACTION="stopContainer"');
 
         // await fs.writeFile("out.sh", updatedScript, { encoding: 'utf-8', mode: 0o700 });
     });
