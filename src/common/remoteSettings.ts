@@ -3,12 +3,12 @@ import path from "node:path";
 
 import * as jc from "jsonc-parser";
 
+import { Settings } from "./settings";
 import { getExecCtx } from "./ctx/ctx";
-import { getProductJson, getRemoteAuthorities, fmtErr } from "./utils";
-import { InternalError } from "../extension/error";
-import { getConfig, Settings } from "./settings";
-import { findSSHServerInstallPath, SSHDestination } from "../extension/ssh";
 import { getLogSink } from "../extension/log";
+import { InternalError } from "../extension/error";
+import { getProductJson, getRemoteAuthorities, fmtErr } from "./utils";
+import { findSSHServerInstallPath, SSHDestination } from "../extension/ssh";
 
 /**
  *
@@ -24,7 +24,7 @@ import { getLogSink } from "../extension/log";
  *
  * @returns `Settings` on the remote machine
  */
-export async function getRemoteserverConfiguration(): Promise<Settings> {
+export async function getRemoteserverConfiguration(): Promise<Partial<Settings>> {
     getLogSink().info(`Fetching remote settings '${vscode.env.remoteAuthority}'`);
     const productJson = await getProductJson();
 
@@ -52,7 +52,7 @@ export async function getRemoteserverConfiguration(): Promise<Settings> {
 
     const DEFAULT_DIR = path.posix.join(homedir, productJson.serverDataFolderName);
 
-    const readConfig = async (installPath: string): Promise<Settings> => {
+    const readConfig = async (installPath: string): Promise<Partial<Settings>> => {
         getLogSink().info(`getRemoteserverConfiguration: remote SSH install at: ${installPath}`);
         const cfgPath = path.posix.join(installPath, "data/Machine/settings.json");
         const raw = (await getExecCtx().fs.read(vscode.Uri.file(cfgPath))).trim();
@@ -61,9 +61,9 @@ export async function getRemoteserverConfiguration(): Promise<Settings> {
         /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
         const remoteSettings = jc.parse(raw);
         return {
-            dockerPath: remoteSettings["dev.containers.dockerPath"] ?? "docker",
-            extraArgs: remoteSettings["dev.containers.extraArgs"] ?? [],
-            defaultExtensions: remoteSettings["dev.containers.defaultExtensions"] ?? [],
+            dockerPath: remoteSettings["dev.containers.dockerPath"],
+            extraArgs: remoteSettings["dev.containers.extraArgs"],
+            defaultExtensions: remoteSettings["dev.containers.defaultExtensions"],
         };
         /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
     };
@@ -85,11 +85,7 @@ export async function getRemoteserverConfiguration(): Promise<Settings> {
         return await readConfig(remoteInstallPath ?? DEFAULT_DIR);
     }
     catch (e: unknown) {
-        getLogSink().error(`getRemoteserverConfiguration: returning local cfg, reading remote config failed ${fmtErr(e)}`);
-        return {
-            dockerPath: getConfig<string>("dockerPath") ?? "docker",
-            extraArgs: getConfig<string[]>("extraArgs") ?? [],
-            defaultExtensions: getConfig<string[]>("defaultExtensions") ?? [],
-        };
+        getLogSink().error(`getRemoteserverConfiguration: returning '{}', reading remote config failed ${fmtErr(e)}`);
+        return {};
     }
 }
