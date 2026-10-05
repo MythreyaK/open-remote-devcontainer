@@ -96,7 +96,7 @@ export class RemoteExecCtx implements ExecCtx {
         // fetches exactly the machine's global config (the ssh host's settings)
         const ret = await getRemoteserverConfiguration();
         getLogSink().debug(`RemoteExecCtx.getSettings(): ${JSON.stringify(ret)}`);
-        return ret;
+        return settings.withDefaults(ret);
     }
 }
 

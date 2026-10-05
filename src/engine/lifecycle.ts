@@ -1,14 +1,18 @@
+import { Uri } from "vscode";
 import path from "node:path";
 import * as fs from "node:fs/promises";
+
 import { run } from "../common/cmd";
 import { getExecCtx } from "../common/ctx/ctx";
 import { getLogSink } from "../extension/log";
 import { formatCmdErr } from "../common/spawn";
+import { ExecCtxKind } from "../common/ctx/execCtx";
 import { parseEnv, getHostUserInfo, getProductJson, getEngineCmd, fmtErr } from "../common/utils";
 import { ContainerConfig, ContainerEngine, LifecycleCmd } from "./container";
 import { EngineError, InstallError, InternalError } from "../extension/error";
 import { NotificationLevel, showNotification } from "../extension/workspace";
 
+import * as utils from "../common/utils";
 import * as settings from "../common/settings";
 import * as server from "../remote/installServer";
 import * as sshAgent from "../remote/exec-pipe/local";
@@ -594,6 +598,10 @@ export class ContainerState {
 
         const hostPort = await this.getHostmappedPort();
 
+        // post-install actions, before anything else starts
+        // things like git config copy, so that it's present
+        await this.runPostInstall();
+
         return { host: "127.0.0.1", port: Number(hostPort), result: installExecResult };
     }
 
@@ -620,8 +628,103 @@ export class ContainerState {
         }
     }
 
+    private async runPostInstall() {
+        // TODO: should we move socket forward here?
+        await this.copyGitConfig({});
+    }
+
+    public async copyGitConfig({ force = false }: { force?: boolean }): Promise<boolean> {
+        // TODO: Windows support
+
+        // check if gitconfig exists in remote already
+        // if yes, don't touch it!
+        const files = getGitConfig(this.remoteEnvProbe);
+
+        // (stat <file> || ...)
+        // mmmm code injection
+        const statCmd = files.map((v, _) => `stat ${utils.shellEscape(v)}`).join(" || ");
+
+        const execArgs = this.cc.getExecArgs(this.getContainerName(), this.remoteEnvProbe);
+        const stat = await run([
+            ...this.cmd,
+            ...execArgs,
+            "sh",
+            "-c",
+            statCmd,
+        ], {});
+
+        if (stat.exit === 0 && !force) {
+            getLogSink().info("runPostInstall: getGitConfig: remote container git config file detected, skipping copy");
+            return false;
+        }
+
+        const remoteContent = await (async () => {
+            // If on execServer session, attempt to read remote files and prioritize them.
+            // Config injection on remote is only meaningful on an execServer-backed
+            // session. Otherwise, it's a local devcontainer session.
+            if (getExecCtx().kind === ExecCtxKind.ExecServer) {
+                const sshRemoteEnv = await getExecCtx().env();
+                const remotePaths = getGitConfig(sshRemoteEnv.env);
+
+                for (const fpath of remotePaths) {
+                    try {
+                        const content = await getExecCtx().fs.read(Uri.file(fpath));
+                        getLogSink().info(`copyGitConfig: read remote file ${fpath}`);
+                        return content;
+                    }
+                    catch (e: unknown) {
+                        getLogSink().debug(`copyGitConfig: remote read ${fpath} failed: ${fmtErr(e)}`);
+                    }
+                }
+            }
+            return undefined;
+        })();
+
+        const configContent = remoteContent ?? await (async () => {
+            const paths = getGitConfig(this.cc.getLocalEnv());
+            for (const fpath of paths) {
+                try {
+                    const content = await fs.readFile(fpath, { encoding: "utf-8" });
+                    getLogSink().info(`copyGitConfig: read local file ${fpath}`);
+                    return content;
+                }
+                catch (e: unknown) {
+                    getLogSink().debug(`copyGitConfig: local read ${fpath} failed: ${fmtErr(e)}`);
+                }
+            }
+            return undefined;
+        })();
+
+        if (configContent) {
+            const cfgDir = xdgConfigHome(this.remoteEnvProbe);
+            const execArgs = this.cc.getExecArgs(this.getContainerName(), this.remoteEnvProbe, { interactive: true });
+
+            const gitDir = utils.shellEscape(`${cfgDir}/git`);
+            const gitCfgPath = utils.shellEscape(`${cfgDir}/git/config`);
+
+            const status = await run([
+                ...this.cmd,
+                ...execArgs,
+                "sh",
+                "-c",
+                `mkdir -p ${gitDir} && cat > ${gitCfgPath}`,
+            ], { stdin: configContent });
+
+            if (status.exit !== 0) {
+                getLogSink().error(`copyGitConfig: failed to write ${gitCfgPath}: ${formatCmdErr(status)}`);
+                return false;
+            }
+
+            return true;
+        }
+        else {
+            getLogSink().info("copyGitConfig: no git config detected, ignoring");
+            return false;
+        }
+    }
+
     public async startSshAgentRelay(): Promise<sshAgent.SshAgentRelay | undefined> {
-        const sshAuthSock = process.env.SSH_AUTH_SOCK;
+        const sshAuthSock = this.cc.getLocalEnv().SSH_AUTH_SOCK;
         if (!sshAuthSock) {
             getLogSink().info("ssh-agent-relay: SSH_AUTH_SOCK env not set, skipping");
             return undefined;
@@ -732,4 +835,23 @@ export async function queryContainerConfigId(cmd: string[], workspaceFolder: str
 
 export async function readStage2Dockerfile() {
     return await fs.readFile(STAGE2_DOCKERFILE_LOCATION, { encoding: "utf-8" });
+}
+
+export function xdgConfigHome(env: Record<string, string | undefined>) {
+    if (!env.HOME) {
+        throw new InternalError("HOME env var not present");
+    }
+
+    return env.XDG_CONFIG_HOME ?? `${env.HOME}/.config`;
+}
+
+export function getGitConfig(env: Record<string, string | undefined>) {
+    if (!env.HOME) {
+        throw new InternalError("HOME env var not present");
+    }
+
+    return [
+        `${env.HOME}/.gitconfig`,
+        `${xdgConfigHome(env)}/git/config`,
+    ];
 }

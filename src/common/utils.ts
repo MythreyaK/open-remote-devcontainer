@@ -103,3 +103,7 @@ export function getRemoteAuthorities(): string[] | undefined {
 export function consume(..._: unknown[]) {
     void (_);
 }
+
+export function shellEscape(str: string) {
+    return "'" + str.replace(/'/g, "'\\''") + "'";
+}

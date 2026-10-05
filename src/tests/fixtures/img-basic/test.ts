@@ -1,11 +1,12 @@
 import path from "node:path";
-import { describe, expect, test } from "vitest";
+import { readFile, rename } from "node:fs/promises";
 import { setTimeout } from "node:timers/promises";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
 import { run } from "../../../common/cmd";
-import { ContainerInspectResult, ContainerState } from "../../../engine/lifecycle";
+import { ContainerInspectResult, ContainerState, getGitConfig, xdgConfigHome } from "../../../engine/lifecycle";
 import { ContainerConfig } from "../../../engine/container";
-import { parseEnv } from "../../../common/utils";
+import { consume, parseEnv } from "../../../common/utils";
 
 import { initMocks, setupFixture, jsonFormat, getMockSettings, TEST_CODIUM_INFO, getTestTimeout } from "../../common";
 
@@ -25,6 +26,8 @@ describe.skipIf(!SETTINGS.dockerPath)("integration: lifecycle: img-basic", async
         ...process.env,
         CUSTOM_LOCAL_ENV: "CUSTOM_LOCAL_VAR",
         LOCAL_ENV1: "LOCAL_VAL1",
+        HOME: path.join(__dirname, "homedir"),
+        XDG_CONFIG_HOME: path.join(__dirname, "homedir", ".config"),
     };
 
     test("create", async () => {
@@ -94,7 +97,7 @@ describe.skipIf(!SETTINGS.dockerPath)("integration: lifecycle: img-basic", async
         expect(remoteEnvs.CUSTOM_LOCAL_ENV_CHECK).toBe("CUSTOM_LOCAL_VAR");
     });
 
-    test("install script and health-check", async () => {
+    test("server install: install script and health-check", async () => {
         const { port, result } = await container.installServer();
         expect(result.exit).eq(0);
 
@@ -128,6 +131,98 @@ describe.skipIf(!SETTINGS.dockerPath)("integration: lifecycle: img-basic", async
 
         expect(healthVersion).eq(TEST_CODIUM_INFO.commit);
     }, getTestTimeout(60));
+
+    test("server install: post-install copies gitconfig", async () => {
+        const containerEnvs = await container.getContainerEnv();
+        const cfgDir = xdgConfigHome(containerEnvs);
+        const remotePath = `${cfgDir}/git/config`;
+
+        const result = await container.engineExec(["cat", remotePath]);
+        expect(result.exit).eq(0);
+
+        const paths = getGitConfig(localEnv);
+        const expected = await readFile(paths[0], "utf-8");
+        expect(result.stdout).eq(expected);
+
+        await container.engineExec(["rm", remotePath]);
+    });
+
+    describe("copyGitConfig", () => {
+        const paths = getGitConfig(localEnv);
+
+        const restore = async () => {
+            try {
+                await rename(`${paths[0]}.bk`, paths[0]);
+            }
+            catch (e) {
+                consume(e);
+                // fine, rename not required
+            }
+        };
+
+        beforeAll(restore); // if previous run failed
+        afterAll(restore); // restore after each run
+
+        for (const [inx, gitpath] of paths.entries()) {
+            const title = gitpath.replace(localEnv.HOME, "~");
+
+            test(`${title} copy config`, async () => {
+                const result = await container.copyGitConfig({});
+                expect(result).toBe(true);
+            });
+
+            test(`${title} config not overwritten on second install`, async () => {
+                const containerEnvs = await container.getContainerEnv();
+                const cfgDir = xdgConfigHome(containerEnvs);
+                const remotePath = `${cfgDir}/git/config`;
+
+                const marker = "do-not-overwrite";
+                await container.engineExec(["sh", "-c", `printf '%s' '${marker}' > '${remotePath}'`]);
+
+                const copied = await container.copyGitConfig({});
+                expect(copied).toBe(false);
+
+                const result = await container.engineExec(["cat", remotePath]);
+                expect(result.exit).eq(0);
+                expect(result.stdout).eq("do-not-overwrite");
+            });
+
+            test(`${title} config overwritten with force`, async () => {
+                const containerEnvs = await container.getContainerEnv();
+                const cfgDir = xdgConfigHome(containerEnvs);
+                const remotePath = `${cfgDir}/git/config`;
+
+                const existing = await container.engineExec(["cat", remotePath]);
+                expect(existing.exit).eq(0);
+                expect(existing.stdout).eq("do-not-overwrite");
+
+                const copied = await container.copyGitConfig({ force: true });
+                expect(copied).toBe(true);
+
+                const expected = await readFile(gitpath, "utf-8");
+
+                const result = await container.engineExec(["cat", remotePath]);
+                expect(result.exit).eq(0);
+                expect(result.stdout).eq(expected);
+            });
+
+            test(`${title}: rename/restore`, async () => {
+                const containerEnvs = await container.getContainerEnv();
+                const cfgDir = xdgConfigHome(containerEnvs);
+                const remotePath = `${cfgDir}/git/config`;
+
+                await container.engineExec(["rm", remotePath]);
+
+                // TODO: ah hacky, it iz wat it iz for now
+                // after the first pass, rename .gitconfig so that in
+                // the next pass, copyGitConfig reads the xdg-spec config
+                if (inx === 0) { await rename(paths[0], `${paths[0]}.bk`); }
+
+                // restore it after the second pass
+                if (inx === 1) { await rename(`${paths[0]}.bk`, paths[0]); }
+            });
+        }
+    });
 
     test("connection token is stable across calls", async () => {
         const token1 = await container.getConnectionToken();

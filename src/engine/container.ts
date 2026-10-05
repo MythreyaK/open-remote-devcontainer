@@ -204,6 +204,10 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         return ContainerConfig._getStage2ImageName(this.workspaceFolder);
     }
 
+    public getLocalEnv(): Record<string, string | undefined> {
+        return this.localEnv;
+    }
+
     public addLabels(): string[] {
         return [
             "--label", this.getConfigLabel(),

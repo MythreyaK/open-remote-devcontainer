@@ -27,3 +27,11 @@ export function withDefaults(queried: Partial<Settings>): Settings {
 export function getConfig<T>(key: string): T | undefined {
     return vscode.workspace.getConfiguration("dev.containers").get<T>(key);
 }
+
+export function getLocalSettings(): Partial<Settings> {
+    return {
+        dockerPath: getConfig<string>("dockerPath"),
+        extraArgs: getConfig<string[]>("extraArgs"),
+        defaultExtensions: getConfig<string[]>("defaultExtensions"),
+    };
+}
