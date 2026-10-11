@@ -139,7 +139,8 @@ describe("Install script", () => {
             extensions: [],
             connectionToken: "0xf00ba4",
             downloadTemplateUrl: "https://localhost/${CODIUM_OS_PLATFORM}-${CODIUM_ARCH}.tar.gz",
-            codiumVersion: "1.2.345",
+            serverVersion: "1.2.345",
+            serverCommit: "deadbeeffood",
             forceReinstall: false,
             shutdownAction: "none",
         };
@@ -165,7 +166,8 @@ describe("Install script", () => {
             extensions: ["pub1.ext1", "pub2.ext1"],
             connectionToken: "0xf00ba4",
             downloadTemplateUrl: "https://localhost/${CODIUM_OS_PLATFORM}-${CODIUM_ARCH}.tar.gz",
-            codiumVersion: "1.2.345",
+            serverVersion: "1.2.345",
+            serverCommit: "deadbeeffood",
             forceReinstall: false,
             shutdownAction: "stopContainer",
         };

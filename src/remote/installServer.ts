@@ -1,14 +1,15 @@
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 
-import { ShutdownAction } from '../parser/schema'
+import { ShutdownAction } from "../parser/schema";
 
 export interface ScriptInstallInfo {
     port: number,
     extensions: string[],
     connectionToken: string,
     downloadTemplateUrl: string,
-    codiumVersion: string,
+    serverVersion: string,
+    serverCommit: string,
     forceReinstall: boolean,
     shutdownAction: ShutdownAction,
 }
@@ -28,7 +29,8 @@ export function updateScript(script: string, info: ScriptInstallInfo, debug: boo
         .replaceAll("CODIUM_INJECT_INSTALL_EXTENSIONS", extensArgs)
         .replaceAll("CODIUM_INJECT_SERVER_LISTEN_PORT", info.port.toString())
         .replaceAll("CODIUM_INJECT_DOWNLOAD_URL", info.downloadTemplateUrl)
-        .replaceAll("CODIUM_INJECT_CODIUM_INSTALL_VERSION", info.codiumVersion)
+        .replaceAll("CODIUM_INJECT_CODIUM_INSTALL_VERSION", info.serverVersion)
+        .replaceAll("CODIUM_INJECT_SERVER_COMMIT", info.serverCommit)
         .replaceAll("CODIUM_INJECT_TOKEN_VALUE", info.connectionToken)
         .replaceAll("CODIUM_INJECT_FORCE_REINSTALL_SERVER", info.forceReinstall ? "true" : "false")
         .replaceAll("CODIUM_INJECT_SHUTDOWN_ACTION", info.shutdownAction);
