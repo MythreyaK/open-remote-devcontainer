@@ -26,7 +26,7 @@ import { findSSHServerInstallPath, SSHDestination } from "../extension/ssh";
  */
 export async function getRemoteserverConfiguration(): Promise<Partial<Settings>> {
     getLogSink().info(`Fetching remote settings '${vscode.env.remoteAuthority}'`);
-    const productJson = await getProductJson();
+    const productJson = getProductJson();
 
     // get hostname from ssh
     // and chained is always at inx 1, that we chain to

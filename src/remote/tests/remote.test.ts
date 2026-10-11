@@ -156,6 +156,7 @@ describe("Install script", () => {
         expect(updatedScript).toContain('CODIUM_SERVER_LISTEN_PORT="6543"');
         expect(updatedScript).toContain("localhost/${CODIUM_OS_PLATFORM}-${CODIUM_ARCH}");
         expect(updatedScript).toContain('CODIUM_SHUTDOWN_ACTION="none"');
+        expect(updatedScript).toContain("CODIUM_SERVER_COMMIT=deadbeeffood");
 
         // await fs.writeFile("out.sh", updatedScript, { encoding: 'utf-8', mode: 0o700 });
     });
@@ -182,6 +183,7 @@ describe("Install script", () => {
         expect(updatedScript).toContain('CODIUM_SERVER_LISTEN_PORT="6543"');
         expect(updatedScript).toContain("localhost/${CODIUM_OS_PLATFORM}-${CODIUM_ARCH}");
         expect(updatedScript).toContain('CODIUM_SHUTDOWN_ACTION="stopContainer"');
+        expect(updatedScript).toContain("CODIUM_SERVER_COMMIT=deadbeeffood");
 
         // await fs.writeFile("out.sh", updatedScript, { encoding: 'utf-8', mode: 0o700 });
     });

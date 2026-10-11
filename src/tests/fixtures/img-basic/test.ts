@@ -1,3 +1,5 @@
+import * as fs from "fs";
+import * as net from "net";
 import path from "node:path";
 import { readFile, rename } from "node:fs/promises";
 import { setTimeout } from "node:timers/promises";
@@ -5,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
 import { run } from "../../../common/cmd";
 import { ContainerInspectResult, ContainerState, getGitConfig, xdgConfigHome } from "../../../engine/lifecycle";
+import { SshAgentRelay } from "../../../remote/exec-pipe/local";
 import { ContainerConfig } from "../../../engine/container";
 import { consume, parseEnv } from "../../../common/utils";
 
@@ -12,6 +15,21 @@ import { initMocks, setupFixture, jsonFormat, getMockSettings, TEST_CODIUM_INFO,
 
 const SETTINGS = getMockSettings();
 initMocks();
+
+const AGENT_SOCK_PATH = `/tmp/relay-engine-agent-${process.pid}.sock`;
+
+function createFakeAgent(): Promise<net.Server> {
+    return new Promise((resolve) => {
+        try { fs.unlinkSync(AGENT_SOCK_PATH); }
+        catch { }
+        const server = net.createServer((sock) => {
+            sock.on("data", (d) => {
+                sock.write(Buffer.concat([Buffer.from("AGENT:"), d]));
+            });
+        });
+        server.listen(AGENT_SOCK_PATH, () => { resolve(server); });
+    });
+}
 
 describe.skipIf(!SETTINGS.dockerPath)("integration: lifecycle: img-basic", async () => {
     const engine = SETTINGS.dockerPath;
@@ -28,6 +46,7 @@ describe.skipIf(!SETTINGS.dockerPath)("integration: lifecycle: img-basic", async
         LOCAL_ENV1: "LOCAL_VAL1",
         HOME: path.join(__dirname, "homedir"),
         XDG_CONFIG_HOME: path.join(__dirname, "homedir", ".config"),
+        SSH_AUTH_SOCK: AGENT_SOCK_PATH,
     };
 
     test("create", async () => {
@@ -222,6 +241,49 @@ describe.skipIf(!SETTINGS.dockerPath)("integration: lifecycle: img-basic", async
                 if (inx === 1) { await rename(`${paths[0]}.bk`, paths[0]); }
             });
         }
+    });
+
+    describe("ssh agent forwarding", () => {
+        let agent: net.Server | undefined;
+        let relay: SshAgentRelay | undefined;
+
+        afterAll(() => {
+            relay?.dispose();
+            agent?.close();
+            try { fs.unlinkSync(AGENT_SOCK_PATH); }
+            catch { }
+        });
+
+        test("container bridge starts", async () => {
+            agent = await createFakeAgent();
+
+            // TODO: ugh man these paths .... need to fix this
+            const remotePath = path.join(__dirname, "../../../", "remote/exec-pipe/remote.ts");
+            const script = fs.readFileSync(remotePath, { encoding: "utf-8" }) + "\nmain();";
+
+            relay = await container.startSshAgentRelay(script);
+            expect(relay).toBeDefined();
+            if (!relay) { throw new Error("Expected result to be defined"); }
+
+            expect(relay.containerSockPath.startsWith("/tmp/")).toBe(true);
+        });
+
+        test("roundtrip echo", async () => {
+            expect(relay).toBeDefined();
+            if (!relay) { throw new Error("relay not started"); }
+
+            const nodeBin = `\${HOME}/.vscodium-devcontainer/bin/${TEST_CODIUM_INFO.commit}/node`;
+
+            const result = await container.engineExec([
+                "bash", "-c",
+                `${nodeBin} -e`
+                + ` 'const s = require("net").createConnection("${relay.containerSockPath}", () => { s.write("ping"); }); `
+                + " s.once(\"data\", d => { process.stdout.write(d); s.destroy(); })' ",
+            ]);
+
+            expect(result.exit).eq(0);
+            expect(result.stdout).eq("AGENT:ping");
+        });
     });
 
     test("connection token is stable across calls", async () => {

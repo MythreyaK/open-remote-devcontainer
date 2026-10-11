@@ -64,6 +64,7 @@ export class ContainerState {
     private readonly cc: ContainerConfig;
     private readonly cmd: string[];
     private readonly buildOpts: BuildOpts;
+    private readonly productJson: utils.ProductJson;
 
     private remoteEnvProbe: Record<string, string> = {};
     // private imageId: string;
@@ -73,6 +74,13 @@ export class ContainerState {
         this.cc = cc;
         this.cmd = cmd;
         this.buildOpts = opts;
+        this.productJson = (() => {
+            const pj = getProductJson();
+            pj.serverDownloadUrlTemplate = pj.serverDownloadUrlTemplate
+                .replace("${os}", "${CODIUM_OS_PLATFORM}")
+                .replace("${arch}", "${CODIUM_ARCH}");
+            return pj;
+        })();
     }
 
     public static async create(workspaceFolder: string, cc: ContainerConfig, stn: settings.Settings, opts: BuildOpts = BuildOpts.Default): Promise<ContainerState> {
@@ -437,7 +445,7 @@ export class ContainerState {
                 ...this.cc.getExecArgs(this.getContainerName(), this.remoteEnvProbe),
                 "bash",
                 "-c",
-                "cat ${HOME}/.vscode-oss-devcontainer/token",
+                `cat \${HOME}/.vscodium-devcontainer/${this.productJson.commit}.token`,
             ], { cwd: this.workspaceFolder });
 
             if (token.exit !== 0 || token.stdout.trim().length !== UUID_TOKEN_LEN) {
@@ -549,14 +557,6 @@ export class ContainerState {
         }
 
         // TODO: let users customize the URL
-        const prodJson = await (async () => {
-            const pj = await getProductJson();
-            pj.serverDownloadUrlTemplate = pj.serverDownloadUrlTemplate
-                .replace("${os}", "${CODIUM_OS_PLATFORM}")
-                .replace("${arch}", "${CODIUM_ARCH}");
-            return pj;
-        })();
-
         let token: string | undefined;
 
         try {
@@ -571,9 +571,9 @@ export class ContainerState {
         const info: server.ScriptInstallInfo = {
             port: DEVCONTAINER_SERVER_LISTEN_PORT,
             extensions: extensionList,
-            downloadTemplateUrl: prodJson.serverDownloadUrlTemplate,
-            serverVersion: prodJson.version,
-            serverCommit: prodJson.commit,
+            downloadTemplateUrl: this.productJson.serverDownloadUrlTemplate,
+            serverVersion: this.productJson.version,
+            serverCommit: this.productJson.commit,
             connectionToken: token,
             forceReinstall: forceReinstall,
             shutdownAction: this.cc.cfg.shutdownAction,
@@ -725,7 +725,7 @@ export class ContainerState {
         }
     }
 
-    public async startSshAgentRelay(): Promise<sshAgent.SshAgentRelay | undefined> {
+    public async startSshAgentRelay(remoteScript?: string): Promise<sshAgent.SshAgentRelay | undefined> {
         const sshAuthSock = this.cc.getLocalEnv().SSH_AUTH_SOCK;
         if (!sshAuthSock) {
             getLogSink().info("ssh-agent-relay: SSH_AUTH_SOCK env not set, skipping");
@@ -738,13 +738,13 @@ export class ContainerState {
             throw new InternalError("ssh-agent-relay: HOME envvar not present in remoteEnv");
         }
 
-        const nodeBin = path.posix.join(remoteEnv, ".vscode-oss-devcontainer", "node");
+        const nodeBin = path.posix.join(remoteEnv, ".vscodium-devcontainer", "bin", this.productJson.commit, "node");
         const containerName = this.getContainerName();
 
         try {
             const sockPath = sshAgent.sshAgentSockPath();
-            const bridgeScript = await fs.readFile(SSH_RELAY_SCRIPT_LOCATION, { encoding: "utf-8" })
-              + "\nmain();";
+            const bridgeScript = remoteScript
+              ?? await fs.readFile(SSH_RELAY_SCRIPT_LOCATION, { encoding: "utf-8" }) + "\nmain();";
 
             getLogSink().debug(`ssh-agent-relay: bridge script contents:\n${bridgeScript}\n`);
 

@@ -10,22 +10,21 @@ CODIUM_ARCH=""
 CODIUM_OS_ID=""
 CODIUM_OS_PLATFORM="linux"
 # CODIUM_SERVER_ROOT_DIR="CODIUM_INJECT_SERVER_ROOT_DIR"
-# CODIUM_SERVER_ROOT_DIR="${HOME}/.vscode-oss-devcontainer/CODIUM_INJECT_SERVER_COMMIT"
-CODIUM_SERVER_ROOT_DIR="${HOME}/.vscode-oss-devcontainer"
-CODIUM_VERSION_FILE="${CODIUM_SERVER_ROOT_DIR}/version"
+CODIUM_SERVER_ROOT_DIR="${HOME}/.vscodium-devcontainer"
+CODIUM_SERVER_COMMIT=CODIUM_INJECT_SERVER_COMMIT
+CODIUM_SERVER_INSTALL_DIR="${CODIUM_SERVER_ROOT_DIR}/bin/${CODIUM_SERVER_COMMIT}"
 
-CODIUM_INSTALLED_VERSION=""
 CODIUM_DOWNLOAD_URL=""
 CODIUM_NEW_INSTALL_VERSION="CODIUM_INJECT_CODIUM_INSTALL_VERSION"
 CODIUM_SERVER_LISTEN_PORT="CODIUM_INJECT_SERVER_LISTEN_PORT"
 # CODIUM_TOKEN_FILE_PATH="CODIUM_INJECT_TOKEN_FILE_PATH"
-CODIUM_TOKEN_FILE_PATH="${CODIUM_SERVER_ROOT_DIR}/token"
+CODIUM_TOKEN_FILE_PATH="${CODIUM_SERVER_ROOT_DIR}/${CODIUM_SERVER_COMMIT}.token"
 CODIUM_TOKEN="CODIUM_INJECT_TOKEN_VALUE"
 # CODIUM_SERVER_PID_FILE_PATH="CODIUM_INJECT_SERVER_PID_FILE"
-CODIUM_SERVER_PID_FILE_PATH="${CODIUM_SERVER_ROOT_DIR}/codium.pid"
+CODIUM_SERVER_PID_FILE_PATH="${CODIUM_SERVER_ROOT_DIR}/${CODIUM_SERVER_COMMIT}.pid"
 CODIUM_SERVER_PID=""
 # CODIUM_LOG_FILE_PATH="CODIUM_INJECT_LOG_FILE_PATH"
-CODIUM_LOG_FILE_PATH="${CODIUM_SERVER_ROOT_DIR}/log.out"
+CODIUM_LOG_FILE_PATH="${CODIUM_SERVER_ROOT_DIR}/${CODIUM_SERVER_COMMIT}.log"
 CODIUM_FORCE_REINSTALL_SERVER="CODIUM_INJECT_FORCE_REINSTALL_SERVER"
 CODIUM_SHUTDOWN_ACTION="CODIUM_INJECT_SHUTDOWN_ACTION"
 
@@ -34,10 +33,9 @@ function print_envs {
     echo "EXIT[[CODIUM_OS_ID:${CODIUM_OS_ID}]]";
     echo "EXIT[[CODIUM_OS_PLATFORM:${CODIUM_OS_PLATFORM}]]";
     echo "EXIT[[CODIUM_SERVER_ROOT_DIR:${CODIUM_SERVER_ROOT_DIR}]]";
-    echo "EXIT[[CODIUM_VERSION_FILE:${CODIUM_VERSION_FILE}]]";
-    echo "EXIT[[CODIUM_INSTALLED_VERSION:${CODIUM_INSTALLED_VERSION}]]";
+    echo "EXIT[[CODIUM_SERVER_COMMIT:${CODIUM_SERVER_COMMIT}]]";
+    echo "EXIT[[CODIUM_SERVER_INSTALL_DIR:${CODIUM_SERVER_INSTALL_DIR}]]";
     echo "EXIT[[CODIUM_DOWNLOAD_URL:${CODIUM_DOWNLOAD_URL}]]";
-    echo "EXIT[[CODIUM_NEW_INSTALL_VERSION:${CODIUM_NEW_INSTALL_VERSION}]]";
     echo "EXIT[[CODIUM_SERVER_LISTEN_PORT:${CODIUM_SERVER_LISTEN_PORT}]]";
     echo "EXIT[[CODIUM_TOKEN_FILE_PATH:${CODIUM_TOKEN_FILE_PATH}]]";
     echo "EXIT[[CODIUM_TOKEN:${CODIUM_TOKEN}]]";
@@ -121,7 +119,7 @@ function kill_server_and_remove_server_state() {
 
 function kill_server_and_remove_all() {
     kill_server_and_remove_server_state
-    rm -rf "${CODIUM_SERVER_ROOT_DIR}"
+    rm -rf "${CODIUM_SERVER_ROOT_DIR}/bin"
 }
 
 function download_server() {
@@ -144,45 +142,33 @@ function download_and_install_server() {
     fi
 
     # test if server already exists
-    if [[ -r "${CODIUM_SERVER_ROOT_DIR}" && -r "${CODIUM_VERSION_FILE}" ]]; then
-        source "${CODIUM_VERSION_FILE}"
-        echo "INSTALL_SCRIPT_INFO: Existing codium server version: ${CODIUM_INSTALLED_VERSION}"
-
-        # check if version is the same
-        if [[ "${CODIUM_INSTALLED_VERSION}" != "${CODIUM_NEW_INSTALL_VERSION}" ]]; then
-            echo "INSTALL_SCRIPT_INFO: Existing version ${CODIUM_INSTALLED_VERSION} != ${CODIUM_NEW_INSTALL_VERSION}"
-            # if not, nuke the dir and reinstall
-            kill_server_and_remove_all
-            CODIUM_INSTALLED_VERSION=""
-        else
-            # else, versions are same, return
-            echo "INSTALL_SCRIPT_INFO: Version vscodium-reh-linux-${CODIUM_ARCH}-${CODIUM_INSTALLED_VERSION} already installed, skipping download"
-            return 0;
-        fi
+    if [[ -r "${CODIUM_SERVER_INSTALL_DIR}" && -r "${CODIUM_SERVER_INSTALL_DIR}/bin/codium-server" ]]; then
+        echo "INSTALL_SCRIPT_INFO: Version vscodium-reh-linux-${CODIUM_ARCH}-${CODIUM_NEW_INSTALL_VERSION} commit ${CODIUM_SERVER_COMMIT} already installed, skipping download"
+        return 0;
+    else
+        echo "INSTALL_SCRIPT_INFO: Cleaning up old *.token, *.pid, *.log files if present"
+        rm -f "${CODIUM_SERVER_ROOT_DIR}"/*.token "${CODIUM_SERVER_ROOT_DIR}"/*.pid "${CODIUM_SERVER_ROOT_DIR}"/*.log
     fi
 
     download_server
 
-    if ! mkdir -p "${CODIUM_SERVER_ROOT_DIR}"; then
-        echo "INSTALL_SCRIPT_ERROR: Could not create '${CODIUM_SERVER_ROOT_DIR}' directory";
+    if ! mkdir -p "${CODIUM_SERVER_INSTALL_DIR}"; then
+        echo "INSTALL_SCRIPT_ERROR: Could not create '${CODIUM_SERVER_INSTALL_DIR}' directory";
         print_envs_exit ${SERVER_INSTALL_FAILED};
     fi
 
-    if ! tar --strip-components 1 -xf /tmp/codium.tar.gz -C "${CODIUM_SERVER_ROOT_DIR}"; then
-        echo "INSTALL_SCRIPT_ERROR: tar extract into '${CODIUM_SERVER_ROOT_DIR}' failed";
+    if ! tar --strip-components 1 -xf /tmp/codium.tar.gz -C "${CODIUM_SERVER_INSTALL_DIR}"; then
+        echo "INSTALL_SCRIPT_ERROR: tar extract into '${CODIUM_SERVER_INSTALL_DIR}' failed";
         print_envs_exit ${SERVER_INSTALL_FAILED};
     fi
 
-    if [[ ! -x "${CODIUM_SERVER_ROOT_DIR}/bin/codium-server" ]]; then
+    if [[ ! -x "${CODIUM_SERVER_INSTALL_DIR}/bin/codium-server" ]]; then
         kill_server_and_remove_all
         print_envs_exit ${SERVER_INSTALL_FAILED}
     fi
 
-    echo "CODIUM_INSTALLED_VERSION=${CODIUM_NEW_INSTALL_VERSION}" > "${CODIUM_VERSION_FILE}"
-    source "${CODIUM_VERSION_FILE}"
-
     rm -f /tmp/codium.tar.gz || true
-    ln -sf "${CODIUM_SERVER_ROOT_DIR}/bin/remote-cli/codium" "${CODIUM_SERVER_ROOT_DIR}/bin/remote-cli/code"
+    ln -sf "${CODIUM_SERVER_INSTALL_DIR}/bin/remote-cli/codium" "${CODIUM_SERVER_INSTALL_DIR}/bin/remote-cli/code"
 }
 
 function wait_for_server_running() {
@@ -240,7 +226,7 @@ function start_codium_server() {
             echo "INSTALL_SCRIPT_INFO: Starting server ..."
             echo "${CODIUM_TOKEN}" > "${CODIUM_TOKEN_FILE_PATH}"
             CMD=(
-                "${CODIUM_SERVER_ROOT_DIR}/bin/codium-server"
+                "${CODIUM_SERVER_INSTALL_DIR}/bin/codium-server"
                 --start-server
                 --host "0.0.0.0"
                 --port "${CODIUM_SERVER_LISTEN_PORT}"
