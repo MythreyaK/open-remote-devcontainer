@@ -15,7 +15,7 @@ _M="{{DEVCONTAINER_STAGE2";                     \
 NOUPD_MSG="UPDATE_REMOTE_UID was false";        \
 OS_ID=$(. /etc/os-release && echo "$ID");       \
 if [ "$OS_ID" = "alpine" ]; then                \
-    apk add bash curl shadow libstdc++;         \
+    apk add bash curl shadow libstdc++ procps;  \
 elif [ "$OS_ID" = "ubuntu" ]; then              \
     apt update -y && apt install -y curl;       \
 elif [ "$OS_ID" = "fedora" ]; then              \

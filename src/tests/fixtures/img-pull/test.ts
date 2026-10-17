@@ -5,6 +5,7 @@ import { run } from "../../../common/cmd";
 import { ContainerState } from "../../../engine/lifecycle";
 import { ContainerConfig } from "../../../engine/container";
 import { getProductJson } from "../../../common/utils";
+import { SERVER_DIR } from "../../../common/constants";
 import * as schema from "../../../parser/schema";
 
 import { initMocks, setupFixture, jsonFormat, getMockSettings, getTestTimeout } from "../../common";
@@ -70,7 +71,7 @@ describe.skipIf(!SETTINGS.dockerPath)("integration: lifecycle: img-pull", async 
                 await container.getContainerId(),
                 "bash",
                 "-c",
-                `cat \${HOME}/.vscodium-devcontainer/${productJson.commit}.token`,
+                `cat \${HOME}/${SERVER_DIR}/${productJson.commit}.token`,
             ], { cwd: localWsf, env: localEnv });
 
             expect(catResult.exit).eq(0);
@@ -93,7 +94,7 @@ describe.skipIf(!SETTINGS.dockerPath)("integration: lifecycle: img-pull", async 
                 await container.getContainerId(),
                 "bash",
                 "-c",
-                `cat \${HOME}/.vscodium-devcontainer/${productJson.commit}.token`,
+                `cat \${HOME}/${SERVER_DIR}/${productJson.commit}.token`,
             ], { cwd: localWsf, env: localEnv });
 
             expect(catResult.exit).eq(0);

@@ -445,7 +445,7 @@ export class ContainerState {
                 ...this.cc.getExecArgs(this.getContainerName(), this.remoteEnvProbe),
                 "bash",
                 "-c",
-                `cat \${HOME}/.vscodium-devcontainer/${this.productJson.commit}.token`,
+                `cat \${HOME}/${SERVER_DIR}/${this.productJson.commit}.token`,
             ], { cwd: this.workspaceFolder });
 
             if (token.exit !== 0 || token.stdout.trim().length !== UUID_TOKEN_LEN) {
@@ -584,7 +584,10 @@ export class ContainerState {
         const installExecResult = await run(
             [
                 ...this.cmd,
-                ...this.cc.getExecArgs(this.getContainerName(), this.remoteEnvProbe, { interactive: true }),
+                ...this.cc.getExecArgs(this.getContainerName(), this.remoteEnvProbe, {
+                    dir: `${remoteHomeDir}/${SERVER_DIR}`,
+                    interactive: true,
+                }),
                 "bash",
             ],
             {
@@ -725,20 +728,19 @@ export class ContainerState {
         }
     }
 
-    public async startSshAgentRelay(remoteScript?: string): Promise<sshAgent.SshAgentRelay | undefined> {
-        const sshAuthSock = this.cc.getLocalEnv().SSH_AUTH_SOCK;
-        if (!sshAuthSock) {
+    public async startSshAgentRelay({ sshAuthSock, remoteScript }: { sshAuthSock?: string, remoteScript?: string } = {}): Promise<sshAgent.SshAgentRelay | undefined> {
+        // not this.cc.getLocalEnv().SSH_AUTH_SOCK, as on a remote ssh workspace, that's the SSH_AUTH_SOCK
+        // on the remote ssh host.
+        // TODO: We could forward that, but the mix of local/remote SSH sock / gitconfig is not configurable
+        // maybe could be an option in the devcontainer config? To say which source to use for each?
+        const sock = sshAuthSock ?? process.env.SSH_AUTH_SOCK;
+        if (!sock) {
             getLogSink().info("ssh-agent-relay: SSH_AUTH_SOCK env not set, skipping");
             return undefined;
         }
+        // dobby is a free elf!
 
-        const remoteEnv = this.remoteEnvProbe.HOME;
-
-        if (!remoteEnv) {
-            throw new InternalError("ssh-agent-relay: HOME envvar not present in remoteEnv");
-        }
-
-        const nodeBin = path.posix.join(remoteEnv, ".vscodium-devcontainer", "bin", this.productJson.commit, "node");
+        const nodeBin = path.posix.join(this.getRemoteHomeDir(), SERVER_DIR, "bin", this.productJson.commit, "node");
         const containerName = this.getContainerName();
 
         try {
@@ -759,7 +761,7 @@ export class ContainerState {
                 `--sock-path=${sockPath}`,
             ], { cwd: this.workspaceFolder });
 
-            const relay = new sshAgent.SshAgentRelay(proc, sshAuthSock, sockPath);
+            const relay = new sshAgent.SshAgentRelay(proc, sock, sockPath);
 
             let timer: ReturnType<typeof setTimeout>;
             await Promise.race([
@@ -776,6 +778,14 @@ export class ContainerState {
             getLogSink().error(`ssh-agent-relay: ${fmtErr(e)}`);
             return undefined;
         }
+    }
+
+    public getRemoteHomeDir() {
+        const homeDir = this.remoteEnvProbe.HOME;
+        if (!homeDir) {
+            throw new InternalError("HOME env var unset on remote! HOME must be set");
+        }
+        return homeDir;
     }
 
     public async dispose() {

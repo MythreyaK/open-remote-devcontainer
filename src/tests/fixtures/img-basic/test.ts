@@ -261,7 +261,7 @@ describe.skipIf(!SETTINGS.dockerPath)("integration: lifecycle: img-basic", async
             const remotePath = path.join(__dirname, "../../../", "remote/exec-pipe/remote.ts");
             const script = fs.readFileSync(remotePath, { encoding: "utf-8" }) + "\nmain();";
 
-            relay = await container.startSshAgentRelay(script);
+            relay = await container.startSshAgentRelay({ remoteScript: script, sshAuthSock: AGENT_SOCK_PATH });
             expect(relay).toBeDefined();
             if (!relay) { throw new Error("Expected result to be defined"); }
 
@@ -272,7 +272,7 @@ describe.skipIf(!SETTINGS.dockerPath)("integration: lifecycle: img-basic", async
             expect(relay).toBeDefined();
             if (!relay) { throw new Error("relay not started"); }
 
-            const nodeBin = `\${HOME}/.vscodium-devcontainer/bin/${TEST_CODIUM_INFO.commit}/node`;
+            const nodeBin = `\${HOME}/${SERVER_DIR}/bin/${TEST_CODIUM_INFO.commit}/node`;
 
             const result = await container.engineExec([
                 "bash", "-c",

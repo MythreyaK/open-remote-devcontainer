@@ -10,6 +10,7 @@ import { getWorkspaceId } from "../extension/workspace";
 const USERNS_CONFLICT_FLAGS = ["--userns", "--uidmap", "--gidmap"];
 
 export interface ExecOpts {
+    dir?: string,
     tty?: boolean,
     interactive?: boolean,
     withRemoteEnv?: boolean,
@@ -215,9 +216,10 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         ];
     }
 
-    public getExecArgs(containerId: string, remoteEnvProbe: NodeJS.ProcessEnv, { tty = false, interactive = false, withRemoteEnv = true }: ExecOpts = {}): string[] {
+    public getExecArgs(containerId: string, remoteEnvProbe: NodeJS.ProcessEnv, { dir = "/", tty = false, interactive = false, withRemoteEnv = true }: ExecOpts = {}): string[] {
         return [
             "exec",
+            "--workdir", dir,
             ...this.addRemoteUser(),
             ...(withRemoteEnv ? this.addRemoteEnv(remoteEnvProbe) : []),
             (tty ? "-t" : ""),
