@@ -12,6 +12,7 @@ import { ContainerConfig } from "../../../engine/container";
 import { consume, parseEnv } from "../../../common/utils";
 
 import { initMocks, setupFixture, jsonFormat, getMockSettings, TEST_CODIUM_INFO, getTestTimeout } from "../../common";
+import { DEVCONTAINER_SERVER_LISTEN_PORT, SERVER_DIR } from "../../../common/constants";
 
 const SETTINGS = getMockSettings();
 initMocks();
@@ -149,6 +150,131 @@ describe.skipIf(!SETTINGS.dockerPath)("integration: lifecycle: img-basic", async
         })();
 
         expect(healthVersion).eq(TEST_CODIUM_INFO.commit);
+    }, getTestTimeout(60));
+
+    test("server install: reconnect after missing token file", async () => {
+        // if token is missing, just clean up and restart the server
+        // ensuring no wasteful re-download
+        // TODO: add force-reinstall to commands now that it's not triggered
+        // in-code anymore
+
+        const commit = TEST_CODIUM_INFO.commit;
+        const prevToken = await container.getConnectionToken();
+
+        const oldProcs = await container.engineExec(["bash", "-c", `pgrep -f -- '--port ${DEVCONTAINER_SERVER_LISTEN_PORT}' || true`]);
+        const oldPids = oldProcs.stdout.trim().split("\n").filter(Boolean);
+        // console.log(oldPids);
+
+        // server removal and redownload = inode changes
+        const nodeInode = async () => (await container.engineExec(["bash", "-c",
+            `stat -c %i \${HOME}/${SERVER_DIR}/bin/${commit}/node`])).stdout.trim();
+        const inodeBefore = await nodeInode();
+        expect(inodeBefore.length).toBeGreaterThan(0);
+
+        await container.engineExec(["bash", "-c", `rm -f \${HOME}/${SERVER_DIR}/${commit}.token`]);
+
+        const { port, result } = await container.installServer();
+        expect(result.exit).eq(0);
+
+        expect(result.stdout).toContain("already installed, skipping download");
+        expect(result.stdout).not.toContain("Downloading server");
+        expect(await nodeInode()).eq(inodeBefore);
+
+        const token = await container.getConnectionToken();
+        expect(token.length).eq(36);
+        expect(token).not.eq(prevToken);
+
+        const res = await fetch(`http://127.0.0.1:${port}/version`);
+        expect(res.ok).toBe(true);
+        expect(await res.text()).eq(commit);
+
+        for (const oldPid of oldPids) {
+            const check = await container.engineExec(["kill", "-0", oldPid]);
+            expect(check.exit).not.eq(0);
+        }
+
+        // daemon holds daemon.lock for its lifetime, so a non-blocking flock must fail
+        const lockCheck = await container.engineExec(["bash", "-c", `flock -n \${HOME}/${SERVER_DIR}/daemon.lock -c true`]);
+        expect(lockCheck.exit).not.eq(0);
+
+        const tokenFile = await container.engineExec(["bash", "-c", `cat \${HOME}/${SERVER_DIR}/${commit}.token`]);
+        expect(tokenFile.exit).eq(0);
+        expect(tokenFile.stdout.trim()).eq(token);
+    }, getTestTimeout(15));
+
+    test("server install: recover from orphaned server and dead daemon", async () => {
+        const commit = TEST_CODIUM_INFO.commit;
+
+        const oldProcs = await container.engineExec(["bash", "-c", `pgrep -f -- '--port ${DEVCONTAINER_SERVER_LISTEN_PORT}' || true`]);
+        const oldPids = oldProcs.stdout.trim().split("\n").filter(Boolean);
+        expect(oldPids.length).toBeGreaterThan(0);
+
+        // SIGKILL only the daemon (not its group) so that the server keeps running and daemon.lock is released
+        await container.engineExec(["bash", "-c", "pkill -9 -f -- 'codium-daemon-monitor.*--d[a]emon'"]);
+
+        const { port, result } = await container.installServer();
+        expect(result.exit).eq(0);
+
+        const res = await fetch(`http://127.0.0.1:${port}/version`);
+        expect(res.ok).toBe(true);
+        expect(await res.text()).eq(commit);
+
+        // check that orphaned server was cleaned up, not reused
+        for (const oldPid of oldPids) {
+            const check = await container.engineExec(["kill", "-0", oldPid]);
+            expect(check.exit).not.eq(0);
+        }
+
+        // new daemon holds the lock
+        const lockCheck = await container.engineExec(["bash", "-c", `flock -n \${HOME}/${SERVER_DIR}/daemon.lock -c true`]);
+        expect(lockCheck.exit).not.eq(0);
+    }, getTestTimeout(30));
+
+    test("server install: parallel installs start exactly one daemon", async () => {
+        const commit = TEST_CODIUM_INFO.commit;
+
+        // tear down the running tree so both installs race to start a fresh one
+        await container.engineExec(["bash", "-c", "pgrep -f -- 'codium-daemon-monitor.*--d[a]emon' | xargs -I{} kill -9 -- -{} 2>/dev/null || true"]);
+        await container.engineExec(["bash", "-c", `pgrep -f -- '--[h]ost 0.0.0.0 --port ${DEVCONTAINER_SERVER_LISTEN_PORT}' | xargs -I{} kill -9 {} 2>/dev/null || true`]);
+        await container.engineExec(["bash", "-c", `rm -f \${HOME}/${SERVER_DIR}/${commit}.token`]);
+
+        // all procs we start have .vscodium-server in the cmdline
+        // '[s]earch' square-bracket trick to prevent pgrep seppuku
+        const procSearchHammer = `[${SERVER_DIR[0]}]${SERVER_DIR.slice(1)}`;
+
+        const foundProcs = await (async () => {
+            for (let i = 0; i < 5; ++i) {
+                const left = (await container.engineExec(["bash", "-c", `pgrep -a -f -- '${procSearchHammer}' || true`])).stdout.trim();
+                if (left.length === 0) { return false; }
+                await setTimeout(1000);
+            }
+            return true;
+        })();
+
+        expect(foundProcs).eq(false);
+
+        // simulates multiple windows reconnecting to the same container at once
+        const results = await Promise.all([
+            container.installServer(),
+            container.installServer(),
+        ]);
+        for (const { result } of results) {
+            expect(result.exit).eq(0);
+        }
+
+        const daemons = await container.engineExec(["bash", "-c", "pgrep -c -f -- 'codium-daemon-monitor.*--d[a]emon' || true"]);
+        expect(daemons.stdout.trim()).eq("1");
+
+        // install lock should serialize the install, meaning only one wins and the other should
+        // reuse the installed server (wait for the lock, health-check, and exit)
+        const spawned = results.filter(r => r.result.stdout.includes("Spawned daemon-child")).length;
+        const reused = results.filter(r => r.result.stdout.includes("Server already running with [[token:")).length;
+        expect(spawned).eq(1);
+        expect(reused).eq(1);
+
+        const res = await fetch(`http://127.0.0.1:${results[0].port}/version`);
+        expect(res.ok).toBe(true);
+        expect(await res.text()).eq(commit);
     }, getTestTimeout(60));
 
     test("server install: post-install copies gitconfig", async () => {

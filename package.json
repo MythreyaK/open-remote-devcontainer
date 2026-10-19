@@ -188,7 +188,7 @@
   "scripts": {
     "compile": "tsc --noEmit && eslint src",
     "build": "npm run build:dev",
-    "copy_templates": "cp src/remote/installServer.sh dist/ && cp src/engine/Dockerfile dist/ && cp src/remote/exec-pipe/remote.ts dist/",
+    "copy_templates": "cp src/remote/installServer.sh dist/ && cp src/engine/Dockerfile dist/ && cp src/remote/exec-pipe/remote.ts dist/ && cp src/remote/codium-daemon-monitor.ts dist/",
     "build:dev": "node esbuild.js && npm run copy_templates",
     "build:prod": "node esbuild.js --production && npm run copy_templates",
     "build:clean": "rm -rf dist out",

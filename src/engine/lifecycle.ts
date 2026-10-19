@@ -16,7 +16,7 @@ import * as utils from "../common/utils";
 import * as settings from "../common/settings";
 import * as server from "../remote/installServer";
 import * as sshAgent from "../remote/exec-pipe/local";
-import { EXTENSION_ID, DEVCONTAINER_SERVER_LISTEN_PORT, CAT_PIPE_STDIN_WORKAROUND } from "../common/constants";
+import { EXTENSION_ID, DEVCONTAINER_SERVER_LISTEN_PORT, CAT_PIPE_STDIN_WORKAROUND, SERVER_DIR } from "../common/constants";
 
 export const STAGE2_DOCKERFILE_LOCATION: string = path.join(__dirname, "Dockerfile");
 export const SSH_RELAY_SCRIPT_LOCATION: string = path.join(__dirname, "remote.ts");
@@ -564,22 +564,45 @@ export class ContainerState {
         }
         catch {
             getLogSink().warn("Could not query existing token. Perhaps a fresh install? Using a new token");
-            forceReinstall = true;
+            // TODO: force needed here? probably only useful when explicitly requested because
+            // missing token now restarts the entire process tree
+            // forceReinstall = true;
             token = crypto.randomUUID();
         }
 
+        const remoteHomeDir = this.getRemoteHomeDir();
         const info: server.ScriptInstallInfo = {
             port: DEVCONTAINER_SERVER_LISTEN_PORT,
             extensions: extensionList,
             downloadTemplateUrl: this.productJson.serverDownloadUrlTemplate,
             serverVersion: this.productJson.version,
             serverCommit: this.productJson.commit,
+            serverDir: path.posix.join(remoteHomeDir, SERVER_DIR),
             connectionToken: token,
             forceReinstall: forceReinstall,
             shutdownAction: this.cc.cfg.shutdownAction,
         };
 
         const scriptData = await server.generateInstallScript(info, true);
+        const monitorScript = await server.getMonitorScript();
+        const copyResult = await run(
+            [
+                ...this.cmd,
+                ...this.cc.getExecArgs(this.getContainerName(), this.remoteEnvProbe, { interactive: true }),
+                "bash",
+                "-c",
+                `mkdir -p \${HOME}/${SERVER_DIR}`
+                + ` && cat > \${HOME}/${SERVER_DIR}/codium-daemon-monitor.ts-$$` // cash money $$
+                + ` && mv \${HOME}/${SERVER_DIR}/codium-daemon-monitor.ts-$$ \${HOME}/${SERVER_DIR}/codium-daemon-monitor.ts`,
+            ],
+            {
+                cwd: this.workspaceFolder,
+                stdin: monitorScript,
+            },
+        );
+        if (copyResult.exit !== 0) {
+            throw new InstallError(`Could not copy monitor script: ${formatCmdErr(copyResult)}`);
+        }
 
         const installExecResult = await run(
             [
