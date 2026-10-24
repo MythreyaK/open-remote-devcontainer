@@ -59,3 +59,66 @@ export async function generateInstallScript(info: ScriptInstallInfo, debug: bool
 export async function getMonitorScript() {
     return await fs.readFile(MONITOR_SCRIPT_LOCATION, { encoding: "utf-8" });
 }
+
+// Mirrors the exit codes in installServer.sh. tests/installError.test.ts checks they stay in sync.
+export enum InstallScriptError {
+    EXIT_OK = 0,
+    UNSUPPORTED_PLATFORM = 11,
+    DEPENDENCIES_NOT_INSTALLED = 12,
+    SERVER_DOWNLOAD_FAILED = 13,
+    SERVER_INSTALL_FAILED = 14,
+    WRITE_STATE_FILES_FAILED = 15,
+    INSTALL_RETRIES_FAILED = 16,
+    INSTALL_LOCK_TIMEOUT = 17,
+    BAD_ARGS = 20,
+};
+
+const FALLBACK_TAIL_LINES = 10;
+
+/**
+ * Builds a hopefully user-readable error string from the output of the install script
+ *
+ * Looks for INSTALL_SCRIPT_ERROR lines and EXITCODE in stdout to format the message. Returns
+ * tail 10 of stdout + stderr if there are no matches for INSTALL_SCRIPT_ERROR.
+ */
+export function formatInstallError(res: { exit: number | string, stdout: string, stderr: string }): string {
+    const exitCodeRegex = /^EXITCODE\[\[CODE:(\d+)\]\]$/m;
+    const installScriptRegex = /^INSTALL_SCRIPT_ERROR:(.*)/gm;
+
+    const codeMatch = exitCodeRegex.exec(res.stdout);
+    // res.exit can be a signal name if the script was killed
+    const code = codeMatch ? Number(codeMatch[1]) : res.exit;
+    const codeName = (typeof code === "number" ? InstallScriptError[code] : undefined) ?? "UNKNOWN";
+
+    const errLines = Array.from(res.stdout.matchAll(installScriptRegex))
+        .map(m => m[1].trimEnd())
+        .filter(l => l.trim().length > 0);
+
+    const details = (() => {
+        if (errLines.length > 0) {
+            return errLines.join("\n");
+        }
+
+        const prefix = (str: string) => {
+            if (str.length === 0) { return ""; }
+            return str
+                .split("\n")
+                .map(s => `>> ${s}`)
+                .slice(-FALLBACK_TAIL_LINES)
+                .join("\n");
+        };
+
+        const stdoutTrim = prefix(res.stdout.trim());
+        const stderrTrim = prefix(res.stderr.trim());
+
+        return (stdoutTrim.length + stderrTrim.length) > 0
+            ? (
+                "INSTALL_SCRIPT_ERROR not found in stdout. This is probably a bug."
+                + ((stdoutTrim.length > 0) ? `\nLast ${FALLBACK_TAIL_LINES} lines of stdout:\n${stdoutTrim}\n` : "")
+                + ((stderrTrim.length > 0) ? `\nLast ${FALLBACK_TAIL_LINES} lines of stderr:\n${stderrTrim}\n` : "")
+            )
+            : "[Empty output from installScript.sh. This is probably a bug]";
+    })();
+
+    return `${codeName} (exit ${code}):\n${details}`;
+}

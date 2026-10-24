@@ -3,6 +3,7 @@ import path from "node:path";
 import * as fs from "node:fs/promises";
 
 import { run } from "../common/cmd";
+import { CmdResult } from "../common/opts";
 import { getExecCtx } from "../common/ctx/ctx";
 import { getLogSink } from "../extension/log";
 import { formatCmdErr } from "../common/spawn";
@@ -548,7 +549,7 @@ export class ContainerState {
         );
     }
 
-    public async installServer(extensionList: string[] = [], forceReinstall: boolean = false) {
+    public async installServer(extensionList: string[] = [], forceReinstall: boolean = false): Promise<{ host: string, port: number, result: CmdResult }> {
         if (!await this.isRunning()) {
             await this.startContainer();
             if (!await this.isRunning()) {
@@ -620,8 +621,8 @@ export class ContainerState {
         );
 
         if (installExecResult.exit !== 0) {
-            const err = getInstallError(installExecResult.stdout.trim());
-            throw new InstallError(`Install script to container ${this.getContainerName()} failed with code ${installExecResult.exit}: Error: ${err}`);
+            const err = getInstallError(installExecResult);
+            throw new InstallError(`Install script to container ${this.getContainerName()} failed. Error: ${err}`);
         }
 
         const hostPort = await this.getHostmappedPort();
@@ -816,20 +817,9 @@ export class ContainerState {
     }
 }
 
-function getInstallError(data: string) {
-    const errMsgMatches = Array.from(data.matchAll(/^INSTALL_SCRIPT_ERROR:(.*)$/gm));
-    const errCodeMatches = Array.from(data.matchAll(/^EXITCODE\[\[(.*)\]\]$/gm));
-
-    if (errCodeMatches.length === 0 || errMsgMatches.length === 0) {
-        throw new InstallError(`Could not extract error message from\n'${data}'`);
-    }
-    else {
-        // TODO: error matching
-        // const errMsg = errMsgMatches[0][1];
-        // const errCode = errCodeMatches[0][1];
-        // return `${errCode}${errMsg}`;
-        return data;
-    }
+function getInstallError(res: { exit: number | string, stdout: string, stderr: string }) {
+    getLogSink().debug(`installServer: full install script output:\n${res.stdout}\nstderr:\n${res.stderr}`);
+    return server.formatInstallError(res);
 }
 
 function fixDockerImageInspect(engine: ContainerEngine, json: string): ImageInspectResult {

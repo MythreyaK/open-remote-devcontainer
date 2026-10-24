@@ -47,7 +47,9 @@ export async function main(opts: { daemon: boolean, config: ServerLaunchConfig }
         else {
             // server not healthy. kill old daemon and wait for it to release unlock the lockfile
             console.log(`INSTALL_SCRIPT_INFO: [PID${process.pid}]: Server is oopsie? Killing old procs ...`);
-            killStaleProcs(opts.config);
+            if (!killStaleProcs(opts.config)) {
+                console.error("INSTALL_SCRIPT_ERROR: killStaleProcs failed to clean up all stale processes");
+            }
         }
 
         // "fork", parent exits after status check
@@ -84,7 +86,7 @@ async function parentProc(config: ServerLaunchConfig) {
             }
         });
         child.on("error", (err: Error) => {
-            console.error(`[PID${process.pid}]: ${JSON.stringify(err)}`);
+            console.error(`INSTALL_SCRIPT_ERROR: [PID${process.pid}]: ${fmtErr(err)}`);
             reject(err);
         });
     });
@@ -100,7 +102,7 @@ async function parentProc(config: ServerLaunchConfig) {
                 return await fetchServerHash(config.host, config.port);
             }
             catch (e: unknown) {
-                console.warn(`INSTALL_SCRIPT_WARNING: [PID${process.pid}] Connect attempt ${i} failed: ${e instanceof Error ? e.message : JSON.stringify(e)}`);
+                console.warn(`INSTALL_SCRIPT_WARN: [PID${process.pid}] Connect attempt ${i} failed: ${e instanceof Error ? e.message : fmtErr(e)}`);
             }
         }
 
@@ -115,7 +117,7 @@ async function parentProc(config: ServerLaunchConfig) {
             if (tryKill(-pid, 0) && tryKill(-pid, "SIGKILL")) {}
         }
         catch (e: unknown) {
-            console.warn(`INSTALL_SCRIPT_WARN: [PID${process.pid}]: process ${DAEMON_NAME} ${pid} gone (Err: ${JSON.stringify(e)})`);
+            console.warn(`INSTALL_SCRIPT_WARN: [PID${process.pid}]: process ${DAEMON_NAME} ${pid} gone (Err: ${fmtErr(e)})`);
         }
         exit(-1);
     }
@@ -272,7 +274,7 @@ class ServerManager {
             });
         });
 
-        this.info(`[PID${process.pid}]: Server exit: ${JSON.stringify(status)}`);
+        this.info(`[PID${process.pid}]: Server exit: ${fmtErr(status)}`);
 
         return status;
     }
@@ -374,7 +376,7 @@ async function checkServerRunning(config: ServerLaunchConfig): Promise<boolean |
                 return true;
             }
             catch (e: unknown) {
-                console.log(`INSTALL_SCRIPT_WARN: [PID:${process.pid}] Error in attempting to detect server state: ${JSON.stringify(e)}`);
+                console.log(`INSTALL_SCRIPT_WARN: [PID:${process.pid}] Error in attempting to detect server state: ${fmtErr(e)}`);
                 return undefined;
             }
         }
@@ -383,7 +385,7 @@ async function checkServerRunning(config: ServerLaunchConfig): Promise<boolean |
         return undefined;
     }
     catch (e: unknown) {
-        console.warn(`Maybe server isn't running (Err: ${JSON.stringify(e)})? Starting server ...`);
+        console.warn(`INSTALL_SCRIPT_WARN: Maybe server isn't running (Err: ${fmtErr(e)})? Starting server ...`);
         return false;
     }
 }
@@ -402,14 +404,22 @@ function killStaleProcs(config: ServerLaunchConfig) {
             return true;
         }
         catch (e: unknown) {
-            const err = e instanceof Error ? e.message : JSON.stringify(e);
-            console.warn(`[PID${process.pid}]: Old daemon did not exit in 10s (${err}) with sig ${signal}`);
+            console.warn(`INSTALL_SCRIPT_WARN: [PID${process.pid}]: Old daemon did not exit in 10s (${fmtErr(e)}) with sig ${signal}`);
             return false;
         }
     };
 
     if (!sigAndWait("SIGINT")) {
         sigAndWait("SIGKILL"); // rip and tear
+    }
+
+    try {
+        execSync(`timeout 2 flock "${lockFile}" -c true`, { timeout: 5000 });
+        return true;
+    }
+    catch (e: unknown) {
+        console.warn(`INSTALL_SCRIPT_ERROR: daemon.lock isn't free to lock after attempting to clean up stale processes ${fmtErr(e)}. This is probably a bug.`);
+        return false;
     }
 }
 
@@ -439,7 +449,7 @@ function tryUnlinkSync(path: string) {
 
 function tryKill(pid: number, sig: number | NodeJS.Signals) {
     try {
-        kill(-pid, sig);
+        kill(pid, sig);
         return true;
     }
     catch (_: unknown) {
@@ -447,3 +457,12 @@ function tryKill(pid: number, sig: number | NodeJS.Signals) {
         return false;
     }
 };
+
+function fmtErr(e: unknown): string {
+    if (e instanceof Error) {
+        return e.stack ?? e.message;
+    }
+    else {
+        return `unknown error: ${JSON.stringify(e)}`;
+    }
+}

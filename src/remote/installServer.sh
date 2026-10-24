@@ -4,6 +4,9 @@
 set -eu # 🇪🇺
 set -o pipefail
 
+set -E
+trap 'echo "INSTALL_SCRIPT_ERROR: trap ERR: line ${LINENO}: \`${BASH_COMMAND}\` failed with exit code $?"' ERR
+
 # CODIUM_INJECT_* are injected from extension via replacement
 # CODIUM_DOWNLOAD_URL='CODIUM_INJECT_DOWNLOAD_URL' # injected after platform info is set
 CODIUM_SERVER_COMMIT='CODIUM_INJECT_SERVER_COMMIT'
@@ -50,13 +53,14 @@ function print_envs_exit() {
     exit $1;
 }
 
-UNSUPPORTED_PLATFORM=1
-DEPS_CHECK_FAILED=2
-SERVER_DOWNLOAD_FAILED=3
-SERVER_INSTALL_FAILED=4
-WRITE_STATE_FILES_FAILED=5
-INSTALL_RETRIES_FAILED=6
-INSTALL_LOCK_TIMEOUT=7
+EXIT_OK=0
+UNSUPPORTED_PLATFORM=11
+DEPENDENCIES_NOT_INSTALLED=12
+SERVER_DOWNLOAD_FAILED=13
+SERVER_INSTALL_FAILED=14
+WRITE_STATE_FILES_FAILED=15
+INSTALL_RETRIES_FAILED=16
+INSTALL_LOCK_TIMEOUT=17
 BAD_ARGS=20
 
 function inspect_conatiner_platform() {
@@ -66,7 +70,7 @@ function inspect_conatiner_platform() {
         CODIUM_OS_ID=$(source /usr/lib/os-release && echo "${ID:-}")
     else
         echo "INSTALL_SCRIPT_WARN: Both /etc/os-release and /usr/lib/os-release were not found";
-        # print_envs_exit ${UNSUPPORTED_PLATFORM};
+        # print_envs_exit "${UNSUPPORTED_PLATFORM}";
     fi
 
     case $(uname -m) in
@@ -79,7 +83,7 @@ function inspect_conatiner_platform() {
         "s390x"       )  CODIUM_ARCH="s390x"        ;;
         * ) {
             echo "INSTALL_SCRIPT_ERROR: Unsupported architecture $(uname -m)";
-            print_envs_exit ${UNSUPPORTED_PLATFORM};
+            print_envs_exit "${UNSUPPORTED_PLATFORM}";
         };;
     esac
 
@@ -87,7 +91,7 @@ function inspect_conatiner_platform() {
         CODIUM_OS_PLATFORM=alpine;
         if [[ $(find /usr/lib -iname '*libstdc++*' | wc -l) -eq 0 ]]; then
             echo "INSTALL_SCRIPT_ERROR: alpine needs libstdc++ for codium. Install with 'apk add libstdc++'";
-            print_envs_exit ${DEPS_CHECK_FAILED};
+            print_envs_exit "${DEPENDENCIES_NOT_INSTALLED}";
         fi
     fi
 
@@ -99,11 +103,18 @@ function inspect_conatiner_platform() {
 function test_deps() {
     if ! command -v curl &>/dev/null; then
         echo "INSTALL_SCRIPT_ERROR: 'curl' must be installed";
-        print_envs_exit ${DEPS_CHECK_FAILED};
+        print_envs_exit "${DEPENDENCIES_NOT_INSTALLED}";
     fi
     if ! command -v tar &>/dev/null; then
         echo "INSTALL_SCRIPT_ERROR: 'tar' not found";
-        print_envs_exit ${DEPS_CHECK_FAILED};
+        print_envs_exit "${DEPENDENCIES_NOT_INSTALLED}";
+    fi
+    if \
+        ! command -v pgrep -f -- 'bash' &>/dev/null \
+        || ! pgrep -f -- 'bash' &>/dev/null; \
+    then
+        echo "INSTALL_SCRIPT_ERROR: 'pgrep' not found or not functional";
+        print_envs_exit "${DEPENDENCIES_NOT_INSTALLED}";
     fi
 }
 
@@ -131,7 +142,7 @@ function download_server() {
     fi
 
     echo "INSTALL_SCRIPT_ERROR: Failed to download codium server: ${CURL_ERR}";
-    print_envs_exit ${SERVER_DOWNLOAD_FAILED};
+    print_envs_exit "${SERVER_DOWNLOAD_FAILED}";
 }
 
 function download_and_install_server() {
@@ -153,18 +164,18 @@ function download_and_install_server() {
     local MKDIR_ERR
     if ! MKDIR_ERR=$(mkdir -p "${CODIUM_SERVER_INSTALL_DIR}" 2>&1); then
         echo "INSTALL_SCRIPT_ERROR: Could not create '${CODIUM_SERVER_INSTALL_DIR}' directory: ${MKDIR_ERR}";
-        print_envs_exit ${SERVER_INSTALL_FAILED};
+        print_envs_exit "${SERVER_INSTALL_FAILED}";
     fi
 
     local TAR_ERR
     if ! TAR_ERR=$(tar --strip-components 1 -xf /tmp/codium.tar.gz -C "${CODIUM_SERVER_INSTALL_DIR}" 2>&1); then
         echo "INSTALL_SCRIPT_ERROR: tar extract into '${CODIUM_SERVER_INSTALL_DIR}' failed: ${TAR_ERR}";
-        print_envs_exit ${SERVER_INSTALL_FAILED};
+        print_envs_exit "${SERVER_INSTALL_FAILED}";
     fi
 
     if [[ ! -x "${CODIUM_SERVER_INSTALL_DIR}/bin/codium-server" || ! -x "${CODIUM_SERVER_INSTALL_DIR}/node" ]]; then
         kill_server_and_remove_all
-        print_envs_exit ${SERVER_INSTALL_FAILED}
+        print_envs_exit "${SERVER_INSTALL_FAILED}"
     fi
 
     rm -f /tmp/codium.tar.gz || true
@@ -176,20 +187,52 @@ function start_codium_server() {
     #     --no-warnings "${CODIUM_SERVER_ROOT_DIR}/codium-daemon-monitor.ts"  \
     #     --config "${CODIUM_SERVER_LAUNCH_CONFIG}"                           \
     #     |& tee /tmp/codium-daemon-monitor-$(head -c 4 /dev/urandom | od -An -tx1 | tr -d ' \n').log  \
-    if MAIN=1 "${CODIUM_SERVER_INSTALL_DIR}/node"                           \
+
+    # Redirect to a file because the exec command that launches this script (from extension
+    # code) needs to exit once the server is up. Monitor script can't tee/pipe as that keeps
+    # this script's io open and needs to detach/daemonize. So log to a file and print that
+    # on exit
+    local MONITOR_OUT
+    MONITOR_OUT=$(mktemp -p "${CODIUM_SERVER_ROOT_DIR}" codium-daemon-monitor-log-XXXXXX)
+    local MONITOR_EXIT=0
+
+    echo "INSTALL_SCRIPT_INFO: daemon start logfile: ${MONITOR_OUT}"
+
+    MAIN=1 "${CODIUM_SERVER_INSTALL_DIR}/node"                              \
         --no-warnings "${CODIUM_SERVER_ROOT_DIR}/codium-daemon-monitor.ts"  \
         --config "${CODIUM_SERVER_LAUNCH_CONFIG}"                           \
-    ; then
+        > "${MONITOR_OUT}" 2>&1 127>&- || MONITOR_EXIT=$?
+
+    if [[ ${MONITOR_EXIT} -eq 0 ]]; then
+        # warnings only, keep them visible
+        cat "${MONITOR_OUT}" || true
+        # TODO: keeping them makes it easier to check logs without relying on vscodium's
+        # output window ... success, so eh ..., remove them I guess
+        # mv "${MONITOR_OUT}" "${MONITOR_OUT}-old.log" || true
+        rm -f "${MONITOR_OUT}" || true
+
         CODIUM_SERVER_TOKEN=$(cat "${CODIUM_SERVER_ROOT_DIR}/${CODIUM_SERVER_COMMIT}.token")
         CODIUM_SERVER_PID=$(pgrep -f -- 'codium-daemon-monitor.*--d[a]emon' | head -n 1 || true)
-        print_envs_exit 0;
+        print_envs_exit "${EXIT_OK}";
         return 0;
     else
+        echo "INSTALL_SCRIPT_ERROR: codium-daemon-monitor exited with code ${MONITOR_EXIT}, saved to log ${MONITOR_OUT}"
+        # TODO: keeping them makes it easier to check logs without relying on vscodium's
+        # output window
+
+        # Prepend INSTALL_SCRIPT_ERROR so the ts/extension side can regex-match all lines from this file
         # we might not have a log, so don't fail attempting to print the log
-        cat "${CODIUM_SERVER_ROOT_DIR}/${CODIUM_SERVER_COMMIT}.log" || true
+        sed '/^INSTALL_SCRIPT_/!s|^|INSTALL_SCRIPT_ERROR: |' "${MONITOR_OUT}" || true
+        tail -n 100 "${CODIUM_SERVER_ROOT_DIR}/${CODIUM_SERVER_COMMIT}.log" \
+           | sed '/^INSTALL_SCRIPT_/!s|^|INSTALL_SCRIPT_ERROR: |'           \
+           || true
+
+        mv "${MONITOR_OUT}" "${MONITOR_OUT}-old.log" || true
+        echo "INSTALL_SCRIPT_ERROR: Log ${MONITOR_OUT} moved to ${MONITOR_OUT}-old.log"
+
         CODIUM_SERVER_TOKEN="ERR"
         CODIUM_SERVER_PID="ERR"
-        print_envs_exit ${SERVER_INSTALL_FAILED}
+        print_envs_exit "${SERVER_INSTALL_FAILED}"
     fi
 }
 
@@ -212,7 +255,7 @@ function wait_lock() {
         echo "INSTALL_SCRIPT_INFO: Install lock acquired";
     else
         echo "INSTALL_SCRIPT_WARN: Install lock timeout";
-        print_envs_exit ${INSTALL_LOCK_TIMEOUT};
+        print_envs_exit "${INSTALL_LOCK_TIMEOUT}";
         return 0;
     fi
 }
