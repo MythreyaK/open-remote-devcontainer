@@ -116,15 +116,19 @@ function test_deps() {
         echo "INSTALL_SCRIPT_ERROR: 'pgrep' not found or not functional";
         print_envs_exit "${DEPENDENCIES_NOT_INSTALLED}";
     fi
+    if ! command -v xargs &>/dev/null; then
+        echo "INSTALL_SCRIPT_ERROR: 'xargs' not found or not functional";
+        print_envs_exit "${DEPENDENCIES_NOT_INSTALLED}";
+    fi
 }
 
 function kill_server_and_remove_all() {
     # shouldn't reset token
-    pkill -SIGINT -f -- "codium-d[a]emon-monitor.*--daemon" || true
-    pkill -SIGINT -f -- "--host [0].0.0.0 --port ${CODIUM_SERVER_LISTEN_PORT}" || true
-    sleep 1
-    pkill -SIGKILL -f -- "codium-d[a]emon-monitor.*--daemon" || true
-    pkill -SIGKILL -f -- "--host [0].0.0.0 --port ${CODIUM_SERVER_LISTEN_PORT}" || true
+    pgrep -f -- "codium-d[a]emon-monitor.*--daemon" | xargs -I{} -- bash -c 'kill -SIGINT -- -{} || kill -SIGINT -- {}' || true
+    pgrep -f -- "--host [0].0.0.0 --port ${CODIUM_SERVER_LISTEN_PORT}" | xargs -I{} -- bash -c 'kill -SIGINT -- -{} || kill -SIGINT -- {}' || true
+    sleep 3
+    pgrep -f -- "codium-d[a]emon-monitor.*--daemon" | xargs -I{} -- bash -c 'kill -SIGKILL -- -{} || kill -SIGKILL -- {}' || true
+    pgrep -f -- "--host [0].0.0.0 --port ${CODIUM_SERVER_LISTEN_PORT}" | xargs -I{} -- bash -c 'kill -SIGKILL -- -{} || kill -SIGKILL -- {}' || true
     rm -rf "${CODIUM_SERVER_ROOT_DIR}/bin"
     rm -f "${CODIUM_SERVER_ROOT_DIR}/${CODIUM_SERVER_COMMIT}."*
 }
