@@ -43,6 +43,13 @@ jobs:
           node-version: 24
           cache: 'npm'
 
+      - name: Audit dependencies
+        shell: bash
+        run: |
+          set -e
+          npm audit --omit=dev --audit-level=moderate
+          npm audit --audit-level=critical
+
       - name: Install and compile
         shell: bash
         run: npm ci && npm run dts && npm run compile
@@ -52,10 +59,6 @@ jobs:
         env:
           REF_NAME: ${{ github.ref_name }}
         run: python3 .github/build.py version-check --tag "$REF_NAME"
-
-      - name: Audit dependencies
-        shell: bash
-        run: npm audit --audit-level=moderate
 
       - name: "Build and format"
         run: |
