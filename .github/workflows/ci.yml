@@ -100,6 +100,8 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: npm
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -147,6 +149,7 @@ jobs:
     if: github.ref_type == 'tag'
     permissions:
       contents: write
+      id-token: write
     uses: ./.github/workflows/publish.yml
     with:
       tag: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', needs.build-package.outputs.version) }}
@@ -154,5 +157,3 @@ jobs:
       artifact_name: open-remote-devcontainer@v${{ needs.build-package.outputs.version }}
       vsix_file: ${{ needs.build-package.outputs.vsix_file }}
       vsix_sha256: ${{ needs.build-package.outputs.vsix_sha256 }}
-      publish_ovsx: true
-    secrets: inherit

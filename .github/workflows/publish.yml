@@ -19,15 +19,11 @@ on:
       artifact_name:
         type: string
         required: true
-      publish_ovsx:
-        type: boolean
-        default: false
 
 jobs:
-  publish:
+  github-release:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # environment: publish
 
     permissions:
       contents: write
@@ -37,16 +33,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      - name: npm
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24
-          cache: 'npm'
-
-      - name: Install npm packages
-        shell: bash
-        run: npm ci
 
       - uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
         with:
@@ -81,18 +67,53 @@ jobs:
           printf '%s\n' "$RELEASE_NOTES" > release-notes.md
           gh release create "$GH_TAG" $FLAGS --target "$GH_SHA" --notes-file release-notes.md "$VSIX_FILE" "$VSIX_SHA256"
 
-      - name: Publish to Open VSX
-        if: inputs.publish_ovsx
+  inspect:
+    needs: github-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    permissions:
+      contents: read
+
+    outputs:
+      sha256: ${{ steps.vsix.outputs.sha256 }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Inspect release vsix
+        id: vsix
         env:
-          OVSX_PAT: ${{ secrets.OVSX_PAT }}
-          VSIX_FILE: ${{ inputs.vsix_file }}
-          PRE_RELEASE: ${{ inputs.pre_release }}
-        run: |
-          set -e
-          if [ -z "$OVSX_PAT" ]; then
-            echo "::warning::Skipping open-vsx publish: OVSX_PAT secret is not set"
-            exit 0
-          fi
-          FLAGS=""
-          if [ "$PRE_RELEASE" = "true" ]; then FLAGS="--pre-release"; fi
-          npx ovsx publish $FLAGS --packagePath "$VSIX_FILE"
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: python3 .github/ovsx.py inspect --tag "$TAG"
+
+  # Uses open-vsx trusted publish without OVSX_PAT
+  # workflow call = open-vsx sees ci.yml as the script
+  # Approve after checking the sha matches a local isolated build
+  # Needs both required review + versioned tags for this step
+  ovsx-publish:
+    needs: inspect
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: ovsx-publish
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Verify release vsix and publish to Open VSX
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA256: ${{ needs.inspect.outputs.sha256 }}
+          TAG: ${{ inputs.tag }}
+        run: python3 .github/ovsx.py publish --tag "$TAG" --sha256 "$SHA256"
