@@ -1,5 +1,12 @@
 # Open Remote - Devcontainer: Changelog
 
+## v0.7.5
+
+#### Misc: 
+- CI: OVSX trusted publishing
+- npm audit bump 
+- bump dev dependencies
+
 ## v0.7.4
 
 - **SSH Agent forwarding:** Automatically forward local `SSH_AUTH_SOCK` into devcontainers. 
