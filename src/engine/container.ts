@@ -10,6 +10,7 @@ import { getWorkspaceId } from "../extension/workspace";
 const USERNS_CONFLICT_FLAGS = ["--userns", "--uidmap", "--gidmap"];
 
 export interface ExecOpts {
+    dir?: string,
     tty?: boolean,
     interactive?: boolean,
     withRemoteEnv?: boolean,
@@ -155,7 +156,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             "-d",
             "--name",
             containerName,
-            ...this.addContainerUser(),
+            ...this.addRemoteUser(),
             ...this.addAppPorts(),
             ...this.addMounts(),
             ...this.addWorkspaceMount(this.engine === ContainerEngine.podman),
@@ -172,7 +173,7 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
             imageName,
             //
             "-c",
-            'trap "echo Got signal, exiting...; exit 0" SIGINT SIGTERM; while sleep 60 & wait $! ; do : ; done',
+            'trap "echo Got signal, exiting...; exit 0" SIGINT SIGTERM; while sleep 600 & wait $! ; do : ; done',
         ].filter(Boolean)
             .map(e => interpolateLocal(e, this.workspaceFolder, this.getRemoteMountDir(), this.localEnv));
     }
@@ -204,6 +205,10 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         return ContainerConfig._getStage2ImageName(this.workspaceFolder);
     }
 
+    public getLocalEnv(): Record<string, string | undefined> {
+        return this.localEnv;
+    }
+
     public addLabels(): string[] {
         return [
             "--label", this.getConfigLabel(),
@@ -211,9 +216,10 @@ export class ContainerConfig<T extends schema.Config = schema.Config> {
         ];
     }
 
-    public getExecArgs(containerId: string, remoteEnvProbe: NodeJS.ProcessEnv, { tty = false, interactive = false, withRemoteEnv = true }: ExecOpts = {}): string[] {
+    public getExecArgs(containerId: string, remoteEnvProbe: NodeJS.ProcessEnv, { dir = "/", tty = false, interactive = false, withRemoteEnv = true }: ExecOpts = {}): string[] {
         return [
             "exec",
+            "--workdir", dir,
             ...this.addRemoteUser(),
             ...(withRemoteEnv ? this.addRemoteEnv(remoteEnvProbe) : []),
             (tty ? "-t" : ""),

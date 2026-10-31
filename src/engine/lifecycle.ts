@@ -1,18 +1,23 @@
+import { Uri } from "vscode";
 import path from "node:path";
 import * as fs from "node:fs/promises";
+
 import { run } from "../common/cmd";
+import { CmdResult } from "../common/opts";
 import { getExecCtx } from "../common/ctx/ctx";
 import { getLogSink } from "../extension/log";
 import { formatCmdErr } from "../common/spawn";
+import { ExecCtxKind } from "../common/ctx/execCtx";
 import { parseEnv, getHostUserInfo, getProductJson, getEngineCmd, fmtErr } from "../common/utils";
 import { ContainerConfig, ContainerEngine, LifecycleCmd } from "./container";
 import { EngineError, InstallError, InternalError } from "../extension/error";
 import { NotificationLevel, showNotification } from "../extension/workspace";
 
+import * as utils from "../common/utils";
 import * as settings from "../common/settings";
 import * as server from "../remote/installServer";
 import * as sshAgent from "../remote/exec-pipe/local";
-import { EXTENSION_ID, DEVCONTAINER_SERVER_LISTEN_PORT, CAT_PIPE_STDIN_WORKAROUND } from "../common/constants";
+import { EXTENSION_ID, DEVCONTAINER_SERVER_LISTEN_PORT, CAT_PIPE_STDIN_WORKAROUND, SERVER_DIR } from "../common/constants";
 
 export const STAGE2_DOCKERFILE_LOCATION: string = path.join(__dirname, "Dockerfile");
 export const SSH_RELAY_SCRIPT_LOCATION: string = path.join(__dirname, "remote.ts");
@@ -60,6 +65,7 @@ export class ContainerState {
     private readonly cc: ContainerConfig;
     private readonly cmd: string[];
     private readonly buildOpts: BuildOpts;
+    private readonly productJson: utils.ProductJson;
 
     private remoteEnvProbe: Record<string, string> = {};
     // private imageId: string;
@@ -69,6 +75,13 @@ export class ContainerState {
         this.cc = cc;
         this.cmd = cmd;
         this.buildOpts = opts;
+        this.productJson = (() => {
+            const pj = getProductJson();
+            pj.serverDownloadUrlTemplate = pj.serverDownloadUrlTemplate
+                .replace("${os}", "${CODIUM_OS_PLATFORM}")
+                .replace("${arch}", "${CODIUM_ARCH}");
+            return pj;
+        })();
     }
 
     public static async create(workspaceFolder: string, cc: ContainerConfig, stn: settings.Settings, opts: BuildOpts = BuildOpts.Default): Promise<ContainerState> {
@@ -433,7 +446,7 @@ export class ContainerState {
                 ...this.cc.getExecArgs(this.getContainerName(), this.remoteEnvProbe),
                 "bash",
                 "-c",
-                "cat ${HOME}/.vscode-oss-devcontainer/token",
+                `cat \${HOME}/${SERVER_DIR}/${this.productJson.commit}.token`,
             ], { cwd: this.workspaceFolder });
 
             if (token.exit !== 0 || token.stdout.trim().length !== UUID_TOKEN_LEN) {
@@ -536,7 +549,7 @@ export class ContainerState {
         );
     }
 
-    public async installServer(extensionList: string[] = [], forceReinstall: boolean = false) {
+    public async installServer(extensionList: string[] = [], forceReinstall: boolean = false): Promise<{ host: string, port: number, result: CmdResult }> {
         if (!await this.isRunning()) {
             await this.startContainer();
             if (!await this.isRunning()) {
@@ -545,14 +558,6 @@ export class ContainerState {
         }
 
         // TODO: let users customize the URL
-        const prodJson = await (async () => {
-            const pj = await getProductJson();
-            pj.serverDownloadUrlTemplate = pj.serverDownloadUrlTemplate
-                .replace("${os}", "${CODIUM_OS_PLATFORM}")
-                .replace("${arch}", "${CODIUM_ARCH}");
-            return pj;
-        })();
-
         let token: string | undefined;
 
         try {
@@ -560,25 +565,53 @@ export class ContainerState {
         }
         catch {
             getLogSink().warn("Could not query existing token. Perhaps a fresh install? Using a new token");
-            forceReinstall = true;
+            // TODO: force needed here? probably only useful when explicitly requested because
+            // missing token now restarts the entire process tree
+            // forceReinstall = true;
             token = crypto.randomUUID();
         }
 
+        const remoteHomeDir = this.getRemoteHomeDir();
         const info: server.ScriptInstallInfo = {
             port: DEVCONTAINER_SERVER_LISTEN_PORT,
             extensions: extensionList,
-            downloadTemplateUrl: prodJson.serverDownloadUrlTemplate,
-            codiumVersion: prodJson.version,
+            downloadTemplateUrl: this.productJson.serverDownloadUrlTemplate,
+            serverVersion: this.productJson.version,
+            serverCommit: this.productJson.commit,
+            serverDir: path.posix.join(remoteHomeDir, SERVER_DIR),
             connectionToken: token,
             forceReinstall: forceReinstall,
+            shutdownAction: this.cc.cfg.shutdownAction,
         };
 
         const scriptData = await server.generateInstallScript(info, true);
+        const monitorScript = await server.getMonitorScript();
+        const copyResult = await run(
+            [
+                ...this.cmd,
+                ...this.cc.getExecArgs(this.getContainerName(), this.remoteEnvProbe, { interactive: true }),
+                "bash",
+                "-c",
+                `mkdir -p \${HOME}/${SERVER_DIR}`
+                + ` && cat > \${HOME}/${SERVER_DIR}/codium-daemon-monitor.ts-$$` // cash money $$
+                + ` && mv \${HOME}/${SERVER_DIR}/codium-daemon-monitor.ts-$$ \${HOME}/${SERVER_DIR}/codium-daemon-monitor.ts`,
+            ],
+            {
+                cwd: this.workspaceFolder,
+                stdin: monitorScript,
+            },
+        );
+        if (copyResult.exit !== 0) {
+            throw new InstallError(`Could not copy monitor script: ${formatCmdErr(copyResult)}`);
+        }
 
         const installExecResult = await run(
             [
                 ...this.cmd,
-                ...this.cc.getExecArgs(this.getContainerName(), this.remoteEnvProbe, { interactive: true }),
+                ...this.cc.getExecArgs(this.getContainerName(), this.remoteEnvProbe, {
+                    dir: `${remoteHomeDir}/${SERVER_DIR}`,
+                    interactive: true,
+                }),
                 "bash",
             ],
             {
@@ -588,11 +621,15 @@ export class ContainerState {
         );
 
         if (installExecResult.exit !== 0) {
-            const err = getInstallError(installExecResult.stdout.trim());
-            throw new InstallError(`Install script to container ${this.getContainerName()} failed with code ${installExecResult.exit}: Error: ${err}`);
+            const err = getInstallError(installExecResult);
+            throw new InstallError(`Install script to container ${this.getContainerName()} failed. Error: ${err}`);
         }
 
         const hostPort = await this.getHostmappedPort();
+
+        // post-install actions, before anything else starts
+        // things like git config copy, so that it's present
+        await this.runPostInstall();
 
         return { host: "127.0.0.1", port: Number(hostPort), result: installExecResult };
     }
@@ -620,26 +657,120 @@ export class ContainerState {
         }
     }
 
-    public async startSshAgentRelay(): Promise<sshAgent.SshAgentRelay | undefined> {
-        const sshAuthSock = process.env.SSH_AUTH_SOCK;
-        if (!sshAuthSock) {
+    private async runPostInstall() {
+        // TODO: should we move socket forward here?
+        await this.copyGitConfig({});
+    }
+
+    public async copyGitConfig({ force = false }: { force?: boolean }): Promise<boolean> {
+        // TODO: Windows support
+
+        // check if gitconfig exists in remote already
+        // if yes, don't touch it!
+        const files = getGitConfig(this.remoteEnvProbe);
+
+        // (stat <file> || ...)
+        // mmmm code injection
+        const statCmd = files.map((v, _) => `stat ${utils.shellEscape(v)}`).join(" || ");
+
+        const execArgs = this.cc.getExecArgs(this.getContainerName(), this.remoteEnvProbe);
+        const stat = await run([
+            ...this.cmd,
+            ...execArgs,
+            "sh",
+            "-c",
+            statCmd,
+        ], {});
+
+        if (stat.exit === 0 && !force) {
+            getLogSink().info("runPostInstall: getGitConfig: remote container git config file detected, skipping copy");
+            return false;
+        }
+
+        const remoteContent = await (async () => {
+            // If on execServer session, attempt to read remote files and prioritize them.
+            // Config injection on remote is only meaningful on an execServer-backed
+            // session. Otherwise, it's a local devcontainer session.
+            if (getExecCtx().kind === ExecCtxKind.ExecServer) {
+                const sshRemoteEnv = await getExecCtx().env();
+                const remotePaths = getGitConfig(sshRemoteEnv.env);
+
+                for (const fpath of remotePaths) {
+                    try {
+                        const content = await getExecCtx().fs.read(Uri.file(fpath));
+                        getLogSink().info(`copyGitConfig: read remote file ${fpath}`);
+                        return content;
+                    }
+                    catch (e: unknown) {
+                        getLogSink().debug(`copyGitConfig: remote read ${fpath} failed: ${fmtErr(e)}`);
+                    }
+                }
+            }
+            return undefined;
+        })();
+
+        const configContent = remoteContent ?? await (async () => {
+            const paths = getGitConfig(this.cc.getLocalEnv());
+            for (const fpath of paths) {
+                try {
+                    const content = await fs.readFile(fpath, { encoding: "utf-8" });
+                    getLogSink().info(`copyGitConfig: read local file ${fpath}`);
+                    return content;
+                }
+                catch (e: unknown) {
+                    getLogSink().debug(`copyGitConfig: local read ${fpath} failed: ${fmtErr(e)}`);
+                }
+            }
+            return undefined;
+        })();
+
+        if (configContent) {
+            const cfgDir = xdgConfigHome(this.remoteEnvProbe);
+            const execArgs = this.cc.getExecArgs(this.getContainerName(), this.remoteEnvProbe, { interactive: true });
+
+            const gitDir = utils.shellEscape(`${cfgDir}/git`);
+            const gitCfgPath = utils.shellEscape(`${cfgDir}/git/config`);
+
+            const status = await run([
+                ...this.cmd,
+                ...execArgs,
+                "sh",
+                "-c",
+                `mkdir -p ${gitDir} && cat > ${gitCfgPath}`,
+            ], { stdin: configContent });
+
+            if (status.exit !== 0) {
+                getLogSink().error(`copyGitConfig: failed to write ${gitCfgPath}: ${formatCmdErr(status)}`);
+                return false;
+            }
+
+            return true;
+        }
+        else {
+            getLogSink().info("copyGitConfig: no git config detected, ignoring");
+            return false;
+        }
+    }
+
+    public async startSshAgentRelay({ sshAuthSock, remoteScript }: { sshAuthSock?: string, remoteScript?: string } = {}): Promise<sshAgent.SshAgentRelay | undefined> {
+        // not this.cc.getLocalEnv().SSH_AUTH_SOCK, as on a remote ssh workspace, that's the SSH_AUTH_SOCK
+        // on the remote ssh host.
+        // TODO: We could forward that, but the mix of local/remote SSH sock / gitconfig is not configurable
+        // maybe could be an option in the devcontainer config? To say which source to use for each?
+        const sock = sshAuthSock ?? process.env.SSH_AUTH_SOCK;
+        if (!sock) {
             getLogSink().info("ssh-agent-relay: SSH_AUTH_SOCK env not set, skipping");
             return undefined;
         }
+        // dobby is a free elf!
 
-        const remoteEnv = this.remoteEnvProbe.HOME;
-
-        if (!remoteEnv) {
-            throw new InternalError("ssh-agent-relay: HOME envvar not present in remoteEnv");
-        }
-
-        const nodeBin = path.posix.join(remoteEnv, ".vscode-oss-devcontainer", "node");
+        const nodeBin = path.posix.join(this.getRemoteHomeDir(), SERVER_DIR, "bin", this.productJson.commit, "node");
         const containerName = this.getContainerName();
 
         try {
             const sockPath = sshAgent.sshAgentSockPath();
-            const bridgeScript = await fs.readFile(SSH_RELAY_SCRIPT_LOCATION, { encoding: "utf-8" })
-              + "\nmain();";
+            const bridgeScript = remoteScript
+              ?? await fs.readFile(SSH_RELAY_SCRIPT_LOCATION, { encoding: "utf-8" }) + "\nmain();";
 
             getLogSink().debug(`ssh-agent-relay: bridge script contents:\n${bridgeScript}\n`);
 
@@ -654,7 +785,7 @@ export class ContainerState {
                 `--sock-path=${sockPath}`,
             ], { cwd: this.workspaceFolder });
 
-            const relay = new sshAgent.SshAgentRelay(proc, sshAuthSock, sockPath);
+            const relay = new sshAgent.SshAgentRelay(proc, sock, sockPath);
 
             let timer: ReturnType<typeof setTimeout>;
             await Promise.race([
@@ -673,25 +804,22 @@ export class ContainerState {
         }
     }
 
+    public getRemoteHomeDir() {
+        const homeDir = this.remoteEnvProbe.HOME;
+        if (!homeDir) {
+            throw new InternalError("HOME env var unset on remote! HOME must be set");
+        }
+        return homeDir;
+    }
+
     public async dispose() {
         // TODO: handle shutdown in installServer.sh
     }
 }
 
-function getInstallError(data: string) {
-    const errMsgMatches = Array.from(data.matchAll(/^INSTALL_SCRIPT_ERROR:(.*)$/gm));
-    const errCodeMatches = Array.from(data.matchAll(/^EXITCODE\[\[(.*)\]\]$/gm));
-
-    if (errCodeMatches.length === 0 || errMsgMatches.length === 0) {
-        throw new InstallError(`Could not extract error message from\n'${data}'`);
-    }
-    else {
-        // TODO: error matching
-        // const errMsg = errMsgMatches[0][1];
-        // const errCode = errCodeMatches[0][1];
-        // return `${errCode}${errMsg}`;
-        return data;
-    }
+function getInstallError(res: { exit: number | string, stdout: string, stderr: string }) {
+    getLogSink().debug(`installServer: full install script output:\n${res.stdout}\nstderr:\n${res.stderr}`);
+    return server.formatInstallError(res);
 }
 
 function fixDockerImageInspect(engine: ContainerEngine, json: string): ImageInspectResult {
@@ -732,4 +860,23 @@ export async function queryContainerConfigId(cmd: string[], workspaceFolder: str
 
 export async function readStage2Dockerfile() {
     return await fs.readFile(STAGE2_DOCKERFILE_LOCATION, { encoding: "utf-8" });
+}
+
+export function xdgConfigHome(env: Record<string, string | undefined>) {
+    if (!env.HOME) {
+        throw new InternalError("HOME env var not present");
+    }
+
+    return env.XDG_CONFIG_HOME ?? `${env.HOME}/.config`;
+}
+
+export function getGitConfig(env: Record<string, string | undefined>) {
+    if (!env.HOME) {
+        throw new InternalError("HOME env var not present");
+    }
+
+    return [
+        `${env.HOME}/.gitconfig`,
+        `${xdgConfigHome(env)}/git/config`,
+    ];
 }

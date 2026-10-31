@@ -6,6 +6,8 @@ import * as install from "../installServer";
 import * as resolver from "../resolver";
 
 import { initMocks } from "../../tests/common";
+import { SERVER_DIR } from "../../common/constants";
+import { ServerLaunchConfig } from "../codium-daemon-monitor";
 
 initMocks();
 
@@ -139,20 +141,36 @@ describe("Install script", () => {
             extensions: [],
             connectionToken: "0xf00ba4",
             downloadTemplateUrl: "https://localhost/${CODIUM_OS_PLATFORM}-${CODIUM_ARCH}.tar.gz",
-            codiumVersion: "1.2.345",
+            serverVersion: "1.2.345",
+            serverCommit: "deadbeeffood",
+            serverDir: `/home/user/${SERVER_DIR}`,
             forceReinstall: false,
+            shutdownAction: "none",
+        };
+        const config: ServerLaunchConfig = {
+            host: "0.0.0.0",
+            port: `${info.port}`,
+            serverDir: info.serverDir,
+            serverCommit: info.serverCommit,
+            extensions: info.extensions,
+            connectionToken: info.connectionToken,
+            shutdownAction: info.shutdownAction,
         };
 
         const script = await fs.readFile(install.INSTALL_SCRIPT_LOCATION, { encoding: "utf-8" });
         const updatedScript = install.updateScript(script, info, true);
+        const configHex = Buffer.from(JSON.stringify(config), "utf-8").toString("hex");
 
         expect(countSubstring(updatedScript, "export")).eq(0);
-        expect(updatedScript).toContain("0xf00ba4");
-        expect(updatedScript).not.toContain("--install-extension");
-        expect(updatedScript).toContain('CODIUM_FORCE_REINSTALL_SERVER="false"');
-        expect(updatedScript).toContain('CODIUM_NEW_INSTALL_VERSION="1.2.345"');
-        expect(updatedScript).toContain('CODIUM_SERVER_LISTEN_PORT="6543"');
         expect(updatedScript).toContain("localhost/${CODIUM_OS_PLATFORM}-${CODIUM_ARCH}");
+        expect(updatedScript).toContain("CODIUM_SERVER_COMMIT='deadbeeffood'");
+        expect(updatedScript).toContain("CODIUM_SERVER_VERSION='1.2.345'");
+        expect(updatedScript).toContain("CODIUM_SERVER_ROOT_DIR='/home/user/.vscodium-devcontainer'");
+        expect(updatedScript).toContain(`CODIUM_SERVER_LAUNCH_CONFIG='${configHex}'`);
+        expect(updatedScript).toContain("CODIUM_SERVER_LISTEN_PORT='6543'");
+        expect(updatedScript).toContain("CODIUM_FORCE_REINSTALL_SERVER='false'");
+        expect(updatedScript).toContain("CODIUM_SHUTDOWN_ACTION='none'");
+        expect(updatedScript).not.toContain("--install-extension");
 
         // await fs.writeFile("out.sh", updatedScript, { encoding: 'utf-8', mode: 0o700 });
     });
@@ -163,19 +181,35 @@ describe("Install script", () => {
             extensions: ["pub1.ext1", "pub2.ext1"],
             connectionToken: "0xf00ba4",
             downloadTemplateUrl: "https://localhost/${CODIUM_OS_PLATFORM}-${CODIUM_ARCH}.tar.gz",
-            codiumVersion: "1.2.345",
+            serverVersion: "1.2.345",
+            serverCommit: "deadbeeffood",
+            serverDir: `/home/user/${SERVER_DIR}`,
             forceReinstall: false,
+            shutdownAction: "stopContainer",
+        };
+        const config: ServerLaunchConfig = {
+            host: "0.0.0.0",
+            port: `${info.port}`,
+            serverDir: info.serverDir,
+            serverCommit: info.serverCommit,
+            extensions: info.extensions,
+            connectionToken: info.connectionToken,
+            shutdownAction: info.shutdownAction,
         };
 
         const script = await fs.readFile(install.INSTALL_SCRIPT_LOCATION, { encoding: "utf-8" });
         const updatedScript = install.updateScript(script, info, true);
+        const configHex = Buffer.from(JSON.stringify(config), "utf-8").toString("hex");
 
-        expect(updatedScript).toContain("0xf00ba4");
-        expect(updatedScript).toContain("--install-extension pub1.ext1 --install-extension pub2.ext1");
-        expect(updatedScript).toContain('CODIUM_FORCE_REINSTALL_SERVER="false"');
-        expect(updatedScript).toContain('CODIUM_NEW_INSTALL_VERSION="1.2.345"');
-        expect(updatedScript).toContain('CODIUM_SERVER_LISTEN_PORT="6543"');
         expect(updatedScript).toContain("localhost/${CODIUM_OS_PLATFORM}-${CODIUM_ARCH}");
+        expect(updatedScript).toContain("CODIUM_SERVER_COMMIT='deadbeeffood'");
+        expect(updatedScript).toContain("CODIUM_SERVER_VERSION='1.2.345'");
+        expect(updatedScript).toContain("CODIUM_SERVER_ROOT_DIR='/home/user/.vscodium-devcontainer'");
+        expect(updatedScript).toContain(`CODIUM_SERVER_LAUNCH_CONFIG='${configHex}'`);
+        expect(updatedScript).toContain("CODIUM_SERVER_LISTEN_PORT='6543'");
+        expect(updatedScript).toContain("CODIUM_FORCE_REINSTALL_SERVER='false'");
+        expect(updatedScript).toContain("CODIUM_SHUTDOWN_ACTION='stopContainer'");
+        expect(updatedScript).not.toContain("--install-extension");
 
         // await fs.writeFile("out.sh", updatedScript, { encoding: 'utf-8', mode: 0o700 });
     });

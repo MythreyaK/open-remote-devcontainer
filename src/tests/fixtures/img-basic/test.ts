@@ -1,16 +1,36 @@
+import * as fs from "fs";
+import * as net from "net";
 import path from "node:path";
-import { describe, expect, test } from "vitest";
+import { readFile, rename } from "node:fs/promises";
 import { setTimeout } from "node:timers/promises";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
 import { run } from "../../../common/cmd";
-import { ContainerInspectResult, ContainerState } from "../../../engine/lifecycle";
+import { ContainerInspectResult, ContainerState, getGitConfig, xdgConfigHome } from "../../../engine/lifecycle";
+import { SshAgentRelay } from "../../../remote/exec-pipe/local";
 import { ContainerConfig } from "../../../engine/container";
-import { parseEnv } from "../../../common/utils";
+import { consume, parseEnv } from "../../../common/utils";
 
 import { initMocks, setupFixture, jsonFormat, getMockSettings, TEST_CODIUM_INFO, getTestTimeout } from "../../common";
+import { DEVCONTAINER_SERVER_LISTEN_PORT, SERVER_DIR } from "../../../common/constants";
 
 const SETTINGS = getMockSettings();
 initMocks();
+
+const AGENT_SOCK_PATH = `/tmp/relay-engine-agent-${process.pid}.sock`;
+
+function createFakeAgent(): Promise<net.Server> {
+    return new Promise((resolve) => {
+        try { fs.unlinkSync(AGENT_SOCK_PATH); }
+        catch { }
+        const server = net.createServer((sock) => {
+            sock.on("data", (d) => {
+                sock.write(Buffer.concat([Buffer.from("AGENT:"), d]));
+            });
+        });
+        server.listen(AGENT_SOCK_PATH, () => { resolve(server); });
+    });
+}
 
 describe.skipIf(!SETTINGS.dockerPath)("integration: lifecycle: img-basic", async () => {
     const engine = SETTINGS.dockerPath;
@@ -21,10 +41,15 @@ describe.skipIf(!SETTINGS.dockerPath)("integration: lifecycle: img-basic", async
     const { localWsf, config } = await setupFixture({ name: "image-basic", testDir: __dirname });
     const devcPath = path.join(localWsf, ".devcontainer/devcontainer.json");
 
+    // fake HOME/XDG only for ContainerConfig/getGitConfig
+    // don't pass localEnv to run commands as that ends up in proc spawn
     const localEnv = {
         ...process.env,
         CUSTOM_LOCAL_ENV: "CUSTOM_LOCAL_VAR",
         LOCAL_ENV1: "LOCAL_VAL1",
+        HOME: path.join(__dirname, "homedir"),
+        XDG_CONFIG_HOME: path.join(__dirname, "homedir", ".config"),
+        SSH_AUTH_SOCK: AGENT_SOCK_PATH,
     };
 
     test("create", async () => {
@@ -35,7 +60,7 @@ describe.skipIf(!SETTINGS.dockerPath)("integration: lifecycle: img-basic", async
     }, getTestTimeout(60));
 
     test("workspace mounts exists", async () => {
-        const inspectResult = await run([engine, "inspect", container.getContainerName(), ...jsonFormat], { cwd: localWsf, env: localEnv });
+        const inspectResult = await run([engine, "inspect", container.getContainerName(), ...jsonFormat], { cwd: localWsf });
         expect(inspectResult.exit).eq(0);
 
         const mounts = (JSON.parse(inspectResult.stdout.trim()) as ContainerInspectResult)["Mounts"];
@@ -94,7 +119,7 @@ describe.skipIf(!SETTINGS.dockerPath)("integration: lifecycle: img-basic", async
         expect(remoteEnvs.CUSTOM_LOCAL_ENV_CHECK).toBe("CUSTOM_LOCAL_VAR");
     });
 
-    test("install script and health-check", async () => {
+    test("server install: install script and health-check", async () => {
         const { port, result } = await container.installServer();
         expect(result.exit).eq(0);
 
@@ -128,6 +153,266 @@ describe.skipIf(!SETTINGS.dockerPath)("integration: lifecycle: img-basic", async
 
         expect(healthVersion).eq(TEST_CODIUM_INFO.commit);
     }, getTestTimeout(60));
+
+    test("server install: reconnect after missing token file", async () => {
+        // if token is missing, just clean up and restart the server
+        // ensuring no wasteful re-download
+        // TODO: add force-reinstall to commands now that it's not triggered
+        // in-code anymore
+
+        const commit = TEST_CODIUM_INFO.commit;
+        const prevToken = await container.getConnectionToken();
+
+        const oldProcs = await container.engineExec(["bash", "-c", `pgrep -f -- '--port ${DEVCONTAINER_SERVER_LISTEN_PORT}' || true`]);
+        const oldPids = oldProcs.stdout.trim().split("\n").filter(Boolean);
+        // console.log(oldPids);
+
+        // server removal and redownload = inode changes
+        const nodeInode = async () => (await container.engineExec(["bash", "-c",
+            `stat -c %i \${HOME}/${SERVER_DIR}/bin/${commit}/node`])).stdout.trim();
+        const inodeBefore = await nodeInode();
+        expect(inodeBefore.length).toBeGreaterThan(0);
+
+        await container.engineExec(["bash", "-c", `rm -f \${HOME}/${SERVER_DIR}/${commit}.token`]);
+
+        const { port, result } = await container.installServer();
+        expect(result.exit).eq(0);
+
+        expect(result.stdout).toContain("already installed, skipping download");
+        expect(result.stdout).not.toContain("Downloading server");
+        expect(await nodeInode()).eq(inodeBefore);
+
+        const token = await container.getConnectionToken();
+        expect(token.length).eq(36);
+        expect(token).not.eq(prevToken);
+
+        const res = await fetch(`http://127.0.0.1:${port}/version`);
+        expect(res.ok).toBe(true);
+        expect(await res.text()).eq(commit);
+
+        for (const oldPid of oldPids) {
+            const check = await container.engineExec(["kill", "-0", oldPid]);
+            expect(check.exit).not.eq(0);
+        }
+
+        // daemon holds daemon.lock for its lifetime, so a non-blocking flock must fail
+        const lockCheck = await container.engineExec(["bash", "-c", `flock -n \${HOME}/${SERVER_DIR}/daemon.lock -c true`]);
+        expect(lockCheck.exit).not.eq(0);
+
+        const tokenFile = await container.engineExec(["bash", "-c", `cat \${HOME}/${SERVER_DIR}/${commit}.token`]);
+        expect(tokenFile.exit).eq(0);
+        expect(tokenFile.stdout.trim()).eq(token);
+    }, getTestTimeout(15));
+
+    test("server install: recover from orphaned server and dead daemon", async () => {
+        const commit = TEST_CODIUM_INFO.commit;
+
+        const oldProcs = await container.engineExec(["bash", "-c", `pgrep -f -- '--port ${DEVCONTAINER_SERVER_LISTEN_PORT}' || true`]);
+        const oldPids = oldProcs.stdout.trim().split("\n").filter(Boolean);
+        expect(oldPids.length).toBeGreaterThan(0);
+
+        // SIGKILL only the daemon (not its group) so that the server keeps running and daemon.lock is released
+        await container.engineExec(["bash", "-c", "pkill -9 -f -- 'codium-daemon-monitor.*--d[a]emon'"]);
+
+        const { port, result } = await container.installServer();
+        expect(result.exit).eq(0);
+
+        const res = await fetch(`http://127.0.0.1:${port}/version`);
+        expect(res.ok).toBe(true);
+        expect(await res.text()).eq(commit);
+
+        // check that orphaned server was cleaned up, not reused
+        for (const oldPid of oldPids) {
+            const check = await container.engineExec(["kill", "-0", oldPid]);
+            expect(check.exit).not.eq(0);
+        }
+
+        // new daemon holds the lock
+        const lockCheck = await container.engineExec(["bash", "-c", `flock -n \${HOME}/${SERVER_DIR}/daemon.lock -c true`]);
+        expect(lockCheck.exit).not.eq(0);
+    }, getTestTimeout(30));
+
+    test("server install: parallel installs start exactly one daemon", async () => {
+        const commit = TEST_CODIUM_INFO.commit;
+
+        // tear down the running tree so both installs race to start a fresh one
+        await container.engineExec(["bash", "-c", "pgrep -f -- 'codium-daemon-monitor.*--d[a]emon' | xargs -I{} kill -9 -- -{} 2>/dev/null || true"]);
+        await container.engineExec(["bash", "-c", `pgrep -f -- '--[h]ost 0.0.0.0 --port ${DEVCONTAINER_SERVER_LISTEN_PORT}' | xargs -I{} kill -9 {} 2>/dev/null || true`]);
+        await container.engineExec(["bash", "-c", `rm -f \${HOME}/${SERVER_DIR}/${commit}.token`]);
+
+        // all procs we start have .vscodium-server in the cmdline
+        // '[s]earch' square-bracket trick to prevent pgrep seppuku
+        const procSearchHammer = `[${SERVER_DIR[0]}]${SERVER_DIR.slice(1)}`;
+
+        const foundProcs = await (async () => {
+            for (let i = 0; i < 5; ++i) {
+                const left = (await container.engineExec(["bash", "-c", `pgrep -a -f -- '${procSearchHammer}' || true`])).stdout.trim();
+                if (left.length === 0) { return false; }
+                await setTimeout(1000);
+            }
+            return true;
+        })();
+
+        expect(foundProcs).eq(false);
+
+        // simulates multiple windows reconnecting to the same container at once
+        const results = await Promise.all([
+            container.installServer(),
+            container.installServer(),
+        ]);
+        for (const { result } of results) {
+            expect(result.exit).eq(0);
+        }
+
+        const daemons = await container.engineExec(["bash", "-c", "pgrep -c -f -- 'codium-daemon-monitor.*--d[a]emon' || true"]);
+        expect(daemons.stdout.trim()).eq("1");
+
+        // install lock should serialize the install, meaning only one wins and the other should
+        // reuse the installed server (wait for the lock, health-check, and exit)
+        const spawned = results.filter(r => r.result.stdout.includes("Spawned daemon-child")).length;
+        const reused = results.filter(r => r.result.stdout.includes("Server already running with [[token:")).length;
+        expect(spawned).eq(1);
+        expect(reused).eq(1);
+
+        const res = await fetch(`http://127.0.0.1:${results[0].port}/version`);
+        expect(res.ok).toBe(true);
+        expect(await res.text()).eq(commit);
+    }, getTestTimeout(60));
+
+    test("server install: post-install copies gitconfig", async () => {
+        const containerEnvs = await container.getContainerEnv();
+        const cfgDir = xdgConfigHome(containerEnvs);
+        const remotePath = `${cfgDir}/git/config`;
+
+        const result = await container.engineExec(["cat", remotePath]);
+        expect(result.exit).eq(0);
+
+        const paths = getGitConfig(localEnv);
+        const expected = await readFile(paths[0], "utf-8");
+        expect(result.stdout).eq(expected);
+
+        await container.engineExec(["rm", remotePath]);
+    });
+
+    describe("copyGitConfig", () => {
+        const paths = getGitConfig(localEnv);
+
+        const restore = async () => {
+            try {
+                await rename(`${paths[0]}.bk`, paths[0]);
+            }
+            catch (e) {
+                consume(e);
+                // fine, rename not required
+            }
+        };
+
+        beforeAll(restore); // if previous run failed
+        afterAll(restore); // restore after each run
+
+        for (const [inx, gitpath] of paths.entries()) {
+            const title = gitpath.replace(localEnv.HOME, "~");
+
+            test(`${title} copy config`, async () => {
+                const result = await container.copyGitConfig({});
+                expect(result).toBe(true);
+            });
+
+            test(`${title} config not overwritten on second install`, async () => {
+                const containerEnvs = await container.getContainerEnv();
+                const cfgDir = xdgConfigHome(containerEnvs);
+                const remotePath = `${cfgDir}/git/config`;
+
+                const marker = "do-not-overwrite";
+                await container.engineExec(["sh", "-c", `printf '%s' '${marker}' > '${remotePath}'`]);
+
+                const copied = await container.copyGitConfig({});
+                expect(copied).toBe(false);
+
+                const result = await container.engineExec(["cat", remotePath]);
+                expect(result.exit).eq(0);
+                expect(result.stdout).eq("do-not-overwrite");
+            });
+
+            test(`${title} config overwritten with force`, async () => {
+                const containerEnvs = await container.getContainerEnv();
+                const cfgDir = xdgConfigHome(containerEnvs);
+                const remotePath = `${cfgDir}/git/config`;
+
+                const existing = await container.engineExec(["cat", remotePath]);
+                expect(existing.exit).eq(0);
+                expect(existing.stdout).eq("do-not-overwrite");
+
+                const copied = await container.copyGitConfig({ force: true });
+                expect(copied).toBe(true);
+
+                const expected = await readFile(gitpath, "utf-8");
+
+                const result = await container.engineExec(["cat", remotePath]);
+                expect(result.exit).eq(0);
+                expect(result.stdout).eq(expected);
+            });
+
+            test(`${title}: rename/restore`, async () => {
+                const containerEnvs = await container.getContainerEnv();
+                const cfgDir = xdgConfigHome(containerEnvs);
+                const remotePath = `${cfgDir}/git/config`;
+
+                await container.engineExec(["rm", remotePath]);
+
+                // TODO: ah hacky, it iz wat it iz for now
+                // after the first pass, rename .gitconfig so that in
+                // the next pass, copyGitConfig reads the xdg-spec config
+                if (inx === 0) { await rename(paths[0], `${paths[0]}.bk`); }
+
+                // restore it after the second pass
+                if (inx === 1) { await rename(`${paths[0]}.bk`, paths[0]); }
+            });
+        }
+    });
+
+    describe("ssh agent forwarding", () => {
+        let agent: net.Server | undefined;
+        let relay: SshAgentRelay | undefined;
+
+        afterAll(() => {
+            relay?.dispose();
+            agent?.close();
+            try { fs.unlinkSync(AGENT_SOCK_PATH); }
+            catch { }
+        });
+
+        test("container bridge starts", async () => {
+            agent = await createFakeAgent();
+
+            // TODO: ugh man these paths .... need to fix this
+            const remotePath = path.join(__dirname, "../../../", "remote/exec-pipe/remote.ts");
+            const script = fs.readFileSync(remotePath, { encoding: "utf-8" }) + "\nmain();";
+
+            relay = await container.startSshAgentRelay({ remoteScript: script, sshAuthSock: AGENT_SOCK_PATH });
+            expect(relay).toBeDefined();
+            if (!relay) { throw new Error("Expected result to be defined"); }
+
+            expect(relay.containerSockPath.startsWith("/tmp/")).toBe(true);
+        });
+
+        test("roundtrip echo", async () => {
+            expect(relay).toBeDefined();
+            if (!relay) { throw new Error("relay not started"); }
+
+            const nodeBin = `\${HOME}/${SERVER_DIR}/bin/${TEST_CODIUM_INFO.commit}/node`;
+
+            const result = await container.engineExec([
+                "bash", "-c",
+                `${nodeBin} -e`
+                + ` 'const s = require("net").createConnection("${relay.containerSockPath}", () => { s.write("ping"); }); `
+                + " s.once(\"data\", d => { process.stdout.write(d); s.destroy(); })' ",
+            ]);
+
+            expect(result.exit).eq(0);
+            expect(result.stdout).eq("AGENT:ping");
+        });
+    });
 
     test("connection token is stable across calls", async () => {
         const token1 = await container.getConnectionToken();

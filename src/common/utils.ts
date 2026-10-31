@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
-import * as fs from "node:fs/promises";
 import path from "node:path";
+import { readFileSync } from "node:fs";
 
 import { Settings } from "./settings";
 import { getExecCtx } from "./ctx/ctx";
@@ -72,9 +72,9 @@ export interface ProductJson {
     serverDownloadUrlTemplate: string,
 };
 
-export async function getProductJson(): Promise<ProductJson> {
+export function getProductJson(): ProductJson {
     const jsonPath = path.join(vscode.env.appRoot, "product.json");
-    const jsonData = JSON.parse(await fs.readFile(jsonPath, { encoding: "utf-8", flag: "r" })) as ProductJson;
+    const jsonData = JSON.parse(readFileSync(jsonPath, { encoding: "utf-8", flag: "r" })) as ProductJson;
 
     return {
         applicationName: jsonData.applicationName,
@@ -102,4 +102,8 @@ export function getRemoteAuthorities(): string[] | undefined {
 
 export function consume(..._: unknown[]) {
     void (_);
+}
+
+export function shellEscape(str: string) {
+    return "'" + str.replace(/'/g, "'\\''") + "'";
 }

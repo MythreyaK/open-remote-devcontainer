@@ -32,10 +32,12 @@ export const EnvProbe = z.enum([
     "interactiveShell",
 ]);
 
-export const ShutdownAction = z.enum([
+export const ShutdownAction_z = z.enum([
     "none",
     "stopContainer",
 ]);
+
+export type ShutdownAction = z.infer<typeof ShutdownAction_z>;
 
 const _stringOrNumber = oneOf([
     z.string(),
@@ -72,7 +74,7 @@ export const NonComposeBase_z = z.object({
         z.array(_stringOrNumber),
     ])),
     runArgs: z._default(z.optional(z.array(z.string())), []),
-    shutdownAction: z._default(z.optional(ShutdownAction), "stopContainer"),
+    shutdownAction: z._default(z.optional(ShutdownAction_z), "stopContainer"),
     overrideCommand: z._default(z.optional(z.boolean()), true),
     workspaceFolder: z.optional(minString),
     workspaceMount: z.optional(z.string()),

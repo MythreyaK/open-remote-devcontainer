@@ -34,7 +34,7 @@ export function initLogs(ctx: vscode.ExtensionContext) {
         logFile = path.join(dir, name);
         log = new TeeLogOutputChannel(logFile, getLogSink());
     }
-    catch (e) {
+    catch (e: unknown) {
         getLogSink().error(`Could not switch to TeeLog. Not in a workspace? Error: ${JSON.stringify(e)}`);
     }
 

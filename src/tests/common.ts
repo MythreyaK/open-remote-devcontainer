@@ -83,7 +83,7 @@ export function initMocks() {
     // }));
 
     const spyProdsJson = vi.spyOn(utils, "getProductJson");
-    spyProdsJson.mockResolvedValue(TEST_CODIUM_INFO);
+    spyProdsJson.mockReturnValue(TEST_CODIUM_INFO);
 
     (vscode as any).env = { remoteAuthority: undefined };
 

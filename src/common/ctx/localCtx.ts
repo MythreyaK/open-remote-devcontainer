@@ -98,11 +98,7 @@ export class LocalExecCtx implements ExecCtx {
         // for user-local or remote-local workspace, settings is just
         // querying it via vscode's API it does the right thing even
         // if on a remote machine
-        const ret = settings.withDefaults({
-            dockerPath: settings.getConfig<string>("dockerPath"),
-            extraArgs: settings.getConfig<string[]>("extraArgs"),
-            defaultExtensions: settings.getConfig<string[]>("defaultExtensions"),
-        });
+        const ret = settings.withDefaults(settings.getLocalSettings());
 
         getLogSink().debug(`LocalExecCtx.getSettings(): ${JSON.stringify(ret)}`);
         return ret;
