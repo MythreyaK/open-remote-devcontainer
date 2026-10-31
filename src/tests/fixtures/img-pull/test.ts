@@ -22,6 +22,8 @@ describe.skipIf(!SETTINGS.dockerPath)("integration: lifecycle: img-pull", async 
     const { localWsf, config } = await setupFixture({ name: "image-pull", testDir: __dirname });
     const devcPath = path.join(localWsf, ".devcontainer/devcontainer.json");
 
+    // fake HOME/XDG only for ContainerConfig/getGitConfig
+    // don't pass localEnv to run commands as that ends up in proc spawn
     const localEnv = {
         ...process.env,
         CUSTOM_LOCAL_ENV: "CUSTOM_LOCAL_VAR",
@@ -42,9 +44,9 @@ describe.skipIf(!SETTINGS.dockerPath)("integration: lifecycle: img-pull", async 
 
     test("pull image and create container with missing local image", async () => {
         // remove image first, if exists
-        await run([engine, "image", "rm", imageName], { cwd: localWsf, env: localEnv });
+        await run([engine, "image", "rm", imageName], { cwd: localWsf });
 
-        const inspectResult = await run([engine, "inspect", imageName, ...jsonFormat], { cwd: localWsf, env: localEnv });
+        const inspectResult = await run([engine, "inspect", imageName, ...jsonFormat], { cwd: localWsf });
         expect(inspectResult.exit).not.eq(0);
         expect(inspectResult.stdout.trim()).toBe("");
 
@@ -72,7 +74,7 @@ describe.skipIf(!SETTINGS.dockerPath)("integration: lifecycle: img-pull", async 
                 "bash",
                 "-c",
                 `cat \${HOME}/${SERVER_DIR}/${productJson.commit}.token`,
-            ], { cwd: localWsf, env: localEnv });
+            ], { cwd: localWsf });
 
             expect(catResult.exit).eq(0);
             expect(catResult.stdout.trim()).eq(token);
@@ -95,7 +97,7 @@ describe.skipIf(!SETTINGS.dockerPath)("integration: lifecycle: img-pull", async 
                 "bash",
                 "-c",
                 `cat \${HOME}/${SERVER_DIR}/${productJson.commit}.token`,
-            ], { cwd: localWsf, env: localEnv });
+            ], { cwd: localWsf });
 
             expect(catResult.exit).eq(0);
             expect(catResult.stdout.trim()).eq(token);

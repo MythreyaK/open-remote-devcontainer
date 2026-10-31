@@ -41,6 +41,8 @@ describe.skipIf(!SETTINGS.dockerPath)("integration: lifecycle: img-basic", async
     const { localWsf, config } = await setupFixture({ name: "image-basic", testDir: __dirname });
     const devcPath = path.join(localWsf, ".devcontainer/devcontainer.json");
 
+    // fake HOME/XDG only for ContainerConfig/getGitConfig
+    // don't pass localEnv to run commands as that ends up in proc spawn
     const localEnv = {
         ...process.env,
         CUSTOM_LOCAL_ENV: "CUSTOM_LOCAL_VAR",
@@ -58,7 +60,7 @@ describe.skipIf(!SETTINGS.dockerPath)("integration: lifecycle: img-basic", async
     }, getTestTimeout(60));
 
     test("workspace mounts exists", async () => {
-        const inspectResult = await run([engine, "inspect", container.getContainerName(), ...jsonFormat], { cwd: localWsf, env: localEnv });
+        const inspectResult = await run([engine, "inspect", container.getContainerName(), ...jsonFormat], { cwd: localWsf });
         expect(inspectResult.exit).eq(0);
 
         const mounts = (JSON.parse(inspectResult.stdout.trim()) as ContainerInspectResult)["Mounts"];
